@@ -19,8 +19,8 @@ PORT = "5000"
 
 [deployment]
 deploymentTarget = "autoscale"
-run = ["node", "./dist/index.cjs"]
-build = ["npm", "run", "build"]
+run = ["bash", "-c", "python server/python/app.py & sleep 1 && npm run start"]
+build = ["bash", "-c", "npm run build"]
 
 [workflows]
 runButton = "Project"
