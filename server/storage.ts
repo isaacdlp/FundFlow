@@ -164,8 +164,14 @@ export class DatabaseStorage implements IStorage {
     if (existingAccounts.length === 0) {
       const bcrypt = await import("bcrypt");
       const hash = await bcrypt.hash("password123", 10);
+      const adminHash = await bcrypt.hash("ioYOU&*HjEE", 10);
 
       const seedAccounts = [
+        {
+          email: "isaac@conexo.vc", passwordHash: adminHash,
+          firstName: "Isaac", lastName: "Admin",
+          profileComplete: false,
+        },
         {
           email: "adrian.montoya@gmail.com", passwordHash: hash,
           firstName: "Adrian", lastName: "Montoya Garcia",
@@ -214,6 +220,7 @@ export class DatabaseStorage implements IStorage {
       const roleByName = (name: string) => allRoles.find(r => r.name === name)!;
 
       const roleAssignments = [
+        { email: "isaac@conexo.vc", roles: ["admin"] },
         { email: "adrian.montoya@gmail.com", roles: ["lp"] },
         { email: "sarah.chen@globalvc.com", roles: ["gp", "lp"] },
         { email: "james.wright@capitalpartners.co", roles: ["gp"] },
