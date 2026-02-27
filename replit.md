@@ -10,9 +10,10 @@ Multi-tenant fund management platform for VC and PE investments. Users can parti
 - **Workflow**: `npm run dev` starts both Express API and Vite dev server
 
 ## User Roles
-- **Admin**: Platform administrator with full access
+- **Admin**: Platform administrator with full access — can create/destroy organizations
 - **GP (General Partner)**: Fund manager
 - **LP (Limited Partner)**: Investor in funds
+- **Organizer**: Per-organization role — can manage settings for their assigned organization
 - Users can have multiple roles simultaneously
 
 ## Project Structure
@@ -27,11 +28,14 @@ client/                   # React frontend
       accounts.tsx        # Account list (search/filter)
       account-detail.tsx  # Account detail with tabs (Personal Info, Login, Permissions)
       create-account.tsx  # New account creation form
+      organizations.tsx   # Organization list with search/delete
+      organization-detail.tsx  # Org detail with Settings & Organizers tabs
+      create-organization.tsx  # New organization creation form
     lib/
       queryClient.ts      # TanStack Query configuration
 server/
   index.ts                # Express entry point (seeds data on startup)
-  routes.ts               # API routes for accounts and roles
+  routes.ts               # API routes for accounts, roles, and organizations
   storage.ts              # DatabaseStorage class with IStorage interface
   vite.ts                 # Vite dev server setup (DO NOT MODIFY)
 shared/
@@ -43,14 +47,26 @@ shared/
 - `accounts` - User accounts with personal info and address
 - `roles` - Role definitions (admin, gp, lp)
 - `account_roles` - Many-to-many account-role associations (with cascade delete)
+- `organizations` - Organizations that create funds and SPVs
+- `organization_organizers` - Many-to-many organization-account associations (Organizer role)
 
 ## API Endpoints
+### Accounts
 - `GET /api/accounts` - List all accounts with roles (supports ?search= and ?role= query params)
 - `GET /api/accounts/:id` - Get single account with roles
 - `POST /api/accounts` - Create new account (requires password, firstName, lastName, email)
 - `PATCH /api/accounts/:id` - Update account fields and/or roles
 - `DELETE /api/accounts/:id` - Delete account (cascades to account_roles)
 - `GET /api/roles` - List all roles
+
+### Organizations
+- `GET /api/organizations` - List all organizations with organizers
+- `GET /api/organizations/:id` - Get single organization with organizers
+- `POST /api/organizations` - Create new organization (requires name)
+- `PATCH /api/organizations/:id` - Update organization settings
+- `DELETE /api/organizations/:id` - Delete organization (cascades)
+- `POST /api/organizations/:id/organizers` - Add organizer (body: {accountId})
+- `DELETE /api/organizations/:id/organizers/:accountId` - Remove organizer
 
 ## Environment
 - `DATABASE_URL` - PostgreSQL connection string
@@ -59,6 +75,8 @@ shared/
 ## Key Implementation Details
 - Password hashing uses bcrypt (hash stored in `password_hash` column)
 - `passwordHash` is stripped from all API responses
-- Seed data: 5 sample accounts with varied role assignments
+- Seed data: 6 accounts (incl. isaac@conexo.vc as admin) with varied role assignments
 - Frontend uses TanStack Query v5 for data fetching
 - Frontend uses wouter for routing
+- Organizations have an Organizers tab where admins can assign/remove accounts as organizers
+- Only Admin can create/destroy organizations; both Admin and Organizer can manage org settings

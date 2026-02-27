@@ -37,6 +37,28 @@ export const accountRoles = pgTable("account_roles", {
   uniqueIndex("account_roles_unique").on(table.accountId, table.roleId),
 ]);
 
+export const organizations = pgTable("organizations", {
+  id: serial("id").primaryKey(),
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description").default(""),
+  website: varchar("website", { length: 255 }).default(""),
+  logoUrl: varchar("logo_url", { length: 500 }).default(""),
+  country: varchar("country", { length: 100 }).default(""),
+  city: varchar("city", { length: 100 }).default(""),
+  stateProvince: varchar("state_province", { length: 100 }).default(""),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const organizationOrganizers = pgTable("organization_organizers", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  accountId: integer("account_id").notNull().references(() => accounts.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("org_organizer_unique").on(table.organizationId, table.accountId),
+]);
+
 export const insertAccountSchema = createInsertSchema(accounts).omit({
   id: true,
   passwordHash: true,
@@ -56,8 +78,24 @@ export const updateAccountSchema = createInsertSchema(accounts).omit({
   roles: z.array(z.string()).optional(),
 });
 
+export const insertOrganizationSchema = createInsertSchema(organizations).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const updateOrganizationSchema = createInsertSchema(organizations).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+}).partial();
+
 export type Role = typeof roles.$inferSelect;
 export type Account = typeof accounts.$inferSelect;
 export type AccountRole = typeof accountRoles.$inferSelect;
+export type Organization = typeof organizations.$inferSelect;
+export type OrganizationOrganizer = typeof organizationOrganizers.$inferSelect;
 export type InsertAccount = z.infer<typeof insertAccountSchema>;
 export type UpdateAccount = z.infer<typeof updateAccountSchema>;
+export type InsertOrganization = z.infer<typeof insertOrganizationSchema>;
+export type UpdateOrganization = z.infer<typeof updateOrganizationSchema>;

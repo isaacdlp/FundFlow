@@ -1,8 +1,9 @@
-import { eq, ilike, or, sql } from "drizzle-orm";
+import { eq, ilike, or, sql, and } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import {
-  accounts, roles, accountRoles,
+  accounts, roles, accountRoles, organizations, organizationOrganizers,
   type Account, type Role, type InsertAccount, type UpdateAccount,
+  type Organization, type InsertOrganization, type UpdateOrganization,
 } from "@shared/schema";
 
 if (!process.env.DATABASE_URL) {
@@ -15,6 +16,18 @@ export interface AccountWithRoles extends Account {
   roles: Role[];
 }
 
+export interface OrganizerInfo {
+  id: number;
+  accountId: number;
+  organizationId: number;
+  createdAt: Date | null;
+  account: { id: number; email: string; firstName: string; lastName: string };
+}
+
+export interface OrganizationWithOrganizers extends Organization {
+  organizers: OrganizerInfo[];
+}
+
 export interface IStorage {
   getRoles(): Promise<Role[]>;
   getAccounts(search?: string, roleFilter?: string): Promise<AccountWithRoles[]>;
@@ -22,6 +35,15 @@ export interface IStorage {
   createAccount(data: InsertAccount): Promise<AccountWithRoles>;
   updateAccount(id: number, data: UpdateAccount): Promise<AccountWithRoles | undefined>;
   deleteAccount(id: number): Promise<boolean>;
+
+  getOrganizations(): Promise<OrganizationWithOrganizers[]>;
+  getOrganization(id: number): Promise<OrganizationWithOrganizers | undefined>;
+  createOrganization(data: InsertOrganization): Promise<OrganizationWithOrganizers>;
+  updateOrganization(id: number, data: UpdateOrganization): Promise<OrganizationWithOrganizers | undefined>;
+  deleteOrganization(id: number): Promise<boolean>;
+  addOrganizer(organizationId: number, accountId: number): Promise<void>;
+  removeOrganizer(organizationId: number, accountId: number): Promise<boolean>;
+
   seedData(): Promise<void>;
 }
 
@@ -147,6 +169,97 @@ export class DatabaseStorage implements IStorage {
 
   async deleteAccount(id: number): Promise<boolean> {
     const result = await db.delete(accounts).where(eq(accounts.id, id)).returning();
+    return result.length > 0;
+  }
+
+  private async attachOrganizers(orgList: Organization[]): Promise<OrganizationWithOrganizers[]> {
+    if (orgList.length === 0) return [];
+    const allOrgOrganizers = await db.select().from(organizationOrganizers);
+    const orgIds = orgList.map(o => o.id);
+    const relevantOrgOrganizers = allOrgOrganizers.filter(oo => orgIds.includes(oo.organizationId));
+    const accountIds = [...new Set(relevantOrgOrganizers.map(oo => oo.accountId))];
+
+    let accountMap = new Map<number, Account>();
+    if (accountIds.length > 0) {
+      const accts = await db.select().from(accounts);
+      accountMap = new Map(accts.filter(a => accountIds.includes(a.id)).map(a => [a.id, a]));
+    }
+
+    return orgList.map(org => ({
+      ...org,
+      organizers: relevantOrgOrganizers
+        .filter(oo => oo.organizationId === org.id)
+        .map(oo => {
+          const acct = accountMap.get(oo.accountId);
+          return acct ? {
+            id: oo.id,
+            accountId: oo.accountId,
+            organizationId: oo.organizationId,
+            createdAt: oo.createdAt,
+            account: {
+              id: acct.id,
+              email: acct.email,
+              firstName: acct.firstName,
+              lastName: acct.lastName,
+            },
+          } : null;
+        })
+        .filter((o): o is OrganizerInfo => !!o),
+    }));
+  }
+
+  async getOrganizations(): Promise<OrganizationWithOrganizers[]> {
+    const orgList = await db.select().from(organizations).orderBy(sql`${organizations.createdAt} DESC`);
+    return this.attachOrganizers(orgList);
+  }
+
+  async getOrganization(id: number): Promise<OrganizationWithOrganizers | undefined> {
+    const [org] = await db.select().from(organizations).where(eq(organizations.id, id));
+    if (!org) return undefined;
+    const [withOrganizers] = await this.attachOrganizers([org]);
+    return withOrganizers;
+  }
+
+  async createOrganization(data: InsertOrganization): Promise<OrganizationWithOrganizers> {
+    const [org] = await db.insert(organizations).values(data).returning();
+    return (await this.getOrganization(org.id))!;
+  }
+
+  async updateOrganization(id: number, data: UpdateOrganization): Promise<OrganizationWithOrganizers | undefined> {
+    const existing = await this.getOrganization(id);
+    if (!existing) return undefined;
+
+    const updateFields: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(data)) {
+      if (value !== undefined) {
+        updateFields[key] = value;
+      }
+    }
+
+    if (Object.keys(updateFields).length > 0) {
+      updateFields.updatedAt = new Date();
+      await db.update(organizations).set(updateFields).where(eq(organizations.id, id));
+    }
+
+    return this.getOrganization(id);
+  }
+
+  async deleteOrganization(id: number): Promise<boolean> {
+    const result = await db.delete(organizations).where(eq(organizations.id, id)).returning();
+    return result.length > 0;
+  }
+
+  async addOrganizer(organizationId: number, accountId: number): Promise<void> {
+    await db.insert(organizationOrganizers).values({ organizationId, accountId }).onConflictDoNothing();
+  }
+
+  async removeOrganizer(organizationId: number, accountId: number): Promise<boolean> {
+    const result = await db.delete(organizationOrganizers)
+      .where(and(
+        eq(organizationOrganizers.organizationId, organizationId),
+        eq(organizationOrganizers.accountId, accountId),
+      ))
+      .returning();
     return result.length > 0;
   }
 

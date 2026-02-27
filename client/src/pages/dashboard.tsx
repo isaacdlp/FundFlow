@@ -2,7 +2,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useQuery } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { AccountWithRoles } from "@shared/types";
+import type { AccountWithRoles, OrganizationWithOrganizers } from "@shared/types";
 import { Users, Briefcase, TrendingUp, Building2 } from "lucide-react";
 
 export default function Dashboard() {
@@ -10,12 +10,24 @@ export default function Dashboard() {
     queryKey: ["/api/accounts"],
   });
 
+  const { data: orgs, isLoading: orgsLoading } = useQuery<OrganizationWithOrganizers[]>({
+    queryKey: ["/api/organizations"],
+  });
+
+  const isAnyLoading = isLoading || orgsLoading;
+
   const stats = [
     {
       label: "Total Users",
       value: accounts?.length ?? 0,
       icon: Users,
       description: "Registered accounts",
+    },
+    {
+      label: "Organizations",
+      value: orgs?.length ?? 0,
+      icon: Building2,
+      description: "Fund organizers",
     },
     {
       label: "Fund Managers",
@@ -28,12 +40,6 @@ export default function Dashboard() {
       value: accounts?.filter((a) => a.roles.some((r) => r.name === "lp")).length ?? 0,
       icon: TrendingUp,
       description: "Limited Partners",
-    },
-    {
-      label: "Active Funds",
-      value: 0,
-      icon: Building2,
-      description: "Coming soon",
     },
   ];
 
@@ -52,7 +58,7 @@ export default function Dashboard() {
               <stat.icon className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              {isLoading ? (
+              {isAnyLoading ? (
                 <Skeleton className="h-8 w-16" />
               ) : (
                 <p className="text-2xl font-bold" data-testid={`text-stat-${stat.label.toLowerCase().replace(/\s/g, "-")}`}>

@@ -10,6 +10,9 @@ import Dashboard from "@/pages/dashboard";
 import Accounts from "@/pages/accounts";
 import AccountDetail from "@/pages/account-detail";
 import CreateAccount from "@/pages/create-account";
+import Organizations from "@/pages/organizations";
+import OrganizationDetail from "@/pages/organization-detail";
+import CreateOrganization from "@/pages/create-organization";
 
 function Router() {
   return (
@@ -18,6 +21,9 @@ function Router() {
       <Route path="/accounts" component={Accounts} />
       <Route path="/accounts/new" component={CreateAccount} />
       <Route path="/accounts/:id" component={AccountDetail} />
+      <Route path="/organizations" component={Organizations} />
+      <Route path="/organizations/new" component={CreateOrganization} />
+      <Route path="/organizations/:id" component={OrganizationDetail} />
       <Route component={NotFound} />
     </Switch>
   );

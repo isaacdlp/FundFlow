@@ -23,10 +23,10 @@ import {
 
 const mainNav = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
-  { title: "Portfolio", url: "/portfolio", icon: TrendingUp },
+  { title: "Organizations", url: "/organizations", icon: Building2 },
   { title: "Funds", url: "/funds", icon: Briefcase },
+  { title: "Portfolio", url: "/portfolio", icon: TrendingUp },
   { title: "Accounts", url: "/accounts", icon: Users },
-  { title: "Companies", url: "/companies", icon: Building2 },
 ];
 
 const managementNav = [
