@@ -3,25 +3,49 @@ import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
+import { AppSidebar } from "@/components/app-sidebar";
 import NotFound from "@/pages/not-found";
+import Dashboard from "@/pages/dashboard";
+import Accounts from "@/pages/accounts";
+import AccountDetail from "@/pages/account-detail";
+import CreateAccount from "@/pages/create-account";
 
 function Router() {
   return (
     <Switch>
-      {/* Add pages below */}
-      {/* <Route path="/" component={Home}/> */}
-      {/* Fallback to 404 */}
+      <Route path="/" component={Dashboard} />
+      <Route path="/accounts" component={Accounts} />
+      <Route path="/accounts/new" component={CreateAccount} />
+      <Route path="/accounts/:id" component={AccountDetail} />
       <Route component={NotFound} />
     </Switch>
   );
 }
 
+const sidebarStyle = {
+  "--sidebar-width": "16rem",
+  "--sidebar-width-icon": "3rem",
+};
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
+        <SidebarProvider style={sidebarStyle as React.CSSProperties}>
+          <div className="flex h-screen w-full">
+            <AppSidebar />
+            <div className="flex flex-col flex-1 min-w-0">
+              <header className="flex items-center gap-2 p-3 border-b bg-background">
+                <SidebarTrigger data-testid="button-sidebar-toggle" />
+              </header>
+              <main className="flex-1 overflow-auto">
+                <Router />
+              </main>
+            </div>
+          </div>
+        </SidebarProvider>
         <Toaster />
-        <Router />
       </TooltipProvider>
     </QueryClientProvider>
   );
