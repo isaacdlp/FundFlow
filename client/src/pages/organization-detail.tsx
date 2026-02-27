@@ -1,6 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useRoute, Link } from "wouter";
-import type { OrganizationWithOrganizers, AccountWithRoles } from "@shared/types";
+import type { OrganizationWithOrganizers, AccountWithRoles, MemberInfo, InviteInfo } from "@shared/types";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -17,9 +17,320 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ArrowLeft, Pencil, Save, X, UserPlus, UserMinus, Building2 } from "lucide-react";
+import { ArrowLeft, Pencil, Save, X, UserPlus, UserMinus, Building2, Check, Ban, Copy, Link2, Trash2 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
+
+function MembersTab({ orgId }: { orgId: string }) {
+  const { toast } = useToast();
+
+  const { data: members, isLoading } = useQuery<MemberInfo[]>({
+    queryKey: ["/api/organizations", orgId, "members"],
+  });
+
+  const updateStatusMutation = useMutation({
+    mutationFn: async ({ accountId, status }: { accountId: number; status: string }) => {
+      const res = await apiRequest("PATCH", `/api/organizations/${orgId}/members/${accountId}`, { status });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/organizations", orgId, "members"] });
+      toast({ title: "Member status updated" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Failed to update member", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const removeMutation = useMutation({
+    mutationFn: async (accountId: number) => {
+      const res = await apiRequest("DELETE", `/api/organizations/${orgId}/members/${accountId}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/organizations", orgId, "members"] });
+      toast({ title: "Member removed" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Failed to remove member", description: error.message, variant: "destructive" });
+    },
+  });
+
+  if (isLoading) {
+    return <Skeleton className="h-64 w-full" />;
+  }
+
+  const pending = members?.filter(m => m.status === "pending") || [];
+  const approved = members?.filter(m => m.status === "approved") || [];
+  const rejected = members?.filter(m => m.status === "rejected") || [];
+
+  return (
+    <div className="space-y-6">
+      {pending.length > 0 && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <h2 className="text-lg font-semibold">Pending Requests</h2>
+              <Badge variant="secondary">{pending.length}</Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {pending.map(member => (
+              <div key={member.id} className="flex items-center gap-3 p-3 rounded-md border border-yellow-200 bg-yellow-50 dark:border-yellow-900 dark:bg-yellow-950" data-testid={`member-pending-${member.accountId}`}>
+                <div className="h-10 w-10 rounded-full bg-yellow-100 dark:bg-yellow-900 flex items-center justify-center text-yellow-700 dark:text-yellow-300 text-sm font-semibold flex-shrink-0">
+                  {member.account.firstName[0]}{member.account.lastName[0]}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{member.account.firstName} {member.account.lastName}</p>
+                  <p className="text-xs text-muted-foreground truncate">{member.account.email}</p>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-green-600 border-green-300 hover:bg-green-50"
+                    onClick={() => updateStatusMutation.mutate({ accountId: member.accountId, status: "approved" })}
+                    disabled={updateStatusMutation.isPending}
+                    data-testid={`button-approve-${member.accountId}`}
+                  >
+                    <Check className="h-3.5 w-3.5 mr-1" />
+                    Approve
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-red-600 border-red-300 hover:bg-red-50"
+                    onClick={() => updateStatusMutation.mutate({ accountId: member.accountId, status: "rejected" })}
+                    disabled={updateStatusMutation.isPending}
+                    data-testid={`button-reject-${member.accountId}`}
+                  >
+                    <Ban className="h-3.5 w-3.5 mr-1" />
+                    Reject
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <h2 className="text-lg font-semibold">Approved Members</h2>
+            <Badge variant="secondary">{approved.length}</Badge>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {approved.length > 0 ? (
+            <div className="space-y-3">
+              {approved.map(member => (
+                <div key={member.id} className="flex items-center gap-3 p-3 rounded-md border" data-testid={`member-approved-${member.accountId}`}>
+                  <div className="h-10 w-10 rounded-full bg-green-100 dark:bg-green-900 flex items-center justify-center text-green-700 dark:text-green-300 text-sm font-semibold flex-shrink-0">
+                    {member.account.firstName[0]}{member.account.lastName[0]}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{member.account.firstName} {member.account.lastName}</p>
+                    <p className="text-xs text-muted-foreground truncate">{member.account.email}</p>
+                  </div>
+                  {member.inviteId && <Badge variant="outline" className="text-xs">Via Invite</Badge>}
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => removeMutation.mutate(member.accountId)}
+                    disabled={removeMutation.isPending}
+                    data-testid={`button-remove-member-${member.accountId}`}
+                  >
+                    <Trash2 className="h-4 w-4 text-destructive" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground text-center py-6">No approved members yet.</p>
+          )}
+        </CardContent>
+      </Card>
+
+      {rejected.length > 0 && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <h2 className="text-lg font-semibold">Rejected</h2>
+              <Badge variant="secondary">{rejected.length}</Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {rejected.map(member => (
+              <div key={member.id} className="flex items-center gap-3 p-3 rounded-md border border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950" data-testid={`member-rejected-${member.accountId}`}>
+                <div className="h-10 w-10 rounded-full bg-red-100 dark:bg-red-900 flex items-center justify-center text-red-700 dark:text-red-300 text-sm font-semibold flex-shrink-0">
+                  {member.account.firstName[0]}{member.account.lastName[0]}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{member.account.firstName} {member.account.lastName}</p>
+                  <p className="text-xs text-muted-foreground truncate">{member.account.email}</p>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => updateStatusMutation.mutate({ accountId: member.accountId, status: "approved" })}
+                  disabled={updateStatusMutation.isPending}
+                  data-testid={`button-reapprove-${member.accountId}`}
+                >
+                  <Check className="h-3.5 w-3.5 mr-1" />
+                  Re-approve
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => removeMutation.mutate(member.accountId)}
+                  disabled={removeMutation.isPending}
+                  data-testid={`button-remove-rejected-${member.accountId}`}
+                >
+                  <Trash2 className="h-4 w-4 text-destructive" />
+                </Button>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {(!members || members.length === 0) && (
+        <Card>
+          <CardContent className="text-center py-12">
+            <p className="text-muted-foreground">No membership requests yet. Share the organization's landing page or invite link to get started.</p>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+function InvitesTab({ orgId, slug }: { orgId: string; slug: string }) {
+  const { toast } = useToast();
+
+  const { data: invites, isLoading } = useQuery<InviteInfo[]>({
+    queryKey: ["/api/organizations", orgId, "invites"],
+  });
+
+  const createInviteMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/organizations/${orgId}/invites`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/organizations", orgId, "invites"] });
+      toast({ title: "Invite link generated" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Failed to generate invite", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const copyInviteUrl = (token: string) => {
+    const url = `${window.location.origin}/org/${slug}?invite=${token}`;
+    navigator.clipboard.writeText(url);
+    toast({ title: "Invite link copied to clipboard" });
+  };
+
+  const copyLandingUrl = () => {
+    const url = `${window.location.origin}/org/${slug}`;
+    navigator.clipboard.writeText(url);
+    toast({ title: "Landing page URL copied to clipboard" });
+  };
+
+  if (isLoading) {
+    return <Skeleton className="h-64 w-full" />;
+  }
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0">
+          <div>
+            <h2 className="text-lg font-semibold">Landing Page</h2>
+            <p className="text-sm text-muted-foreground mt-1">Share this URL for users to request access</p>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center gap-2">
+            <Input
+              readOnly
+              value={`${window.location.origin}/org/${slug}`}
+              className="font-mono text-sm"
+              data-testid="input-landing-url"
+            />
+            <Button variant="outline" size="icon" onClick={copyLandingUrl} data-testid="button-copy-landing-url">
+              <Copy className="h-4 w-4" />
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0">
+          <div>
+            <h2 className="text-lg font-semibold">Invite Links</h2>
+            <p className="text-sm text-muted-foreground mt-1">Single-use links that grant pre-approved access</p>
+          </div>
+          <Button
+            onClick={() => createInviteMutation.mutate()}
+            disabled={createInviteMutation.isPending}
+            data-testid="button-generate-invite"
+          >
+            <Link2 className="h-4 w-4 mr-2" />
+            {createInviteMutation.isPending ? "Generating..." : "Generate Invite"}
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {invites && invites.length > 0 ? (
+            <div className="space-y-3">
+              {invites.map(invite => (
+                <div key={invite.id} className="flex items-center gap-3 p-3 rounded-md border" data-testid={`invite-${invite.id}`}>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <code className="text-xs font-mono text-muted-foreground truncate max-w-[200px]" data-testid={`text-invite-token-${invite.id}`}>
+                        {invite.token.substring(0, 16)}...
+                      </code>
+                      {invite.used ? (
+                        <Badge variant="secondary">Used</Badge>
+                      ) : (
+                        <Badge variant="outline" className="text-green-600 border-green-300">Available</Badge>
+                      )}
+                    </div>
+                    {invite.usedByAccount && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Used by {invite.usedByAccount.firstName} {invite.usedByAccount.lastName} ({invite.usedByAccount.email})
+                      </p>
+                    )}
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Created {new Date(invite.createdAt).toLocaleDateString()}
+                    </p>
+                  </div>
+                  {!invite.used && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => copyInviteUrl(invite.token)}
+                      data-testid={`button-copy-invite-${invite.id}`}
+                    >
+                      <Copy className="h-3.5 w-3.5 mr-1.5" />
+                      Copy Link
+                    </Button>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground text-center py-6">
+              No invite links generated yet. Click "Generate Invite" to create one.
+            </p>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
 
 export default function OrganizationDetail() {
   const [, params] = useRoute("/organizations/:id");
@@ -179,6 +490,8 @@ export default function OrganizationDetail() {
         <TabsList>
           <TabsTrigger value="settings" data-testid="tab-settings">Settings</TabsTrigger>
           <TabsTrigger value="organizers" data-testid="tab-organizers">Organizers</TabsTrigger>
+          <TabsTrigger value="members" data-testid="tab-members">Members</TabsTrigger>
+          <TabsTrigger value="invites" data-testid="tab-invites">Invites</TabsTrigger>
         </TabsList>
 
         <TabsContent value="settings" className="mt-6">
@@ -217,6 +530,17 @@ export default function OrganizationDetail() {
                   onChange={(e) => updateField("name", e.target.value)}
                   disabled={!editing}
                   data-testid="input-name"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="slug">Slug (URL identifier)</Label>
+                <Input
+                  id="slug"
+                  value={org.slug}
+                  disabled
+                  className="font-mono text-sm"
+                  data-testid="input-slug"
                 />
               </div>
 
@@ -375,6 +699,14 @@ export default function OrganizationDetail() {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="members" className="mt-6">
+          <MembersTab orgId={orgId!} />
+        </TabsContent>
+
+        <TabsContent value="invites" className="mt-6">
+          <InvitesTab orgId={orgId!} slug={org.slug} />
         </TabsContent>
       </Tabs>
     </div>

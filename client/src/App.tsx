@@ -13,8 +13,9 @@ import CreateAccount from "@/pages/create-account";
 import Organizations from "@/pages/organizations";
 import OrganizationDetail from "@/pages/organization-detail";
 import CreateOrganization from "@/pages/create-organization";
+import OrgLanding from "@/pages/org-landing";
 
-function Router() {
+function AdminRouter() {
   return (
     <Switch>
       <Route path="/" component={Dashboard} />
@@ -34,23 +35,34 @@ const sidebarStyle = {
   "--sidebar-width-icon": "3rem",
 };
 
+function AdminLayout() {
+  return (
+    <SidebarProvider style={sidebarStyle as React.CSSProperties}>
+      <div className="flex h-screen w-full">
+        <AppSidebar />
+        <div className="flex flex-col flex-1 min-w-0">
+          <header className="flex items-center gap-2 p-3 border-b bg-background">
+            <SidebarTrigger data-testid="button-sidebar-toggle" />
+          </header>
+          <main className="flex-1 overflow-auto">
+            <AdminRouter />
+          </main>
+        </div>
+      </div>
+    </SidebarProvider>
+  );
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <SidebarProvider style={sidebarStyle as React.CSSProperties}>
-          <div className="flex h-screen w-full">
-            <AppSidebar />
-            <div className="flex flex-col flex-1 min-w-0">
-              <header className="flex items-center gap-2 p-3 border-b bg-background">
-                <SidebarTrigger data-testid="button-sidebar-toggle" />
-              </header>
-              <main className="flex-1 overflow-auto">
-                <Router />
-              </main>
-            </div>
-          </div>
-        </SidebarProvider>
+        <Switch>
+          <Route path="/org/:slug" component={OrgLanding} />
+          <Route>
+            <AdminLayout />
+          </Route>
+        </Switch>
         <Toaster />
       </TooltipProvider>
     </QueryClientProvider>

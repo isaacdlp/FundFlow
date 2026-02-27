@@ -17,9 +17,40 @@ export interface OrganizerAccount {
   };
 }
 
+export interface MemberInfo {
+  id: number;
+  organizationId: number;
+  accountId: number;
+  status: string;
+  inviteId: number | null;
+  createdAt: string;
+  account: {
+    id: number;
+    email: string;
+    firstName: string;
+    lastName: string;
+  };
+}
+
+export interface InviteInfo {
+  id: number;
+  organizationId: number;
+  token: string;
+  used: boolean;
+  usedByAccountId: number | null;
+  createdAt: string;
+  usedByAccount?: {
+    id: number;
+    email: string;
+    firstName: string;
+    lastName: string;
+  } | null;
+}
+
 export interface OrganizationWithOrganizers {
   id: number;
   name: string;
+  slug: string;
   description: string | null;
   website: string | null;
   logoUrl: string | null;
@@ -29,6 +60,18 @@ export interface OrganizationWithOrganizers {
   createdAt: string;
   updatedAt: string;
   organizers: OrganizerAccount[];
+}
+
+export interface OrganizationPublic {
+  id: number;
+  name: string;
+  slug: string;
+  description: string | null;
+  website: string | null;
+  logoUrl: string | null;
+  country: string | null;
+  city: string | null;
+  stateProvince: string | null;
 }
 
 export interface AccountWithRoles {

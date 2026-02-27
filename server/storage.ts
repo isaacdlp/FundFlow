@@ -2,9 +2,12 @@ import { eq, ilike, or, sql, and } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import {
   accounts, roles, accountRoles, organizations, organizationOrganizers,
+  organizationMembers, organizationInvites,
   type Account, type Role, type InsertAccount, type UpdateAccount,
   type Organization, type InsertOrganization, type UpdateOrganization,
+  type OrganizationMember, type OrganizationInvite,
 } from "@shared/schema";
+import crypto from "crypto";
 
 if (!process.env.DATABASE_URL) {
   throw new Error("DATABASE_URL must be set");
@@ -28,23 +31,54 @@ export interface OrganizationWithOrganizers extends Organization {
   organizers: OrganizerInfo[];
 }
 
+export interface MemberWithAccount extends OrganizationMember {
+  account: { id: number; email: string; firstName: string; lastName: string };
+}
+
+export interface InviteWithAccount extends OrganizationInvite {
+  usedByAccount?: { id: number; email: string; firstName: string; lastName: string } | null;
+}
+
 export interface IStorage {
   getRoles(): Promise<Role[]>;
   getAccounts(search?: string, roleFilter?: string): Promise<AccountWithRoles[]>;
   getAccount(id: number): Promise<AccountWithRoles | undefined>;
+  getAccountByEmail(email: string): Promise<Account | undefined>;
+  verifyPassword(accountId: number, password: string): Promise<boolean>;
   createAccount(data: InsertAccount): Promise<AccountWithRoles>;
   updateAccount(id: number, data: UpdateAccount): Promise<AccountWithRoles | undefined>;
   deleteAccount(id: number): Promise<boolean>;
 
   getOrganizations(): Promise<OrganizationWithOrganizers[]>;
   getOrganization(id: number): Promise<OrganizationWithOrganizers | undefined>;
+  getOrganizationBySlug(slug: string): Promise<OrganizationWithOrganizers | undefined>;
   createOrganization(data: InsertOrganization): Promise<OrganizationWithOrganizers>;
   updateOrganization(id: number, data: UpdateOrganization): Promise<OrganizationWithOrganizers | undefined>;
   deleteOrganization(id: number): Promise<boolean>;
   addOrganizer(organizationId: number, accountId: number): Promise<void>;
   removeOrganizer(organizationId: number, accountId: number): Promise<boolean>;
 
+  getMembers(organizationId: number): Promise<MemberWithAccount[]>;
+  getMember(organizationId: number, accountId: number): Promise<MemberWithAccount | undefined>;
+  createMemberRequest(organizationId: number, accountId: number, inviteId?: number): Promise<MemberWithAccount>;
+  updateMemberStatus(organizationId: number, accountId: number, status: string): Promise<MemberWithAccount | undefined>;
+  removeMember(organizationId: number, accountId: number): Promise<boolean>;
+
+  getInvites(organizationId: number): Promise<InviteWithAccount[]>;
+  createInvite(organizationId: number): Promise<OrganizationInvite>;
+  getInviteByToken(token: string): Promise<InviteWithAccount | undefined>;
+  useInvite(token: string, accountId: number): Promise<void>;
+
   seedData(): Promise<void>;
+}
+
+function generateSlug(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
 }
 
 async function attachRoles(accountList: Account[]): Promise<AccountWithRoles[]> {
@@ -83,6 +117,12 @@ async function setRoles(accountId: number, roleNames: string[]): Promise<void> {
   }
 }
 
+async function getAccountSummary(accountId: number): Promise<{ id: number; email: string; firstName: string; lastName: string } | null> {
+  const [acct] = await db.select().from(accounts).where(eq(accounts.id, accountId));
+  if (!acct) return null;
+  return { id: acct.id, email: acct.email, firstName: acct.firstName, lastName: acct.lastName };
+}
+
 export class DatabaseStorage implements IStorage {
   async getRoles(): Promise<Role[]> {
     return db.select().from(roles).orderBy(roles.id);
@@ -119,6 +159,18 @@ export class DatabaseStorage implements IStorage {
     if (!account) return undefined;
     const [withRoles] = await attachRoles([account]);
     return withRoles;
+  }
+
+  async getAccountByEmail(email: string): Promise<Account | undefined> {
+    const [account] = await db.select().from(accounts).where(eq(accounts.email, email));
+    return account;
+  }
+
+  async verifyPassword(accountId: number, password: string): Promise<boolean> {
+    const [account] = await db.select().from(accounts).where(eq(accounts.id, accountId));
+    if (!account) return false;
+    const bcrypt = await import("bcrypt");
+    return bcrypt.compare(password, account.passwordHash);
   }
 
   async createAccount(data: InsertAccount): Promise<AccountWithRoles> {
@@ -220,8 +272,20 @@ export class DatabaseStorage implements IStorage {
     return withOrganizers;
   }
 
+  async getOrganizationBySlug(slug: string): Promise<OrganizationWithOrganizers | undefined> {
+    const [org] = await db.select().from(organizations).where(eq(organizations.slug, slug));
+    if (!org) return undefined;
+    const [withOrganizers] = await this.attachOrganizers([org]);
+    return withOrganizers;
+  }
+
   async createOrganization(data: InsertOrganization): Promise<OrganizationWithOrganizers> {
-    const [org] = await db.insert(organizations).values(data).returning();
+    let slug = generateSlug(data.name);
+    const existing = await db.select().from(organizations).where(eq(organizations.slug, slug));
+    if (existing.length > 0) {
+      slug = `${slug}-${crypto.randomBytes(3).toString("hex")}`;
+    }
+    const [org] = await db.insert(organizations).values({ ...data, slug }).returning();
     return (await this.getOrganization(org.id))!;
   }
 
@@ -261,6 +325,117 @@ export class DatabaseStorage implements IStorage {
       ))
       .returning();
     return result.length > 0;
+  }
+
+  async getMembers(organizationId: number): Promise<MemberWithAccount[]> {
+    const members = await db.select().from(organizationMembers)
+      .where(eq(organizationMembers.organizationId, organizationId))
+      .orderBy(sql`${organizationMembers.createdAt} DESC`);
+
+    const result: MemberWithAccount[] = [];
+    for (const m of members) {
+      const acct = await getAccountSummary(m.accountId);
+      if (acct) {
+        result.push({ ...m, account: acct });
+      }
+    }
+    return result;
+  }
+
+  async getMember(organizationId: number, accountId: number): Promise<MemberWithAccount | undefined> {
+    const [m] = await db.select().from(organizationMembers)
+      .where(and(
+        eq(organizationMembers.organizationId, organizationId),
+        eq(organizationMembers.accountId, accountId),
+      ));
+    if (!m) return undefined;
+    const acct = await getAccountSummary(m.accountId);
+    if (!acct) return undefined;
+    return { ...m, account: acct };
+  }
+
+  async createMemberRequest(organizationId: number, accountId: number, inviteId?: number): Promise<MemberWithAccount> {
+    const status = inviteId ? "approved" : "pending";
+    const [member] = await db.insert(organizationMembers).values({
+      organizationId,
+      accountId,
+      status,
+      inviteId: inviteId || null,
+    }).onConflictDoNothing().returning();
+
+    if (!member) {
+      const existing = await this.getMember(organizationId, accountId);
+      if (existing) return existing;
+      throw new Error("Failed to create membership");
+    }
+
+    const acct = await getAccountSummary(accountId);
+    return { ...member, account: acct! };
+  }
+
+  async updateMemberStatus(organizationId: number, accountId: number, status: string): Promise<MemberWithAccount | undefined> {
+    const [updated] = await db.update(organizationMembers)
+      .set({ status })
+      .where(and(
+        eq(organizationMembers.organizationId, organizationId),
+        eq(organizationMembers.accountId, accountId),
+      ))
+      .returning();
+    if (!updated) return undefined;
+    const acct = await getAccountSummary(accountId);
+    return { ...updated, account: acct! };
+  }
+
+  async removeMember(organizationId: number, accountId: number): Promise<boolean> {
+    const result = await db.delete(organizationMembers)
+      .where(and(
+        eq(organizationMembers.organizationId, organizationId),
+        eq(organizationMembers.accountId, accountId),
+      ))
+      .returning();
+    return result.length > 0;
+  }
+
+  async getInvites(organizationId: number): Promise<InviteWithAccount[]> {
+    const invites = await db.select().from(organizationInvites)
+      .where(eq(organizationInvites.organizationId, organizationId))
+      .orderBy(sql`${organizationInvites.createdAt} DESC`);
+
+    const result: InviteWithAccount[] = [];
+    for (const inv of invites) {
+      let usedByAccount = null;
+      if (inv.usedByAccountId) {
+        usedByAccount = await getAccountSummary(inv.usedByAccountId);
+      }
+      result.push({ ...inv, usedByAccount });
+    }
+    return result;
+  }
+
+  async createInvite(organizationId: number): Promise<OrganizationInvite> {
+    const token = crypto.randomBytes(32).toString("hex");
+    const [invite] = await db.insert(organizationInvites).values({
+      organizationId,
+      token,
+    }).returning();
+    return invite;
+  }
+
+  async getInviteByToken(token: string): Promise<InviteWithAccount | undefined> {
+    const [invite] = await db.select().from(organizationInvites)
+      .where(eq(organizationInvites.token, token));
+    if (!invite) return undefined;
+    let usedByAccount = null;
+    if (invite.usedByAccountId) {
+      usedByAccount = await getAccountSummary(invite.usedByAccountId);
+    }
+    return { ...invite, usedByAccount };
+  }
+
+  async useInvite(token: string, accountId: number): Promise<void> {
+    await db.update(organizationInvites)
+      .set({ used: true, usedByAccountId: accountId })
+      .where(eq(organizationInvites.token, token));
   }
 
   async seedData(): Promise<void> {

@@ -40,6 +40,7 @@ export const accountRoles = pgTable("account_roles", {
 export const organizations = pgTable("organizations", {
   id: serial("id").primaryKey(),
   name: varchar("name", { length: 255 }).notNull(),
+  slug: varchar("slug", { length: 255 }).notNull().unique(),
   description: text("description").default(""),
   website: varchar("website", { length: 255 }).default(""),
   logoUrl: varchar("logo_url", { length: 500 }).default(""),
@@ -58,6 +59,26 @@ export const organizationOrganizers = pgTable("organization_organizers", {
 }, (table) => [
   uniqueIndex("org_organizer_unique").on(table.organizationId, table.accountId),
 ]);
+
+export const organizationMembers = pgTable("organization_members", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  accountId: integer("account_id").notNull().references(() => accounts.id, { onDelete: "cascade" }),
+  status: varchar("status", { length: 20 }).notNull().default("pending"),
+  inviteId: integer("invite_id"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("org_member_unique").on(table.organizationId, table.accountId),
+]);
+
+export const organizationInvites = pgTable("organization_invites", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  token: varchar("token", { length: 64 }).notNull().unique(),
+  used: boolean("used").default(false),
+  usedByAccountId: integer("used_by_account_id"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
 
 export const insertAccountSchema = createInsertSchema(accounts).omit({
   id: true,
@@ -80,12 +101,14 @@ export const updateAccountSchema = createInsertSchema(accounts).omit({
 
 export const insertOrganizationSchema = createInsertSchema(organizations).omit({
   id: true,
+  slug: true,
   createdAt: true,
   updatedAt: true,
 });
 
 export const updateOrganizationSchema = createInsertSchema(organizations).omit({
   id: true,
+  slug: true,
   createdAt: true,
   updatedAt: true,
 }).partial();
@@ -95,6 +118,8 @@ export type Account = typeof accounts.$inferSelect;
 export type AccountRole = typeof accountRoles.$inferSelect;
 export type Organization = typeof organizations.$inferSelect;
 export type OrganizationOrganizer = typeof organizationOrganizers.$inferSelect;
+export type OrganizationMember = typeof organizationMembers.$inferSelect;
+export type OrganizationInvite = typeof organizationInvites.$inferSelect;
 export type InsertAccount = z.infer<typeof insertAccountSchema>;
 export type UpdateAccount = z.infer<typeof updateAccountSchema>;
 export type InsertOrganization = z.infer<typeof insertOrganizationSchema>;
