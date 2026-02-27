@@ -5,7 +5,6 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
@@ -30,29 +29,29 @@ export default function CreateAccount() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const [formData, setFormData] = useState({
-    first_name: "",
-    last_name: "",
+    firstName: "",
+    lastName: "",
     email: "",
     password: "",
     phone: "",
     birthdate: "",
-    tax_id: "",
-    street_address_1: "",
-    street_address_2: "",
+    taxId: "",
+    streetAddress1: "",
+    streetAddress2: "",
     country: "",
     city: "",
-    state_province: "",
-    zip_postal_code: "",
+    stateProvince: "",
+    zipPostalCode: "",
     roles: [] as string[],
   });
 
   const createMutation = useMutation({
     mutationFn: async (data: typeof formData) => {
-      const res = await apiRequest("POST", "/api/users", data);
+      const res = await apiRequest("POST", "/api/accounts", data);
       return res.json();
     },
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/users"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/accounts"] });
       toast({ title: "Account created successfully" });
       navigate(`/accounts/${data.id}`);
     },
@@ -80,7 +79,7 @@ export default function CreateAccount() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.email || !formData.first_name || !formData.last_name || !formData.password) {
+    if (!formData.email || !formData.firstName || !formData.lastName || !formData.password) {
       toast({
         title: "Missing required fields",
         description: "Please fill in first name, last name, email, and password.",
@@ -116,21 +115,21 @@ export default function CreateAccount() {
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="first_name">First Name *</Label>
+                  <Label htmlFor="firstName">First Name *</Label>
                   <Input
-                    id="first_name"
-                    value={formData.first_name}
-                    onChange={(e) => updateField("first_name", e.target.value)}
+                    id="firstName"
+                    value={formData.firstName}
+                    onChange={(e) => updateField("firstName", e.target.value)}
                     required
                     data-testid="input-first-name"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="last_name">Last Name *</Label>
+                  <Label htmlFor="lastName">Last Name *</Label>
                   <Input
-                    id="last_name"
-                    value={formData.last_name}
-                    onChange={(e) => updateField("last_name", e.target.value)}
+                    id="lastName"
+                    value={formData.lastName}
+                    onChange={(e) => updateField("lastName", e.target.value)}
                     required
                     data-testid="input-last-name"
                   />
@@ -172,11 +171,11 @@ export default function CreateAccount() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="tax_id">SSN / Tax ID</Label>
+                <Label htmlFor="taxId">SSN / Tax ID</Label>
                 <Input
-                  id="tax_id"
-                  value={formData.tax_id}
-                  onChange={(e) => updateField("tax_id", e.target.value)}
+                  id="taxId"
+                  value={formData.taxId}
+                  onChange={(e) => updateField("taxId", e.target.value)}
                   data-testid="input-tax-id"
                 />
                 <p className="text-xs text-muted-foreground">SSN / Tax ID is an encrypted attribute</p>
@@ -209,21 +208,21 @@ export default function CreateAccount() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="street_address_1">Street Address 1</Label>
+                <Label htmlFor="streetAddress1">Street Address 1</Label>
                 <Input
-                  id="street_address_1"
-                  value={formData.street_address_1}
-                  onChange={(e) => updateField("street_address_1", e.target.value)}
+                  id="streetAddress1"
+                  value={formData.streetAddress1}
+                  onChange={(e) => updateField("streetAddress1", e.target.value)}
                   data-testid="input-street-1"
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="street_address_2">Street Address 2 (Optional)</Label>
+                <Label htmlFor="streetAddress2">Street Address 2 (Optional)</Label>
                 <Input
-                  id="street_address_2"
-                  value={formData.street_address_2}
-                  onChange={(e) => updateField("street_address_2", e.target.value)}
+                  id="streetAddress2"
+                  value={formData.streetAddress2}
+                  onChange={(e) => updateField("streetAddress2", e.target.value)}
                   data-testid="input-street-2"
                 />
               </div>
@@ -260,20 +259,20 @@ export default function CreateAccount() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="state_province">State / Province</Label>
+                  <Label htmlFor="stateProvince">State / Province</Label>
                   <Input
-                    id="state_province"
-                    value={formData.state_province}
-                    onChange={(e) => updateField("state_province", e.target.value)}
+                    id="stateProvince"
+                    value={formData.stateProvince}
+                    onChange={(e) => updateField("stateProvince", e.target.value)}
                     data-testid="input-state"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="zip_postal_code">Zip / Postal Code</Label>
+                  <Label htmlFor="zipPostalCode">Zip / Postal Code</Label>
                   <Input
-                    id="zip_postal_code"
-                    value={formData.zip_postal_code}
-                    onChange={(e) => updateField("zip_postal_code", e.target.value)}
+                    id="zipPostalCode"
+                    value={formData.zipPostalCode}
+                    onChange={(e) => updateField("zipPostalCode", e.target.value)}
                     data-testid="input-zip"
                   />
                 </div>

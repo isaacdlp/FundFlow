@@ -5,10 +5,9 @@ Multi-tenant fund management platform for VC and PE investments. Users can parti
 
 ## Architecture
 - **Frontend**: React + Vite + Tailwind CSS + shadcn/ui (TypeScript)
-- **Backend**: Python Flask (API server on port 8000)
-- **Proxy**: Express.js proxies `/api/*` requests to Flask backend
+- **Backend**: Express.js + Drizzle ORM (TypeScript)
 - **Database**: PostgreSQL (Replit-managed)
-- **Workflow**: `bash start.sh` starts both Flask and Node.js/Vite
+- **Workflow**: `npm run dev` starts both Express API and Vite dev server
 
 ## User Roles
 - **Admin**: Platform administrator with full access
@@ -25,36 +24,41 @@ client/                   # React frontend
       ui/                 # shadcn/ui components
     pages/
       dashboard.tsx       # Dashboard with stats overview
-      accounts.tsx        # User accounts list
-      account-detail.tsx  # User profile detail/edit
+      accounts.tsx        # Account list (search/filter)
+      account-detail.tsx  # Account detail with tabs (Personal Info, Login, Permissions)
       create-account.tsx  # New account creation form
     lib/
       queryClient.ts      # TanStack Query configuration
 server/
-  python/
-    app.py                # Flask API backend
-  index.ts                # Express entry point
-  routes.ts               # API proxy to Flask
+  index.ts                # Express entry point (seeds data on startup)
+  routes.ts               # API routes for accounts and roles
+  storage.ts              # DatabaseStorage class with IStorage interface
   vite.ts                 # Vite dev server setup (DO NOT MODIFY)
 shared/
-  schema.ts               # TypeScript interfaces
-start.sh                  # Startup script for both servers
+  schema.ts               # Drizzle ORM schema + Zod validation schemas
+  types.ts                # Shared TypeScript interfaces
 ```
 
 ## Database Tables
-- `users` - User accounts with personal info and address
+- `accounts` - User accounts with personal info and address
 - `roles` - Role definitions (admin, gp, lp)
-- `user_roles` - Many-to-many user-role associations
+- `account_roles` - Many-to-many account-role associations (with cascade delete)
 
 ## API Endpoints
-- `GET /api/users` - List all users with roles
-- `GET /api/users/:id` - Get single user with roles
-- `POST /api/users` - Create new user
-- `PATCH /api/users/:id` - Update user
-- `DELETE /api/users/:id` - Delete user
+- `GET /api/accounts` - List all accounts with roles (supports ?search= and ?role= query params)
+- `GET /api/accounts/:id` - Get single account with roles
+- `POST /api/accounts` - Create new account (requires password, firstName, lastName, email)
+- `PATCH /api/accounts/:id` - Update account fields and/or roles
+- `DELETE /api/accounts/:id` - Delete account (cascades to account_roles)
 - `GET /api/roles` - List all roles
 
 ## Environment
 - `DATABASE_URL` - PostgreSQL connection string
-- `FLASK_PORT` - Flask server port (default: 8000)
 - `SESSION_SECRET` - Session secret
+
+## Key Implementation Details
+- Password hashing uses bcrypt (hash stored in `password_hash` column)
+- `passwordHash` is stripped from all API responses
+- Seed data: 5 sample accounts with varied role assignments
+- Frontend uses TanStack Query v5 for data fetching
+- Frontend uses wouter for routing

@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
-import type { User } from "@shared/schema";
+import type { AccountWithRoles } from "@shared/types";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -28,17 +28,17 @@ export default function Accounts() {
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
 
-  const { data: users, isLoading } = useQuery<User[]>({
-    queryKey: ["/api/users"],
+  const { data: accounts, isLoading } = useQuery<AccountWithRoles[]>({
+    queryKey: ["/api/accounts"],
   });
 
-  const filtered = users?.filter((user) => {
+  const filtered = accounts?.filter((account) => {
     const matchesSearch =
       !search ||
-      `${user.first_name} ${user.last_name}`.toLowerCase().includes(search.toLowerCase()) ||
-      user.email.toLowerCase().includes(search.toLowerCase());
+      `${account.firstName} ${account.lastName}`.toLowerCase().includes(search.toLowerCase()) ||
+      account.email.toLowerCase().includes(search.toLowerCase());
     const matchesRole =
-      roleFilter === "all" || user.roles.some((r) => r.name === roleFilter);
+      roleFilter === "all" || account.roles.some((r) => r.name === roleFilter);
     return matchesSearch && matchesRole;
   });
 
@@ -52,7 +52,7 @@ export default function Accounts() {
           </p>
         </div>
         <Link href="/accounts/new">
-          <Button data-testid="button-create-user">
+          <Button data-testid="button-create-account">
             <Plus className="h-4 w-4 mr-2" />
             Add Account
           </Button>
@@ -105,26 +105,26 @@ export default function Accounts() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filtered.map((user) => (
-                    <TableRow key={user.id} data-testid={`row-user-${user.id}`}>
+                  {filtered.map((account) => (
+                    <TableRow key={account.id} data-testid={`row-account-${account.id}`}>
                       <TableCell>
-                        <Link href={`/accounts/${user.id}`}>
-                          <div className="flex items-center gap-3 cursor-pointer" data-testid={`link-user-${user.id}`}>
+                        <Link href={`/accounts/${account.id}`}>
+                          <div className="flex items-center gap-3 cursor-pointer" data-testid={`link-account-${account.id}`}>
                             <div className="h-9 w-9 rounded-full bg-primary/10 flex items-center justify-center text-primary text-sm font-semibold flex-shrink-0">
-                              {user.first_name[0]}{user.last_name[0]}
+                              {account.firstName[0]}{account.lastName[0]}
                             </div>
                             <span className="font-medium">
-                              {user.first_name} {user.last_name}
+                              {account.firstName} {account.lastName}
                             </span>
                           </div>
                         </Link>
                       </TableCell>
                       <TableCell className="text-muted-foreground">
-                        {user.email}
+                        {account.email}
                       </TableCell>
                       <TableCell>
                         <div className="flex gap-1 flex-wrap">
-                          {user.roles.map((role) => (
+                          {account.roles.map((role) => (
                             <Badge
                               key={role.id}
                               variant={
@@ -141,13 +141,13 @@ export default function Accounts() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Badge variant={user.profile_complete ? "default" : "secondary"}>
-                          {user.profile_complete ? "Complete" : "Incomplete"}
+                        <Badge variant={account.profileComplete ? "default" : "secondary"}>
+                          {account.profileComplete ? "Complete" : "Incomplete"}
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <Link href={`/accounts/${user.id}`}>
-                          <Button variant="ghost" size="icon" data-testid={`button-view-user-${user.id}`}>
+                        <Link href={`/accounts/${account.id}`}>
+                          <Button variant="ghost" size="icon" data-testid={`button-view-account-${account.id}`}>
                             <ChevronRight className="h-4 w-4" />
                           </Button>
                         </Link>

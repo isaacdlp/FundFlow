@@ -2,30 +2,30 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useQuery } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { User } from "@shared/schema";
+import type { AccountWithRoles } from "@shared/types";
 import { Users, Briefcase, TrendingUp, Building2 } from "lucide-react";
 
 export default function Dashboard() {
-  const { data: users, isLoading } = useQuery<User[]>({
-    queryKey: ["/api/users"],
+  const { data: accounts, isLoading } = useQuery<AccountWithRoles[]>({
+    queryKey: ["/api/accounts"],
   });
 
   const stats = [
     {
       label: "Total Users",
-      value: users?.length ?? 0,
+      value: accounts?.length ?? 0,
       icon: Users,
       description: "Registered accounts",
     },
     {
       label: "Fund Managers",
-      value: users?.filter((u) => u.roles.some((r) => r.name === "gp")).length ?? 0,
+      value: accounts?.filter((a) => a.roles.some((r) => r.name === "gp")).length ?? 0,
       icon: Briefcase,
       description: "General Partners",
     },
     {
       label: "Investors",
-      value: users?.filter((u) => u.roles.some((r) => r.name === "lp")).length ?? 0,
+      value: accounts?.filter((a) => a.roles.some((r) => r.name === "lp")).length ?? 0,
       icon: TrendingUp,
       description: "Limited Partners",
     },
@@ -76,25 +76,25 @@ export default function Dashboard() {
                 <Skeleton key={i} className="h-12 w-full" />
               ))}
             </div>
-          ) : users && users.length > 0 ? (
+          ) : accounts && accounts.length > 0 ? (
             <div className="space-y-3">
-              {users.slice(0, 5).map((user) => (
+              {accounts.slice(0, 5).map((account) => (
                 <div
-                  key={user.id}
+                  key={account.id}
                   className="flex items-center gap-3 p-3 rounded-md bg-muted/50"
-                  data-testid={`row-user-${user.id}`}
+                  data-testid={`row-account-${account.id}`}
                 >
                   <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary text-sm font-semibold flex-shrink-0">
-                    {user.first_name[0]}{user.last_name[0]}
+                    {account.firstName[0]}{account.lastName[0]}
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate">
-                      {user.first_name} {user.last_name}
+                      {account.firstName} {account.lastName}
                     </p>
-                    <p className="text-xs text-muted-foreground truncate">{user.email}</p>
+                    <p className="text-xs text-muted-foreground truncate">{account.email}</p>
                   </div>
                   <div className="flex gap-1 flex-wrap">
-                    {user.roles.map((role) => (
+                    {account.roles.map((role) => (
                       <Badge
                         key={role.id}
                         variant={

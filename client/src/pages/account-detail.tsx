@@ -1,6 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useRoute, Link } from "wouter";
-import type { User } from "@shared/schema";
+import type { AccountWithRoles } from "@shared/types";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -37,46 +37,46 @@ const ACCOUNT_TABS = [
 
 export default function AccountDetail() {
   const [, params] = useRoute("/accounts/:id");
-  const userId = params?.id;
+  const accountId = params?.id;
   const { toast } = useToast();
   const [editing, setEditing] = useState(false);
   const [activeTab, setActiveTab] = useState("personal");
 
-  const { data: user, isLoading } = useQuery<User>({
-    queryKey: ["/api/users", userId],
-    enabled: !!userId,
+  const { data: account, isLoading } = useQuery<AccountWithRoles>({
+    queryKey: ["/api/accounts", accountId],
+    enabled: !!accountId,
   });
 
   const [formData, setFormData] = useState<Record<string, string | string[]>>({});
 
   useEffect(() => {
-    if (user) {
+    if (account) {
       setFormData({
-        first_name: user.first_name || "",
-        last_name: user.last_name || "",
-        email: user.email || "",
-        phone: user.phone || "",
-        birthdate: user.birthdate || "",
-        tax_id: user.tax_id || "",
-        street_address_1: user.street_address_1 || "",
-        street_address_2: user.street_address_2 || "",
-        country: user.country || "",
-        city: user.city || "",
-        state_province: user.state_province || "",
-        zip_postal_code: user.zip_postal_code || "",
-        roles: user.roles.map((r) => r.name),
+        firstName: account.firstName || "",
+        lastName: account.lastName || "",
+        email: account.email || "",
+        phone: account.phone || "",
+        birthdate: account.birthdate || "",
+        taxId: account.taxId || "",
+        streetAddress1: account.streetAddress1 || "",
+        streetAddress2: account.streetAddress2 || "",
+        country: account.country || "",
+        city: account.city || "",
+        stateProvince: account.stateProvince || "",
+        zipPostalCode: account.zipPostalCode || "",
+        roles: account.roles.map((r) => r.name),
       });
     }
-  }, [user]);
+  }, [account]);
 
   const updateMutation = useMutation({
     mutationFn: async (data: Record<string, unknown>) => {
-      const res = await apiRequest("PATCH", `/api/users/${userId}`, data);
+      const res = await apiRequest("PATCH", `/api/accounts/${accountId}`, data);
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/users", userId] });
-      queryClient.invalidateQueries({ queryKey: ["/api/users"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/accounts", accountId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/accounts"] });
       setEditing(false);
       toast({ title: "Profile updated successfully" });
     },
@@ -90,21 +90,21 @@ export default function AccountDetail() {
   };
 
   const handleCancel = () => {
-    if (user) {
+    if (account) {
       setFormData({
-        first_name: user.first_name || "",
-        last_name: user.last_name || "",
-        email: user.email || "",
-        phone: user.phone || "",
-        birthdate: user.birthdate || "",
-        tax_id: user.tax_id || "",
-        street_address_1: user.street_address_1 || "",
-        street_address_2: user.street_address_2 || "",
-        country: user.country || "",
-        city: user.city || "",
-        state_province: user.state_province || "",
-        zip_postal_code: user.zip_postal_code || "",
-        roles: user.roles.map((r) => r.name),
+        firstName: account.firstName || "",
+        lastName: account.lastName || "",
+        email: account.email || "",
+        phone: account.phone || "",
+        birthdate: account.birthdate || "",
+        taxId: account.taxId || "",
+        streetAddress1: account.streetAddress1 || "",
+        streetAddress2: account.streetAddress2 || "",
+        country: account.country || "",
+        city: account.city || "",
+        stateProvince: account.stateProvince || "",
+        zipPostalCode: account.zipPostalCode || "",
+        roles: account.roles.map((r) => r.name),
       });
     }
     setEditing(false);
@@ -134,15 +134,15 @@ export default function AccountDetail() {
     );
   }
 
-  if (!user) {
+  if (!account) {
     return (
       <div className="p-6">
-        <p className="text-muted-foreground">User not found.</p>
+        <p className="text-muted-foreground">Account not found.</p>
       </div>
     );
   }
 
-  const initials = `${user.first_name[0]}${user.last_name[0]}`;
+  const initials = `${account.firstName[0]}${account.lastName[0]}`;
 
   return (
     <div className="p-6 space-y-6">
@@ -158,15 +158,15 @@ export default function AccountDetail() {
           {initials}
         </div>
         <div className="flex-1 min-w-0">
-          <h1 className="text-2xl font-semibold" data-testid="text-user-name">
-            {user.first_name} {user.last_name}
+          <h1 className="text-2xl font-semibold" data-testid="text-account-name">
+            {account.firstName} {account.lastName}
           </h1>
-          <p className="text-muted-foreground" data-testid="text-user-email">{user.email}</p>
+          <p className="text-muted-foreground" data-testid="text-account-email">{account.email}</p>
           <div className="flex gap-2 mt-1 flex-wrap">
-            <Badge variant={user.profile_complete ? "default" : "secondary"}>
-              {user.profile_complete ? "Profile Complete" : "Profile Incomplete"}
+            <Badge variant={account.profileComplete ? "default" : "secondary"}>
+              {account.profileComplete ? "Profile Complete" : "Profile Incomplete"}
             </Badge>
-            {user.roles.map((role) => (
+            {account.roles.map((role) => (
               <Badge
                 key={role.id}
                 variant={
@@ -223,21 +223,21 @@ export default function AccountDetail() {
             <CardContent className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="first_name">First Name *</Label>
+                  <Label htmlFor="firstName">First Name *</Label>
                   <Input
-                    id="first_name"
-                    value={(formData.first_name as string) || ""}
-                    onChange={(e) => updateField("first_name", e.target.value)}
+                    id="firstName"
+                    value={(formData.firstName as string) || ""}
+                    onChange={(e) => updateField("firstName", e.target.value)}
                     disabled={!editing}
                     data-testid="input-first-name"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="last_name">Last Name *</Label>
+                  <Label htmlFor="lastName">Last Name *</Label>
                   <Input
-                    id="last_name"
-                    value={(formData.last_name as string) || ""}
-                    onChange={(e) => updateField("last_name", e.target.value)}
+                    id="lastName"
+                    value={(formData.lastName as string) || ""}
+                    onChange={(e) => updateField("lastName", e.target.value)}
                     disabled={!editing}
                     data-testid="input-last-name"
                   />
@@ -281,11 +281,11 @@ export default function AccountDetail() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="tax_id">SSN / Tax ID</Label>
+                <Label htmlFor="taxId">SSN / Tax ID</Label>
                 <Input
-                  id="tax_id"
-                  value={(formData.tax_id as string) || ""}
-                  onChange={(e) => updateField("tax_id", e.target.value)}
+                  id="taxId"
+                  value={(formData.taxId as string) || ""}
+                  onChange={(e) => updateField("taxId", e.target.value)}
                   disabled={!editing}
                   data-testid="input-tax-id"
                 />
@@ -297,22 +297,22 @@ export default function AccountDetail() {
               <h3 className="text-base font-semibold">Residential Address</h3>
 
               <div className="space-y-2">
-                <Label htmlFor="street_address_1">Street Address 1 *</Label>
+                <Label htmlFor="streetAddress1">Street Address 1 *</Label>
                 <Input
-                  id="street_address_1"
-                  value={(formData.street_address_1 as string) || ""}
-                  onChange={(e) => updateField("street_address_1", e.target.value)}
+                  id="streetAddress1"
+                  value={(formData.streetAddress1 as string) || ""}
+                  onChange={(e) => updateField("streetAddress1", e.target.value)}
                   disabled={!editing}
                   data-testid="input-street-1"
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="street_address_2">Street Address 2 (Optional)</Label>
+                <Label htmlFor="streetAddress2">Street Address 2 (Optional)</Label>
                 <Input
-                  id="street_address_2"
-                  value={(formData.street_address_2 as string) || ""}
-                  onChange={(e) => updateField("street_address_2", e.target.value)}
+                  id="streetAddress2"
+                  value={(formData.streetAddress2 as string) || ""}
+                  onChange={(e) => updateField("streetAddress2", e.target.value)}
                   disabled={!editing}
                   data-testid="input-street-2"
                 />
@@ -359,21 +359,21 @@ export default function AccountDetail() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="state_province">State / Province *</Label>
+                  <Label htmlFor="stateProvince">State / Province *</Label>
                   <Input
-                    id="state_province"
-                    value={(formData.state_province as string) || ""}
-                    onChange={(e) => updateField("state_province", e.target.value)}
+                    id="stateProvince"
+                    value={(formData.stateProvince as string) || ""}
+                    onChange={(e) => updateField("stateProvince", e.target.value)}
                     disabled={!editing}
                     data-testid="input-state"
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="zip_postal_code">Zip / Postal Code *</Label>
+                  <Label htmlFor="zipPostalCode">Zip / Postal Code *</Label>
                   <Input
-                    id="zip_postal_code"
-                    value={(formData.zip_postal_code as string) || ""}
-                    onChange={(e) => updateField("zip_postal_code", e.target.value)}
+                    id="zipPostalCode"
+                    value={(formData.zipPostalCode as string) || ""}
+                    onChange={(e) => updateField("zipPostalCode", e.target.value)}
                     disabled={!editing}
                     data-testid="input-zip"
                   />
@@ -391,11 +391,11 @@ export default function AccountDetail() {
             <CardContent className="space-y-4">
               <div className="space-y-2">
                 <Label>Email Address</Label>
-                <Input value={user.email} disabled data-testid="input-login-email" />
+                <Input value={account.email} disabled data-testid="input-login-email" />
               </div>
               <div className="space-y-2">
                 <Label>Password</Label>
-                <Input type="password" value="••••••••••••" disabled />
+                <Input type="password" value="password-hidden" disabled />
                 <p className="text-xs text-muted-foreground">
                   Password management will be available in a future update.
                 </p>
@@ -403,7 +403,7 @@ export default function AccountDetail() {
               <div className="space-y-2">
                 <Label>Account Created</Label>
                 <Input
-                  value={new Date(user.created_at).toLocaleDateString("en-US", {
+                  value={new Date(account.createdAt).toLocaleDateString("en-US", {
                     year: "numeric",
                     month: "long",
                     day: "numeric",
