@@ -45,3 +45,11 @@ outputType = "webview"
 task = "shell.exec"
 args = "npm run dev"
 waitForPort = 5000
+
+[userenv]
+
+[userenv.shared]
+SMTP_HOST = "smtp.ionos.com"
+SMTP_PORT = "465"
+SMTP_USER = "app@valantum.com"
+SMTP_FROM = "app@valantum.com"
