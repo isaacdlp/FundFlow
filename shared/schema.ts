@@ -176,6 +176,15 @@ export const entityManagers = pgTable("entity_managers", {
   uniqueIndex("entity_manager_unique").on(table.entityId, table.accountId),
 ]);
 
+export const passwordResetTokens = pgTable("password_reset_tokens", {
+  id: serial("id").primaryKey(),
+  accountId: integer("account_id").notNull().references(() => accounts.id, { onDelete: "cascade" }),
+  token: varchar("token", { length: 255 }).notNull().unique(),
+  expiresAt: timestamp("expires_at").notNull(),
+  used: boolean("used").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export const insertAccountSchema = createInsertSchema(accounts).omit({
   id: true,
   passwordHash: true,
@@ -254,3 +263,4 @@ export type InsertSpv = z.infer<typeof insertSpvSchema>;
 export type UpdateSpv = z.infer<typeof updateSpvSchema>;
 export type InsertEntity = z.infer<typeof insertEntitySchema>;
 export type UpdateEntity = z.infer<typeof updateEntitySchema>;
+export type PasswordResetToken = typeof passwordResetTokens.$inferSelect;

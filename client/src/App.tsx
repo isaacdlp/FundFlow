@@ -23,6 +23,8 @@ import SpvDetail from "@/pages/spv-detail";
 import Entities from "@/pages/entities";
 import CreateEntity from "@/pages/create-entity";
 import EntityDetail from "@/pages/entity-detail";
+import ForgotPassword from "@/pages/forgot-password";
+import ResetPassword from "@/pages/reset-password";
 import { Button } from "@/components/ui/button";
 import { LogOut } from "lucide-react";
 
@@ -107,6 +109,8 @@ function ProtectedApp() {
   return (
     <Switch>
       <Route path="/org/:slug" component={OrgLanding} />
+      <Route path="/forgot-password" component={ForgotPassword} />
+      <Route path="/reset-password" component={ResetPassword} />
       <Route>
         {user ? <AdminLayout /> : <Login />}
       </Route>

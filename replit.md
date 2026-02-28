@@ -148,6 +148,17 @@ shared/
 - Login page: client/src/pages/login.tsx
 - Auth hook: client/src/hooks/use-auth.tsx
 
+## Password Management
+- **Forgot Password**: POST /api/auth/forgot-password (email) -- generates token, sends reset email via SMTP
+- **Reset Password**: POST /api/auth/reset-password (token, password) -- validates token, updates password
+- **Change Password**: POST /api/auth/change-password (currentPassword, newPassword) -- requires auth
+- Reset tokens expire after 1 hour, single-use
+- Email sent via nodemailer to SMTP server (smtp.ionos.com:465 SSL, from app@valantum.com)
+- Frontend pages: /forgot-password, /reset-password?token=...
+- Login page has "Forgot your password?" link
+- DB table: password_reset_tokens (id, accountId, token, expiresAt, used, createdAt)
+- Env vars: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_FROM, SMTP_PASSWORD (secret)
+
 ## Key Implementation Details
 - Password hashing uses bcrypt (hash stored in `password_hash` column)
 - `passwordHash` is stripped from all API responses

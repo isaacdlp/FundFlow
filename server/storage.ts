@@ -1,17 +1,19 @@
-import { eq, ilike, or, sql, and } from "drizzle-orm";
+import { eq, ilike, or, sql, and, lt } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import {
   accounts, roles, accountRoles, organizations, organizationOrganizers,
   organizationMembers, organizationInvites, spvs, spvMembers,
-  entities, entityOwners, entityManagers,
+  entities, entityOwners, entityManagers, passwordResetTokens,
   type Account, type Role, type InsertAccount, type UpdateAccount,
   type Organization, type InsertOrganization, type UpdateOrganization,
   type OrganizationMember, type OrganizationInvite,
   type Spv, type SpvMember, type InsertSpv, type UpdateSpv,
   type Entity, type EntityOwner, type EntityManager,
   type InsertEntity, type UpdateEntity,
+  type PasswordResetToken,
 } from "@shared/schema";
 import crypto from "crypto";
+import bcrypt from "bcrypt";
 
 if (!process.env.DATABASE_URL) {
   throw new Error("DATABASE_URL must be set");
@@ -123,6 +125,11 @@ export interface IStorage {
   getOrganizationIdsForAccount(accountId: number): Promise<number[]>;
   getEntityIdsForAccount(accountId: number): Promise<number[]>;
   getSpvIdsForAccount(accountId: number): Promise<number[]>;
+
+  createPasswordResetToken(accountId: number): Promise<string>;
+  getPasswordResetToken(token: string): Promise<PasswordResetToken | undefined>;
+  usePasswordResetToken(token: string): Promise<void>;
+  updatePassword(accountId: number, newPassword: string): Promise<void>;
 
   seedData(): Promise<void>;
 }
@@ -727,6 +734,33 @@ export class DatabaseStorage implements IStorage {
       .where(and(eq(entityManagers.entityId, entityId), eq(entityManagers.accountId, accountId)))
       .returning();
     return result.length > 0;
+  }
+
+  async createPasswordResetToken(accountId: number): Promise<string> {
+    const token = crypto.randomBytes(32).toString("hex");
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+    await db.insert(passwordResetTokens).values({ accountId, token, expiresAt });
+    return token;
+  }
+
+  async getPasswordResetToken(token: string): Promise<PasswordResetToken | undefined> {
+    const [row] = await db.select().from(passwordResetTokens)
+      .where(eq(passwordResetTokens.token, token))
+      .limit(1);
+    return row;
+  }
+
+  async usePasswordResetToken(token: string): Promise<void> {
+    await db.update(passwordResetTokens)
+      .set({ used: true })
+      .where(eq(passwordResetTokens.token, token));
+  }
+
+  async updatePassword(accountId: number, newPassword: string): Promise<void> {
+    const hash = await bcrypt.hash(newPassword, 10);
+    await db.update(accounts)
+      .set({ passwordHash: hash, updatedAt: new Date() })
+      .where(eq(accounts.id, accountId));
   }
 
   async getOrganizationIdsForAccount(accountId: number): Promise<number[]> {

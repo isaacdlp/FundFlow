@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
+import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -78,6 +79,13 @@ export default function Login() {
                 </>
               )}
             </Button>
+            <div className="text-center">
+              <Link href="/forgot-password">
+                <Button variant="link" className="text-sm" data-testid="link-forgot-password">
+                  Forgot your password?
+                </Button>
+              </Link>
+            </div>
           </form>
         </CardContent>
       </Card>

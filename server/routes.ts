@@ -5,6 +5,7 @@ import { insertAccountSchema, updateAccountSchema, insertOrganizationSchema, upd
 import { ZodError } from "zod";
 import { fromZodError } from "zod-validation-error";
 import type { AccountWithRoles } from "./storage";
+import { sendPasswordResetEmail } from "./email";
 
 function stripPasswordHash(account: any) {
   const { passwordHash, ...rest } = account;
@@ -163,8 +164,61 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/auth/forgot-password", async (req, res) => {
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ message: "Email is required" });
+    }
+    const account = await storage.getAccountByEmail(email);
+    if (account) {
+      const token = await storage.createPasswordResetToken(account.id);
+      await sendPasswordResetEmail(account.email, account.firstName, token);
+    }
+    res.json({ message: "If an account with that email exists, a password reset link has been sent." });
+  });
+
+  app.post("/api/auth/reset-password", async (req, res) => {
+    const { token, password } = req.body;
+    if (!token || !password) {
+      return res.status(400).json({ message: "Token and password are required" });
+    }
+    if (password.length < 6) {
+      return res.status(400).json({ message: "Password must be at least 6 characters" });
+    }
+    const resetToken = await storage.getPasswordResetToken(token);
+    if (!resetToken) {
+      return res.status(400).json({ message: "Invalid or expired reset link" });
+    }
+    if (resetToken.used) {
+      return res.status(400).json({ message: "This reset link has already been used" });
+    }
+    if (new Date() > resetToken.expiresAt) {
+      return res.status(400).json({ message: "This reset link has expired" });
+    }
+    await storage.updatePassword(resetToken.accountId, password);
+    await storage.usePasswordResetToken(token);
+    res.json({ message: "Password has been reset successfully" });
+  });
+
 
   app.use("/api", requireAuth);
+
+
+  app.post("/api/auth/change-password", async (req, res) => {
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ message: "Current password and new password are required" });
+    }
+    if (newPassword.length < 6) {
+      return res.status(400).json({ message: "New password must be at least 6 characters" });
+    }
+    const valid = await storage.verifyPassword(req.session.accountId!, currentPassword);
+    if (!valid) {
+      return res.status(400).json({ message: "Current password is incorrect" });
+    }
+    await storage.updatePassword(req.session.accountId!, newPassword);
+    res.json({ message: "Password changed successfully" });
+  });
 
 
   app.get("/api/roles", async (_req, res) => {
