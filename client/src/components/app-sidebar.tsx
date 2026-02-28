@@ -114,19 +114,21 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
       <SidebarFooter className="p-4">
-        <div className="flex items-center gap-2">
-          <div className="h-8 w-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-xs font-medium">
-            {initials}
+        <Link href={user ? `/accounts/${user.id}` : "#"}>
+          <div className="flex items-center gap-2 cursor-pointer rounded-md p-1 -m-1 hover:bg-sidebar-accent transition-colors" data-testid="link-sidebar-user">
+            <div className="h-8 w-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-xs font-medium">
+              {initials}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium truncate" data-testid="text-sidebar-user">
+                {user ? `${user.firstName} ${user.lastName}` : "Loading..."}
+              </p>
+              <p className="text-xs text-muted-foreground truncate">
+                {isAdmin ? "Admin" : user?.roles?.map(r => r.name.toUpperCase()).join(", ") || "User"}
+              </p>
+            </div>
           </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium truncate" data-testid="text-sidebar-user">
-              {user ? `${user.firstName} ${user.lastName}` : "Loading..."}
-            </p>
-            <p className="text-xs text-muted-foreground truncate">
-              {isAdmin ? "Admin" : user?.roles?.map(r => r.name.toUpperCase()).join(", ") || "User"}
-            </p>
-          </div>
-        </div>
+        </Link>
       </SidebarFooter>
     </Sidebar>
   );
