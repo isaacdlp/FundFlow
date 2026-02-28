@@ -37,7 +37,7 @@ const mainNav: NavItem[] = [
   { title: "Funds", url: "/funds", icon: Briefcase },
   { title: "SPVs", url: "/spvs", icon: FileText },
   { title: "Portfolio", url: "/portfolio", icon: TrendingUp },
-  { title: "Accounts", url: "/accounts", icon: Users, adminOnly: true },
+  { title: "Accounts", url: "/accounts", icon: Users },
   { title: "Entities", url: "/entities", icon: Building },
 ];
 

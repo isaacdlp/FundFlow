@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import type { AccountWithRoles } from "@shared/types";
+import { useAuth } from "@/hooks/use-auth";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -19,6 +20,7 @@ import { useState } from "react";
 
 export default function Accounts() {
   const [search, setSearch] = useState("");
+  const { isAdmin } = useAuth();
   const { data: accounts, isLoading } = useQuery<AccountWithRoles[]>({
     queryKey: ["/api/accounts"],
   });
@@ -40,12 +42,14 @@ export default function Accounts() {
             Manage user accounts and permissions
           </p>
         </div>
-        <Link href="/accounts/new">
-          <Button data-testid="button-create-account">
-            <Plus className="h-4 w-4 mr-2" />
-            Add Account
-          </Button>
-        </Link>
+        {isAdmin && (
+          <Link href="/accounts/new">
+            <Button data-testid="button-create-account">
+              <Plus className="h-4 w-4 mr-2" />
+              Add Account
+            </Button>
+          </Link>
+        )}
       </div>
 
       <Card>
