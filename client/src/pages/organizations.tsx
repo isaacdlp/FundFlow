@@ -2,6 +2,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
 import type { OrganizationWithOrganizers } from "@shared/types";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useAuth } from "@/hooks/use-auth";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -33,6 +34,7 @@ import { useToast } from "@/hooks/use-toast";
 export default function Organizations() {
   const [search, setSearch] = useState("");
   const { toast } = useToast();
+  const { isAdmin } = useAuth();
 
   const { data: orgs, isLoading } = useQuery<OrganizationWithOrganizers[]>({
     queryKey: ["/api/organizations"],
@@ -66,12 +68,14 @@ export default function Organizations() {
             Manage organizations that create funds and SPVs
           </p>
         </div>
-        <Link href="/organizations/new">
-          <Button data-testid="button-create-organization">
-            <Plus className="h-4 w-4 mr-2" />
-            Add Organization
-          </Button>
-        </Link>
+        {isAdmin && (
+          <Link href="/organizations/new">
+            <Button data-testid="button-create-organization">
+              <Plus className="h-4 w-4 mr-2" />
+              Add Organization
+            </Button>
+          </Link>
+        )}
       </div>
 
       <Card>
