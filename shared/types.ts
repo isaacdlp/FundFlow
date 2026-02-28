@@ -132,6 +132,59 @@ export interface SpvMemberInfo {
   };
 }
 
+export interface EntityInfo {
+  id: number;
+  name: string;
+  entityType: string;
+  dateEstablished: string | null;
+  currency: string | null;
+  taxId: string | null;
+  ownershipAllocation: string | null;
+  country: string | null;
+  streetAddress: string | null;
+  streetAddress2: string | null;
+  city: string | null;
+  stateProvince: string | null;
+  zipPostalCode: string | null;
+  disbursementMethod: string | null;
+  bankName: string | null;
+  bankAddress: string | null;
+  bankRoutingNumber: string | null;
+  bankSwiftCode: string | null;
+  bankAccountNumber: string | null;
+  bankAccountName: string | null;
+  forFurtherCreditTo: string | null;
+  createdAt: string;
+  updatedAt: string;
+  managers: {
+    id: number;
+    accountId: number;
+    account: { id: number; email: string; firstName: string; lastName: string };
+  }[];
+  ownerCount: number;
+}
+
+export interface EntityOwnerInfo {
+  id: number;
+  entityId: number;
+  ownerType: string;
+  ownerAccountId: number | null;
+  ownerEntityId: number | null;
+  ownershipPercent: string | null;
+  date: string | null;
+  createdAt: string;
+  ownerAccount?: { id: number; email: string; firstName: string; lastName: string } | null;
+  ownerEntity?: { id: number; name: string; entityType: string } | null;
+}
+
+export interface EntityManagerInfo {
+  id: number;
+  entityId: number;
+  accountId: number;
+  createdAt: string;
+  account: { id: number; email: string; firstName: string; lastName: string };
+}
+
 export interface AccountWithRoles {
   id: number;
   email: string;

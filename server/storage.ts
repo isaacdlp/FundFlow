@@ -3,10 +3,13 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import {
   accounts, roles, accountRoles, organizations, organizationOrganizers,
   organizationMembers, organizationInvites, spvs, spvMembers,
+  entities, entityOwners, entityManagers,
   type Account, type Role, type InsertAccount, type UpdateAccount,
   type Organization, type InsertOrganization, type UpdateOrganization,
   type OrganizationMember, type OrganizationInvite,
   type Spv, type SpvMember, type InsertSpv, type UpdateSpv,
+  type Entity, type EntityOwner, type EntityManager,
+  type InsertEntity, type UpdateEntity,
 } from "@shared/schema";
 import crypto from "crypto";
 
@@ -51,6 +54,20 @@ export interface SpvMemberWithAccount extends SpvMember {
   account: { id: number; email: string; firstName: string; lastName: string };
 }
 
+export interface EntityWithDetails extends Entity {
+  managers: { id: number; accountId: number; account: { id: number; email: string; firstName: string; lastName: string } }[];
+  ownerCount: number;
+}
+
+export interface EntityOwnerWithDetails extends EntityOwner {
+  ownerAccount?: { id: number; email: string; firstName: string; lastName: string } | null;
+  ownerEntity?: { id: number; name: string; entityType: string } | null;
+}
+
+export interface EntityManagerWithAccount extends EntityManager {
+  account: { id: number; email: string; firstName: string; lastName: string };
+}
+
 export interface IStorage {
   getRoles(): Promise<Role[]>;
   getAccounts(search?: string, roleFilter?: string): Promise<AccountWithRoles[]>;
@@ -90,6 +107,18 @@ export interface IStorage {
   getSpvMembers(spvId: number): Promise<SpvMemberWithAccount[]>;
   addSpvMember(spvId: number, accountId: number): Promise<SpvMemberWithAccount>;
   removeSpvMember(spvId: number, accountId: number): Promise<boolean>;
+
+  getAllEntities(search?: string): Promise<EntityWithDetails[]>;
+  getEntity(id: number): Promise<EntityWithDetails | undefined>;
+  createEntity(data: InsertEntity): Promise<EntityWithDetails>;
+  updateEntity(id: number, data: UpdateEntity): Promise<EntityWithDetails | undefined>;
+  deleteEntity(id: number): Promise<boolean>;
+  getEntityOwners(entityId: number): Promise<EntityOwnerWithDetails[]>;
+  addEntityOwner(entityId: number, ownerType: string, ownerAccountId: number | null, ownerEntityId: number | null, ownershipPercent: string, date: string | null): Promise<EntityOwnerWithDetails>;
+  removeEntityOwner(ownerId: number): Promise<boolean>;
+  getEntityManagers(entityId: number): Promise<EntityManagerWithAccount[]>;
+  addEntityManager(entityId: number, accountId: number): Promise<EntityManagerWithAccount>;
+  removeEntityManager(entityId: number, accountId: number): Promise<boolean>;
 
   seedData(): Promise<void>;
 }
@@ -557,6 +586,141 @@ export class DatabaseStorage implements IStorage {
   async removeSpvMember(spvId: number, accountId: number): Promise<boolean> {
     const result = await db.delete(spvMembers)
       .where(and(eq(spvMembers.spvId, spvId), eq(spvMembers.accountId, accountId)))
+      .returning();
+    return result.length > 0;
+  }
+
+  private async enrichEntity(entity: Entity): Promise<EntityWithDetails> {
+    const mgrs = await db.select().from(entityManagers).where(eq(entityManagers.entityId, entity.id));
+    const managersWithAccounts = [];
+    for (const m of mgrs) {
+      const acct = await getAccountSummary(m.accountId);
+      if (acct) {
+        managersWithAccounts.push({ id: m.id, accountId: m.accountId, account: acct });
+      }
+    }
+    const owners = await db.select().from(entityOwners).where(eq(entityOwners.entityId, entity.id));
+    return { ...entity, managers: managersWithAccounts, ownerCount: owners.length };
+  }
+
+  async getAllEntities(search?: string): Promise<EntityWithDetails[]> {
+    let query = db.select().from(entities).orderBy(sql`${entities.name} ASC`);
+    if (search) {
+      query = db.select().from(entities)
+        .where(or(
+          ilike(entities.name, `%${search}%`),
+          ilike(entities.entityType, `%${search}%`),
+        ))
+        .orderBy(sql`${entities.name} ASC`);
+    }
+    const list = await query;
+    return Promise.all(list.map(e => this.enrichEntity(e)));
+  }
+
+  async getEntity(id: number): Promise<EntityWithDetails | undefined> {
+    const [entity] = await db.select().from(entities).where(eq(entities.id, id));
+    if (!entity) return undefined;
+    return this.enrichEntity(entity);
+  }
+
+  async createEntity(data: InsertEntity): Promise<EntityWithDetails> {
+    const [entity] = await db.insert(entities).values(data).returning();
+    return this.enrichEntity(entity);
+  }
+
+  async updateEntity(id: number, data: UpdateEntity): Promise<EntityWithDetails | undefined> {
+    const existing = await this.getEntity(id);
+    if (!existing) return undefined;
+    const updateFields: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(data)) {
+      if (value !== undefined) updateFields[key] = value;
+    }
+    if (Object.keys(updateFields).length > 0) {
+      updateFields.updatedAt = new Date();
+      await db.update(entities).set(updateFields).where(eq(entities.id, id));
+    }
+    return this.getEntity(id);
+  }
+
+  async deleteEntity(id: number): Promise<boolean> {
+    const result = await db.delete(entities).where(eq(entities.id, id)).returning();
+    return result.length > 0;
+  }
+
+  async getEntityOwners(entityId: number): Promise<EntityOwnerWithDetails[]> {
+    const owners = await db.select().from(entityOwners)
+      .where(eq(entityOwners.entityId, entityId))
+      .orderBy(sql`${entityOwners.createdAt} DESC`);
+    const result: EntityOwnerWithDetails[] = [];
+    for (const o of owners) {
+      let ownerAccount = null;
+      let ownerEntity = null;
+      if (o.ownerType === "account" && o.ownerAccountId) {
+        ownerAccount = await getAccountSummary(o.ownerAccountId);
+      } else if (o.ownerType === "entity" && o.ownerEntityId) {
+        const [ent] = await db.select({ id: entities.id, name: entities.name, entityType: entities.entityType })
+          .from(entities).where(eq(entities.id, o.ownerEntityId));
+        ownerEntity = ent || null;
+      }
+      result.push({ ...o, ownerAccount, ownerEntity });
+    }
+    return result;
+  }
+
+  async addEntityOwner(entityId: number, ownerType: string, ownerAccountId: number | null, ownerEntityId: number | null, ownershipPercent: string, date: string | null): Promise<EntityOwnerWithDetails> {
+    const [owner] = await db.insert(entityOwners).values({
+      entityId,
+      ownerType,
+      ownerAccountId,
+      ownerEntityId,
+      ownershipPercent,
+      date,
+    }).returning();
+    let ownerAccount = null;
+    let ownerEntity = null;
+    if (ownerType === "account" && ownerAccountId) {
+      ownerAccount = await getAccountSummary(ownerAccountId);
+    } else if (ownerType === "entity" && ownerEntityId) {
+      const [ent] = await db.select({ id: entities.id, name: entities.name, entityType: entities.entityType })
+        .from(entities).where(eq(entities.id, ownerEntityId));
+      ownerEntity = ent || null;
+    }
+    return { ...owner, ownerAccount, ownerEntity };
+  }
+
+  async removeEntityOwner(ownerId: number): Promise<boolean> {
+    const result = await db.delete(entityOwners).where(eq(entityOwners.id, ownerId)).returning();
+    return result.length > 0;
+  }
+
+  async getEntityManagers(entityId: number): Promise<EntityManagerWithAccount[]> {
+    const mgrs = await db.select().from(entityManagers)
+      .where(eq(entityManagers.entityId, entityId))
+      .orderBy(sql`${entityManagers.createdAt} DESC`);
+    const result: EntityManagerWithAccount[] = [];
+    for (const m of mgrs) {
+      const acct = await getAccountSummary(m.accountId);
+      if (acct) result.push({ ...m, account: acct });
+    }
+    return result;
+  }
+
+  async addEntityManager(entityId: number, accountId: number): Promise<EntityManagerWithAccount> {
+    const [mgr] = await db.insert(entityManagers).values({ entityId, accountId })
+      .onConflictDoNothing().returning();
+    if (!mgr) {
+      const existing = await db.select().from(entityManagers)
+        .where(and(eq(entityManagers.entityId, entityId), eq(entityManagers.accountId, accountId)));
+      const acct = await getAccountSummary(accountId);
+      return { ...existing[0], account: acct! };
+    }
+    const acct = await getAccountSummary(accountId);
+    return { ...mgr, account: acct! };
+  }
+
+  async removeEntityManager(entityId: number, accountId: number): Promise<boolean> {
+    const result = await db.delete(entityManagers)
+      .where(and(eq(entityManagers.entityId, entityId), eq(entityManagers.accountId, accountId)))
       .returning();
     return result.length > 0;
   }

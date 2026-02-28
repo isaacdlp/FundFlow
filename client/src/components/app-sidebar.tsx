@@ -3,6 +3,7 @@ import {
   LayoutDashboard,
   Briefcase,
   Building2,
+  Building,
   Users,
   FolderKanban,
   Settings,
@@ -29,6 +30,7 @@ const mainNav = [
   { title: "SPVs", url: "/spvs", icon: FileText },
   { title: "Portfolio", url: "/portfolio", icon: TrendingUp },
   { title: "Accounts", url: "/accounts", icon: Users },
+  { title: "Entities", url: "/entities", icon: Building },
 ];
 
 const managementNav = [

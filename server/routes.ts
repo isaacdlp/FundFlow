@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { type Server } from "http";
 import { storage } from "./storage";
-import { insertAccountSchema, updateAccountSchema, insertOrganizationSchema, updateOrganizationSchema, insertSpvSchema, updateSpvSchema } from "@shared/schema";
+import { insertAccountSchema, updateAccountSchema, insertOrganizationSchema, updateOrganizationSchema, insertSpvSchema, updateSpvSchema, insertEntitySchema, updateEntitySchema } from "@shared/schema";
 import { ZodError } from "zod";
 import { fromZodError } from "zod-validation-error";
 
@@ -373,6 +373,125 @@ export async function registerRoutes(
     const removed = await storage.removeSpvMember(id, accountId);
     if (!removed) return res.status(404).json({ message: "SPV member not found" });
     res.json({ message: "Member removed from SPV" });
+  });
+
+  app.get("/api/entities", async (req, res) => {
+    const search = req.query.search as string | undefined;
+    const entitiesList = await storage.getAllEntities(search);
+    res.json(entitiesList);
+  });
+
+  app.get("/api/entities/:id", async (req, res) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    const entity = await storage.getEntity(id);
+    if (!entity) return res.status(404).json({ message: "Entity not found" });
+    res.json(entity);
+  });
+
+  app.post("/api/entities", async (req, res) => {
+    try {
+      const data = insertEntitySchema.parse(req.body);
+      const entity = await storage.createEntity(data);
+      res.status(201).json(entity);
+    } catch (e) {
+      if (e instanceof ZodError) {
+        return res.status(400).json({ message: fromZodError(e).message });
+      }
+      throw e;
+    }
+  });
+
+  app.patch("/api/entities/:id", async (req, res) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    try {
+      const data = updateEntitySchema.parse(req.body);
+      const entity = await storage.updateEntity(id, data);
+      if (!entity) return res.status(404).json({ message: "Entity not found" });
+      res.json(entity);
+    } catch (e) {
+      if (e instanceof ZodError) {
+        return res.status(400).json({ message: fromZodError(e).message });
+      }
+      throw e;
+    }
+  });
+
+  app.delete("/api/entities/:id", async (req, res) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    const deleted = await storage.deleteEntity(id);
+    if (!deleted) return res.status(404).json({ message: "Entity not found" });
+    res.json({ message: "Entity deleted" });
+  });
+
+  app.get("/api/entities/:id/owners", async (req, res) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    const owners = await storage.getEntityOwners(id);
+    res.json(owners);
+  });
+
+  app.post("/api/entities/:id/owners", async (req, res) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    const { ownerType, ownerAccountId, ownerEntityId, ownershipPercent, date } = req.body;
+    if (!ownerType || !["account", "entity"].includes(ownerType)) {
+      return res.status(400).json({ message: "ownerType must be 'account' or 'entity'" });
+    }
+    if (ownerType === "account" && !ownerAccountId) {
+      return res.status(400).json({ message: "ownerAccountId is required when ownerType is 'account'" });
+    }
+    if (ownerType === "entity" && !ownerEntityId) {
+      return res.status(400).json({ message: "ownerEntityId is required when ownerType is 'entity'" });
+    }
+    const pct = parseFloat(ownershipPercent || "0");
+    if (isNaN(pct) || pct < 0 || pct > 100) {
+      return res.status(400).json({ message: "ownershipPercent must be between 0 and 100" });
+    }
+    const owner = await storage.addEntityOwner(
+      id,
+      ownerType,
+      ownerType === "account" ? ownerAccountId : null,
+      ownerType === "entity" ? ownerEntityId : null,
+      String(pct),
+      date || null
+    );
+    res.status(201).json(owner);
+  });
+
+  app.delete("/api/entities/:id/owners/:ownerId", async (req, res) => {
+    const ownerId = parseInt(req.params.ownerId);
+    if (isNaN(ownerId)) return res.status(400).json({ message: "Invalid ID" });
+    const removed = await storage.removeEntityOwner(ownerId);
+    if (!removed) return res.status(404).json({ message: "Owner not found" });
+    res.json({ message: "Owner removed" });
+  });
+
+  app.get("/api/entities/:id/managers", async (req, res) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    const managers = await storage.getEntityManagers(id);
+    res.json(managers);
+  });
+
+  app.post("/api/entities/:id/managers", async (req, res) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    const { accountId } = req.body;
+    if (!accountId) return res.status(400).json({ message: "accountId is required" });
+    const manager = await storage.addEntityManager(id, accountId);
+    res.json(manager);
+  });
+
+  app.delete("/api/entities/:id/managers/:accountId", async (req, res) => {
+    const id = parseInt(req.params.id);
+    const accountId = parseInt(req.params.accountId);
+    if (isNaN(id) || isNaN(accountId)) return res.status(400).json({ message: "Invalid ID" });
+    const removed = await storage.removeEntityManager(id, accountId);
+    if (!removed) return res.status(404).json({ message: "Manager not found" });
+    res.json({ message: "Manager removed" });
   });
 
   return httpServer;

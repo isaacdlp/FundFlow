@@ -17,6 +17,9 @@ import OrgLanding from "@/pages/org-landing";
 import Spvs from "@/pages/spvs";
 import CreateSpv from "@/pages/create-spv";
 import SpvDetail from "@/pages/spv-detail";
+import Entities from "@/pages/entities";
+import CreateEntity from "@/pages/create-entity";
+import EntityDetail from "@/pages/entity-detail";
 
 function AdminRouter() {
   return (
@@ -31,6 +34,9 @@ function AdminRouter() {
       <Route path="/organizations/:id" component={OrganizationDetail} />
       <Route path="/spvs" component={Spvs} />
       <Route path="/spvs/:id" component={SpvDetail} />
+      <Route path="/entities" component={Entities} />
+      <Route path="/entities/new" component={CreateEntity} />
+      <Route path="/entities/:id" component={EntityDetail} />
       <Route component={NotFound} />
     </Switch>
   );

@@ -35,6 +35,9 @@ client/                   # React frontend
       spvs.tsx            # Top-level SPVs listing page with search
       create-spv.tsx      # Create new SPV form (5 sections)
       spv-detail.tsx      # SPV detail with Configuration and Members tabs
+      entities.tsx        # Entities listing page with search
+      create-entity.tsx   # Create new entity form (4 sections: General, Administration, Address, Disbursement)
+      entity-detail.tsx   # Entity detail with Overview (editable) and Owners tabs
     lib/
       queryClient.ts      # TanStack Query configuration
 server/
@@ -57,6 +60,9 @@ shared/
 - `organization_invites` - Single-use invite tokens with used/usedByAccountId tracking
 - `spvs` - Special Purpose Vehicles with full entity details (legal, address, bank, investment)
 - `spv_members` - Many-to-many SPV-account associations
+- `entities` - Entity records (LLC, Corp, Trust, etc.) with address and bank info
+- `entity_owners` - Owners of entities (can be Accounts or other Entities, with ownership %)
+- `entity_managers` - Managers of entities (always Accounts, unique per entity+account)
 
 ## API Endpoints
 ### Accounts
@@ -102,6 +108,19 @@ shared/
 - `GET /api/spvs/:id/members` - List SPV members with account info
 - `POST /api/spvs/:id/members` - Add member to SPV (body: {accountId})
 - `DELETE /api/spvs/:id/members/:accountId` - Remove member from SPV
+
+### Entities
+- `GET /api/entities` - List all entities with managers and owner count (supports ?search=)
+- `GET /api/entities/:id` - Get single entity with managers and owner count
+- `POST /api/entities` - Create new entity
+- `PATCH /api/entities/:id` - Update entity
+- `DELETE /api/entities/:id` - Delete entity (cascades owners/managers)
+- `GET /api/entities/:id/owners` - List entity owners with account/entity info
+- `POST /api/entities/:id/owners` - Add owner (body: ownerType, ownerAccountId/ownerEntityId, ownershipPercent, date)
+- `DELETE /api/entities/:id/owners/:ownerId` - Remove owner
+- `GET /api/entities/:id/managers` - List entity managers with account info
+- `POST /api/entities/:id/managers` - Add manager (body: {accountId})
+- `DELETE /api/entities/:id/managers/:accountId` - Remove manager
 
 ## Public Landing Page
 - Route: `/org/:slug` — standalone page (no sidebar layout)

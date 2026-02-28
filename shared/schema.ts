@@ -130,6 +130,52 @@ export const spvMembers = pgTable("spv_members", {
   uniqueIndex("spv_member_unique").on(table.spvId, table.accountId),
 ]);
 
+export const entities = pgTable("entities", {
+  id: serial("id").primaryKey(),
+  name: varchar("name", { length: 255 }).notNull(),
+  entityType: varchar("entity_type", { length: 50 }).notNull().default("LLC"),
+  dateEstablished: date("date_established"),
+  currency: varchar("currency", { length: 20 }).default("USD ($)"),
+  taxId: varchar("tax_id", { length: 50 }).default(""),
+  ownershipAllocation: varchar("ownership_allocation", { length: 20 }).default("percent"),
+  country: varchar("country", { length: 100 }).default(""),
+  streetAddress: varchar("street_address", { length: 255 }).default(""),
+  streetAddress2: varchar("street_address_2", { length: 255 }).default(""),
+  city: varchar("city", { length: 100 }).default(""),
+  stateProvince: varchar("state_province", { length: 100 }).default(""),
+  zipPostalCode: varchar("zip_postal_code", { length: 20 }).default(""),
+  disbursementMethod: varchar("disbursement_method", { length: 20 }).default("wire_transfer"),
+  bankName: varchar("bank_name", { length: 255 }).default(""),
+  bankAddress: text("bank_address").default(""),
+  bankRoutingNumber: varchar("bank_routing_number", { length: 50 }).default(""),
+  bankSwiftCode: varchar("bank_swift_code", { length: 20 }).default(""),
+  bankAccountNumber: varchar("bank_account_number", { length: 50 }).default(""),
+  bankAccountName: varchar("bank_account_name", { length: 255 }).default(""),
+  forFurtherCreditTo: varchar("for_further_credit_to", { length: 255 }).default(""),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const entityOwners = pgTable("entity_owners", {
+  id: serial("id").primaryKey(),
+  entityId: integer("entity_id").notNull().references(() => entities.id, { onDelete: "cascade" }),
+  ownerType: varchar("owner_type", { length: 20 }).notNull().default("account"),
+  ownerAccountId: integer("owner_account_id").references(() => accounts.id, { onDelete: "cascade" }),
+  ownerEntityId: integer("owner_entity_id").references(() => entities.id, { onDelete: "cascade" }),
+  ownershipPercent: numeric("ownership_percent", { precision: 7, scale: 4 }).default("0"),
+  date: date("date"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const entityManagers = pgTable("entity_managers", {
+  id: serial("id").primaryKey(),
+  entityId: integer("entity_id").notNull().references(() => entities.id, { onDelete: "cascade" }),
+  accountId: integer("account_id").notNull().references(() => accounts.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("entity_manager_unique").on(table.entityId, table.accountId),
+]);
+
 export const insertAccountSchema = createInsertSchema(accounts).omit({
   id: true,
   passwordHash: true,
@@ -176,6 +222,18 @@ export const updateSpvSchema = createInsertSchema(spvs).omit({
   updatedAt: true,
 }).partial();
 
+export const insertEntitySchema = createInsertSchema(entities).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const updateEntitySchema = createInsertSchema(entities).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+}).partial();
+
 export type Role = typeof roles.$inferSelect;
 export type Account = typeof accounts.$inferSelect;
 export type AccountRole = typeof accountRoles.$inferSelect;
@@ -189,5 +247,10 @@ export type InsertAccount = z.infer<typeof insertAccountSchema>;
 export type UpdateAccount = z.infer<typeof updateAccountSchema>;
 export type InsertOrganization = z.infer<typeof insertOrganizationSchema>;
 export type UpdateOrganization = z.infer<typeof updateOrganizationSchema>;
+export type Entity = typeof entities.$inferSelect;
+export type EntityOwner = typeof entityOwners.$inferSelect;
+export type EntityManager = typeof entityManagers.$inferSelect;
 export type InsertSpv = z.infer<typeof insertSpvSchema>;
 export type UpdateSpv = z.infer<typeof updateSpvSchema>;
+export type InsertEntity = z.infer<typeof insertEntitySchema>;
+export type UpdateEntity = z.infer<typeof updateEntitySchema>;
