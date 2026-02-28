@@ -232,8 +232,7 @@ export async function registerRoutes(
 
     if (isAdmin(me)) {
       const search = req.query.search as string | undefined;
-      const role = req.query.role as string | undefined;
-      const accountsList = await storage.getAccounts(search, role);
+      const accountsList = await storage.getAccounts(search);
       return res.json(accountsList.map(stripPasswordHash));
     }
 

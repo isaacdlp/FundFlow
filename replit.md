@@ -139,7 +139,8 @@ shared/
 - Auth endpoints: POST /api/auth/login, POST /api/auth/logout, GET /api/auth/me
 - Public routes (no auth required): /api/auth/login, /api/auth/me, /api/organizations/by-slug/:slug, /api/invites/:token, /api/invites/:token/accept, /api/organizations/:id/members/request, POST /api/accounts
 - All other /api routes require authentication (401 if not logged in)
-- **Admin** (role: "admin"): Full access to all resources
+- Only role: "admin" (GP and LP roles removed; fund manager/investor relationships determined by org/SPV/entity membership)
+- **Admin** (role: "admin"): Full access to all resources, can create organizations
 - **Non-admin**: Can only see own account, entities they manage, organizations they are member/organizer of, SPVs they are members of
 - Admin-only actions: create/delete organizations, delete accounts, delete SPVs/entities
 - Frontend: AuthProvider wraps app, useAuth() hook provides user/isAdmin/loginMutation/logoutMutation

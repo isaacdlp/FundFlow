@@ -285,42 +285,23 @@ export default function CreateAccount() {
               <h2 className="text-lg font-semibold">Roles</h2>
             </CardHeader>
             <CardContent className="space-y-4">
-              {[
-                {
-                  name: "admin",
-                  label: "Admin",
-                  description: "Platform administrator with full access to all features and settings",
-                },
-                {
-                  name: "gp",
-                  label: "GP (General Partner)",
-                  description: "Fund manager who can create and manage funds, view portfolio companies",
-                },
-                {
-                  name: "lp",
-                  label: "LP (Limited Partner)",
-                  description: "Investor who can view fund performance, capital calls, and distributions",
-                },
-              ].map((role) => (
-                <div
-                  key={role.name}
-                  className="flex items-start gap-3 p-4 rounded-md border"
-                  data-testid={`role-${role.name}`}
-                >
-                  <Checkbox
-                    id={`role-${role.name}`}
-                    checked={formData.roles.includes(role.name)}
-                    onCheckedChange={() => toggleRole(role.name)}
-                    data-testid={`checkbox-role-${role.name}`}
-                  />
-                  <div className="space-y-1">
-                    <label htmlFor={`role-${role.name}`} className="text-sm font-medium cursor-pointer">
-                      {role.label}
-                    </label>
-                    <p className="text-xs text-muted-foreground">{role.description}</p>
-                  </div>
+              <div
+                className="flex items-start gap-3 p-4 rounded-md border"
+                data-testid="role-admin"
+              >
+                <Checkbox
+                  id="role-admin"
+                  checked={formData.roles.includes("admin")}
+                  onCheckedChange={() => toggleRole("admin")}
+                  data-testid="checkbox-role-admin"
+                />
+                <div className="space-y-1">
+                  <label htmlFor="role-admin" className="text-sm font-medium cursor-pointer">
+                    Admin
+                  </label>
+                  <p className="text-xs text-muted-foreground">Platform administrator with full access to all features and settings</p>
                 </div>
-              ))}
+              </div>
             </CardContent>
           </Card>
 

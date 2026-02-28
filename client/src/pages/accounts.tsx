@@ -14,32 +14,21 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Plus, Search, ChevronRight } from "lucide-react";
 import { useState } from "react";
 
 export default function Accounts() {
   const [search, setSearch] = useState("");
-  const [roleFilter, setRoleFilter] = useState("all");
-
   const { data: accounts, isLoading } = useQuery<AccountWithRoles[]>({
     queryKey: ["/api/accounts"],
   });
 
   const filtered = accounts?.filter((account) => {
-    const matchesSearch =
+    return (
       !search ||
       `${account.firstName} ${account.lastName}`.toLowerCase().includes(search.toLowerCase()) ||
-      account.email.toLowerCase().includes(search.toLowerCase());
-    const matchesRole =
-      roleFilter === "all" || account.roles.some((r) => r.name === roleFilter);
-    return matchesSearch && matchesRole;
+      account.email.toLowerCase().includes(search.toLowerCase())
+    );
   });
 
   return (
@@ -48,7 +37,7 @@ export default function Accounts() {
         <div>
           <h1 className="text-2xl font-semibold" data-testid="text-page-title">Accounts</h1>
           <p className="text-muted-foreground mt-1">
-            Manage users, investors, and fund managers
+            Manage user accounts and permissions
           </p>
         </div>
         <Link href="/accounts/new">
@@ -72,17 +61,6 @@ export default function Accounts() {
                 data-testid="input-search"
               />
             </div>
-            <Select value={roleFilter} onValueChange={setRoleFilter}>
-              <SelectTrigger className="w-[160px]" data-testid="select-role-filter">
-                <SelectValue placeholder="All Roles" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Roles</SelectItem>
-                <SelectItem value="admin">Admin</SelectItem>
-                <SelectItem value="gp">GP (Fund Manager)</SelectItem>
-                <SelectItem value="lp">LP (Investor)</SelectItem>
-              </SelectContent>
-            </Select>
           </div>
         </CardHeader>
         <CardContent>
@@ -127,13 +105,7 @@ export default function Accounts() {
                           {account.roles.map((role) => (
                             <Badge
                               key={role.id}
-                              variant={
-                                role.name === "admin"
-                                  ? "destructive"
-                                  : role.name === "gp"
-                                    ? "default"
-                                    : "secondary"
-                              }
+                              variant={role.name === "admin" ? "destructive" : "secondary"}
                             >
                               {role.name.toUpperCase()}
                             </Badge>
@@ -160,8 +132,8 @@ export default function Accounts() {
           ) : (
             <div className="text-center py-12">
               <p className="text-muted-foreground">
-                {search || roleFilter !== "all"
-                  ? "No accounts match your filters."
+                {search
+                  ? "No accounts match your search."
                   : "No accounts yet. Click \"Add Account\" to create one."}
               </p>
             </div>

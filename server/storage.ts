@@ -72,7 +72,7 @@ export interface EntityManagerWithAccount extends EntityManager {
 
 export interface IStorage {
   getRoles(): Promise<Role[]>;
-  getAccounts(search?: string, roleFilter?: string): Promise<AccountWithRoles[]>;
+  getAccounts(search?: string): Promise<AccountWithRoles[]>;
   getAccount(id: number): Promise<AccountWithRoles | undefined>;
   getAccountByEmail(email: string): Promise<Account | undefined>;
   verifyPassword(accountId: number, password: string): Promise<boolean>;
@@ -190,9 +190,7 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(roles).orderBy(roles.id);
   }
 
-  async getAccounts(search?: string, roleFilter?: string): Promise<AccountWithRoles[]> {
-    let query = db.select().from(accounts).orderBy(sql`${accounts.createdAt} DESC`);
-
+  async getAccounts(search?: string): Promise<AccountWithRoles[]> {
     let accountList: Account[];
     if (search) {
       const pattern = `%${search}%`;
@@ -204,16 +202,10 @@ export class DatabaseStorage implements IStorage {
         ))
         .orderBy(sql`${accounts.createdAt} DESC`);
     } else {
-      accountList = await query;
+      accountList = await db.select().from(accounts).orderBy(sql`${accounts.createdAt} DESC`);
     }
 
-    let withRoles = await attachRoles(accountList);
-
-    if (roleFilter && roleFilter !== "all") {
-      withRoles = withRoles.filter(a => a.roles.some(r => r.name === roleFilter));
-    }
-
-    return withRoles;
+    return attachRoles(accountList);
   }
 
   async getAccount(id: number): Promise<AccountWithRoles | undefined> {
@@ -793,8 +785,6 @@ export class DatabaseStorage implements IStorage {
     if (existingRoles.length === 0) {
       await db.insert(roles).values([
         { name: "admin", description: "Platform administrator with full access" },
-        { name: "gp", description: "General Partner - Fund manager" },
-        { name: "lp", description: "Limited Partner - Investor in funds" },
       ]);
     }
 
@@ -859,11 +849,7 @@ export class DatabaseStorage implements IStorage {
 
       const roleAssignments = [
         { email: "isaac@conexo.vc", roles: ["admin"] },
-        { email: "adrian.montoya@gmail.com", roles: ["lp"] },
-        { email: "sarah.chen@globalvc.com", roles: ["gp", "lp"] },
-        { email: "james.wright@capitalpartners.co", roles: ["gp"] },
-        { email: "maria.rodriguez@fundmgmt.es", roles: ["admin", "gp"] },
-        { email: "david.kim@asiaventures.kr", roles: ["lp"] },
+        { email: "maria.rodriguez@fundmgmt.es", roles: ["admin"] },
       ];
 
       for (const assignment of roleAssignments) {

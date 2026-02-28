@@ -218,13 +218,7 @@ export default function AccountDetail() {
             {account.roles.map((role) => (
               <Badge
                 key={role.id}
-                variant={
-                  role.name === "admin"
-                    ? "destructive"
-                    : role.name === "gp"
-                      ? "default"
-                      : "secondary"
-                }
+                variant={role.name === "admin" ? "destructive" : "secondary"}
               >
                 {role.name.toUpperCase()}
               </Badge>
@@ -568,49 +562,27 @@ export default function AccountDetail() {
               )}
             </CardHeader>
             <CardContent className="space-y-4">
-              {[
-                {
-                  name: "admin",
-                  label: "Admin",
-                  description: "Platform administrator with full access to all features and settings",
-                },
-                {
-                  name: "gp",
-                  label: "GP (General Partner)",
-                  description: "Fund manager who can create and manage funds, view portfolio companies",
-                },
-                {
-                  name: "lp",
-                  label: "LP (Limited Partner)",
-                  description: "Investor who can view fund performance, capital calls, and distributions",
-                },
-              ].map((role) => {
-                const isChecked = ((formData.roles as string[]) || []).includes(role.name);
-                return (
-                  <div
-                    key={role.name}
-                    className="flex items-start gap-3 p-4 rounded-md border"
-                    data-testid={`role-${role.name}`}
+              <div
+                className="flex items-start gap-3 p-4 rounded-md border"
+                data-testid="role-admin"
+              >
+                <Checkbox
+                  id="role-admin"
+                  checked={((formData.roles as string[]) || []).includes("admin")}
+                  onCheckedChange={() => editing && toggleRole("admin")}
+                  disabled={!editing}
+                  data-testid="checkbox-role-admin"
+                />
+                <div className="space-y-1">
+                  <label
+                    htmlFor="role-admin"
+                    className="text-sm font-medium cursor-pointer"
                   >
-                    <Checkbox
-                      id={`role-${role.name}`}
-                      checked={isChecked}
-                      onCheckedChange={() => editing && toggleRole(role.name)}
-                      disabled={!editing}
-                      data-testid={`checkbox-role-${role.name}`}
-                    />
-                    <div className="space-y-1">
-                      <label
-                        htmlFor={`role-${role.name}`}
-                        className="text-sm font-medium cursor-pointer"
-                      >
-                        {role.label}
-                      </label>
-                      <p className="text-xs text-muted-foreground">{role.description}</p>
-                    </div>
-                  </div>
-                );
-              })}
+                    Admin
+                  </label>
+                  <p className="text-xs text-muted-foreground">Platform administrator with full access to all features and settings</p>
+                </div>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
