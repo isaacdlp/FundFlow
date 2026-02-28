@@ -32,6 +32,8 @@ client/                   # React frontend
       organization-detail.tsx  # Org detail with Settings, Organizers, Members & Invites tabs
       create-organization.tsx  # New organization creation form
       org-landing.tsx     # Public landing page at /org/:slug (no sidebar)
+      create-spv.tsx      # Create new SPV form (5 sections)
+      spv-detail.tsx      # SPV detail with Configuration and Members tabs
     lib/
       queryClient.ts      # TanStack Query configuration
 server/
@@ -52,6 +54,8 @@ shared/
 - `organization_organizers` - Many-to-many organization-account associations (Organizer role)
 - `organization_members` - Membership requests with status (pending/approved/rejected), optional inviteId
 - `organization_invites` - Single-use invite tokens with used/usedByAccountId tracking
+- `spvs` - Special Purpose Vehicles with full entity details (legal, address, bank, investment)
+- `spv_members` - Many-to-many SPV-account associations
 
 ## API Endpoints
 ### Accounts
@@ -87,6 +91,16 @@ shared/
 - `GET /api/invites/:token` - Validate invite token, returns org info
 - `POST /api/invites/:token/accept` - Accept invite (body: {accountId} or {email, password, firstName, lastName} for new account), auto-approves membership
 
+### SPVs
+- `GET /api/organizations/:id/spvs` - List SPVs for an organization
+- `GET /api/spvs/:id` - Get single SPV with manager/signatory info and member count
+- `POST /api/organizations/:id/spvs` - Create SPV
+- `PATCH /api/spvs/:id` - Update SPV
+- `DELETE /api/spvs/:id` - Delete SPV
+- `GET /api/spvs/:id/members` - List SPV members with account info
+- `POST /api/spvs/:id/members` - Add member to SPV (body: {accountId})
+- `DELETE /api/spvs/:id/members/:accountId` - Remove member from SPV
+
 ## Public Landing Page
 - Route: `/org/:slug` — standalone page (no sidebar layout)
 - Shows org info (name, description, website, location)
@@ -105,7 +119,7 @@ shared/
 - Frontend uses TanStack Query v5 for data fetching
 - Frontend uses wouter for routing
 - Organizations auto-generate slugs on creation (from name, URL-friendly)
-- Organization detail has 4 tabs: Settings, Organizers, Members, Invites
+- Organization detail has 5 tabs: Settings, Organizers, SPVs, Members, Invites
 - Members tab shows pending/approved/rejected with approve/reject/remove actions
 - Invites tab shows landing page URL, generate/copy invite links
 - Only Admin can create/destroy organizations; both Admin and Organizer can manage org settings

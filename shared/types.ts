@@ -74,6 +74,63 @@ export interface OrganizationPublic {
   stateProvince: string | null;
 }
 
+export interface SpvInfo {
+  id: number;
+  organizationId: number;
+  legalName: string;
+  displayName: string;
+  entityType: string | null;
+  stateOfIncorporation: string | null;
+  ein: string | null;
+  dateEstablished: string | null;
+  dateEnded: string | null;
+  allocationMethod: string | null;
+  currency: string | null;
+  managementFeePercent: string | null;
+  carriedInterestPercent: string | null;
+  preferredReturnPercent: string | null;
+  country: string | null;
+  streetAddress: string | null;
+  streetAddress2: string | null;
+  city: string | null;
+  stateProvince: string | null;
+  zipPostalCode: string | null;
+  county: string | null;
+  managerId: number | null;
+  signatoryId: number | null;
+  bankName: string | null;
+  bankAddress: string | null;
+  bankRoutingNumber: string | null;
+  bankSwiftCode: string | null;
+  bankAccountNumber: string | null;
+  bankAccountName: string | null;
+  forFurtherCreditTo: string | null;
+  wiringInstructions: string | null;
+  investmentCompanyName: string | null;
+  investmentType: string | null;
+  totalBeingRaised: string | null;
+  minimumInvestment: string | null;
+  expectedClosingDate: string | null;
+  createdAt: string;
+  updatedAt: string;
+  manager?: { id: number; email: string; firstName: string; lastName: string } | null;
+  signatory?: { id: number; email: string; firstName: string; lastName: string } | null;
+  memberCount: number;
+}
+
+export interface SpvMemberInfo {
+  id: number;
+  spvId: number;
+  accountId: number;
+  createdAt: string;
+  account: {
+    id: number;
+    email: string;
+    firstName: string;
+    lastName: string;
+  };
+}
+
 export interface AccountWithRoles {
   id: number;
   email: string;

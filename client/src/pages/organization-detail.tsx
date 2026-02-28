@@ -1,6 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useRoute, Link } from "wouter";
-import type { OrganizationWithOrganizers, AccountWithRoles, MemberInfo, InviteInfo } from "@shared/types";
+import { useRoute, Link, useLocation } from "wouter";
+import type { OrganizationWithOrganizers, AccountWithRoles, MemberInfo, InviteInfo, SpvInfo } from "@shared/types";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -17,7 +17,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ArrowLeft, Pencil, Save, X, UserPlus, UserMinus, Building2, Check, Ban, Copy, Link2, Trash2 } from "lucide-react";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { ArrowLeft, Pencil, Save, X, UserPlus, UserMinus, Building2, Check, Ban, Copy, Link2, Trash2, Plus, FileText } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -202,6 +203,127 @@ function MembersTab({ orgId }: { orgId: string }) {
           </CardContent>
         </Card>
       )}
+    </div>
+  );
+}
+
+function SpvsTab({ orgId }: { orgId: string }) {
+  const { toast } = useToast();
+  const [, navigate] = useLocation();
+
+  const { data: spvsList, isLoading } = useQuery<SpvInfo[]>({
+    queryKey: ["/api/organizations", orgId, "spvs"],
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (spvId: number) => {
+      const res = await apiRequest("DELETE", `/api/spvs/${spvId}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/organizations", orgId, "spvs"] });
+      toast({ title: "SPV deleted" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Failed to delete SPV", description: error.message, variant: "destructive" });
+    },
+  });
+
+  if (isLoading) return <Skeleton className="h-64 w-full" />;
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0">
+          <div>
+            <h2 className="text-lg font-semibold">Special Purpose Vehicles</h2>
+            <p className="text-sm text-muted-foreground mt-1">
+              SPVs created within this organization
+            </p>
+          </div>
+          <Link href={`/organizations/${orgId}/spvs/new`}>
+            <Button data-testid="button-add-spv">
+              <Plus className="h-4 w-4 mr-2" />
+              Add SPV
+            </Button>
+          </Link>
+        </CardHeader>
+        <CardContent>
+          {spvsList && spvsList.length > 0 ? (
+            <div className="rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Entity Type</TableHead>
+                    <TableHead className="text-center">Members</TableHead>
+                    <TableHead>Manager</TableHead>
+                    <TableHead>Total Being Raised</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {spvsList.map(spv => (
+                    <TableRow key={spv.id} data-testid={`spv-row-${spv.id}`}>
+                      <TableCell>
+                        <Link href={`/spvs/${spv.id}`}>
+                          <div className="cursor-pointer">
+                            <p className="text-sm font-medium hover:underline" data-testid={`text-spv-name-${spv.id}`}>
+                              {spv.displayName}
+                            </p>
+                            <p className="text-xs text-muted-foreground">{spv.legalName}</p>
+                          </div>
+                        </Link>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{spv.entityType || "LLC"}</Badge>
+                      </TableCell>
+                      <TableCell className="text-center">{spv.memberCount}</TableCell>
+                      <TableCell>
+                        {spv.manager ? (
+                          <span className="text-sm">{spv.manager.firstName} {spv.manager.lastName}</span>
+                        ) : (
+                          <span className="text-sm text-muted-foreground">Not assigned</span>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {parseFloat(spv.totalBeingRaised || "0") > 0 ? (
+                          <span className="text-sm font-medium">
+                            ${parseFloat(spv.totalBeingRaised || "0").toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </span>
+                        ) : (
+                          <span className="text-sm text-muted-foreground">$0.00</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex gap-1 justify-end">
+                          <Button variant="ghost" size="icon" onClick={() => navigate(`/spvs/${spv.id}`)} data-testid={`button-view-spv-${spv.id}`}>
+                            <FileText className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => deleteMutation.mutate(spv.id)}
+                            disabled={deleteMutation.isPending}
+                            data-testid={`button-delete-spv-${spv.id}`}
+                          >
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          ) : (
+            <div className="text-center py-12">
+              <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+              <p className="text-muted-foreground">No SPVs created yet. Click "Add SPV" to create one.</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
@@ -490,6 +612,7 @@ export default function OrganizationDetail() {
         <TabsList>
           <TabsTrigger value="settings" data-testid="tab-settings">Settings</TabsTrigger>
           <TabsTrigger value="organizers" data-testid="tab-organizers">Organizers</TabsTrigger>
+          <TabsTrigger value="spvs" data-testid="tab-spvs">SPVs</TabsTrigger>
           <TabsTrigger value="members" data-testid="tab-members">Members</TabsTrigger>
           <TabsTrigger value="invites" data-testid="tab-invites">Invites</TabsTrigger>
         </TabsList>
@@ -699,6 +822,10 @@ export default function OrganizationDetail() {
               )}
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="spvs" className="mt-6">
+          <SpvsTab orgId={orgId!} />
         </TabsContent>
 
         <TabsContent value="members" className="mt-6">

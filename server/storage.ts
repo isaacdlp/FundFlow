@@ -2,10 +2,11 @@ import { eq, ilike, or, sql, and } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import {
   accounts, roles, accountRoles, organizations, organizationOrganizers,
-  organizationMembers, organizationInvites,
+  organizationMembers, organizationInvites, spvs, spvMembers,
   type Account, type Role, type InsertAccount, type UpdateAccount,
   type Organization, type InsertOrganization, type UpdateOrganization,
   type OrganizationMember, type OrganizationInvite,
+  type Spv, type SpvMember, type InsertSpv, type UpdateSpv,
 } from "@shared/schema";
 import crypto from "crypto";
 
@@ -39,6 +40,16 @@ export interface InviteWithAccount extends OrganizationInvite {
   usedByAccount?: { id: number; email: string; firstName: string; lastName: string } | null;
 }
 
+export interface SpvWithDetails extends Spv {
+  manager?: { id: number; email: string; firstName: string; lastName: string } | null;
+  signatory?: { id: number; email: string; firstName: string; lastName: string } | null;
+  memberCount: number;
+}
+
+export interface SpvMemberWithAccount extends SpvMember {
+  account: { id: number; email: string; firstName: string; lastName: string };
+}
+
 export interface IStorage {
   getRoles(): Promise<Role[]>;
   getAccounts(search?: string, roleFilter?: string): Promise<AccountWithRoles[]>;
@@ -68,6 +79,15 @@ export interface IStorage {
   createInvite(organizationId: number): Promise<OrganizationInvite>;
   getInviteByToken(token: string): Promise<InviteWithAccount | undefined>;
   useInvite(token: string, accountId: number): Promise<void>;
+
+  getSpvs(organizationId: number): Promise<SpvWithDetails[]>;
+  getSpv(id: number): Promise<SpvWithDetails | undefined>;
+  createSpv(data: InsertSpv): Promise<SpvWithDetails>;
+  updateSpv(id: number, data: UpdateSpv): Promise<SpvWithDetails | undefined>;
+  deleteSpv(id: number): Promise<boolean>;
+  getSpvMembers(spvId: number): Promise<SpvMemberWithAccount[]>;
+  addSpvMember(spvId: number, accountId: number): Promise<SpvMemberWithAccount>;
+  removeSpvMember(spvId: number, accountId: number): Promise<boolean>;
 
   seedData(): Promise<void>;
 }
@@ -436,6 +456,92 @@ export class DatabaseStorage implements IStorage {
     await db.update(organizationInvites)
       .set({ used: true, usedByAccountId: accountId })
       .where(eq(organizationInvites.token, token));
+  }
+
+  private async enrichSpv(spv: Spv): Promise<SpvWithDetails> {
+    const manager = spv.managerId ? await getAccountSummary(spv.managerId) : null;
+    const signatory = spv.signatoryId ? await getAccountSummary(spv.signatoryId) : null;
+    const members = await db.select().from(spvMembers).where(eq(spvMembers.spvId, spv.id));
+    return { ...spv, manager, signatory, memberCount: members.length };
+  }
+
+  async getSpvs(organizationId: number): Promise<SpvWithDetails[]> {
+    const spvList = await db.select().from(spvs)
+      .where(eq(spvs.organizationId, organizationId))
+      .orderBy(sql`${spvs.createdAt} DESC`);
+    return Promise.all(spvList.map(s => this.enrichSpv(s)));
+  }
+
+  async getSpv(id: number): Promise<SpvWithDetails | undefined> {
+    const [spv] = await db.select().from(spvs).where(eq(spvs.id, id));
+    if (!spv) return undefined;
+    return this.enrichSpv(spv);
+  }
+
+  async createSpv(data: InsertSpv): Promise<SpvWithDetails> {
+    const [spv] = await db.insert(spvs).values(data).returning();
+    return this.enrichSpv(spv);
+  }
+
+  async updateSpv(id: number, data: UpdateSpv): Promise<SpvWithDetails | undefined> {
+    const existing = await this.getSpv(id);
+    if (!existing) return undefined;
+
+    const updateFields: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(data)) {
+      if (value !== undefined) {
+        updateFields[key] = value;
+      }
+    }
+
+    if (Object.keys(updateFields).length > 0) {
+      updateFields.updatedAt = new Date();
+      await db.update(spvs).set(updateFields).where(eq(spvs.id, id));
+    }
+
+    return this.getSpv(id);
+  }
+
+  async deleteSpv(id: number): Promise<boolean> {
+    const result = await db.delete(spvs).where(eq(spvs.id, id)).returning();
+    return result.length > 0;
+  }
+
+  async getSpvMembers(spvId: number): Promise<SpvMemberWithAccount[]> {
+    const members = await db.select().from(spvMembers)
+      .where(eq(spvMembers.spvId, spvId))
+      .orderBy(sql`${spvMembers.createdAt} DESC`);
+
+    const result: SpvMemberWithAccount[] = [];
+    for (const m of members) {
+      const acct = await getAccountSummary(m.accountId);
+      if (acct) {
+        result.push({ ...m, account: acct });
+      }
+    }
+    return result;
+  }
+
+  async addSpvMember(spvId: number, accountId: number): Promise<SpvMemberWithAccount> {
+    const [member] = await db.insert(spvMembers).values({ spvId, accountId })
+      .onConflictDoNothing().returning();
+
+    if (!member) {
+      const [existing] = await db.select().from(spvMembers)
+        .where(and(eq(spvMembers.spvId, spvId), eq(spvMembers.accountId, accountId)));
+      const acct = await getAccountSummary(accountId);
+      return { ...existing, account: acct! };
+    }
+
+    const acct = await getAccountSummary(accountId);
+    return { ...member, account: acct! };
+  }
+
+  async removeSpvMember(spvId: number, accountId: number): Promise<boolean> {
+    const result = await db.delete(spvMembers)
+      .where(and(eq(spvMembers.spvId, spvId), eq(spvMembers.accountId, accountId)))
+      .returning();
+    return result.length > 0;
   }
 
   async seedData(): Promise<void> {

@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { type Server } from "http";
 import { storage } from "./storage";
-import { insertAccountSchema, updateAccountSchema, insertOrganizationSchema, updateOrganizationSchema } from "@shared/schema";
+import { insertAccountSchema, updateAccountSchema, insertOrganizationSchema, updateOrganizationSchema, insertSpvSchema, updateSpvSchema } from "@shared/schema";
 import { ZodError } from "zod";
 import { fromZodError } from "zod-validation-error";
 
@@ -285,6 +285,89 @@ export async function registerRoutes(
     await storage.useInvite(req.params.token, accountId);
     const member = await storage.createMemberRequest(invite.organizationId, accountId, invite.id);
     res.json({ member, message: "Invite accepted. You are now a member of this organization." });
+  });
+
+  app.get("/api/organizations/:id/spvs", async (req, res) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    const spvsList = await storage.getSpvs(id);
+    res.json(spvsList);
+  });
+
+  app.get("/api/spvs/:id", async (req, res) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    const spv = await storage.getSpv(id);
+    if (!spv) return res.status(404).json({ message: "SPV not found" });
+    res.json(spv);
+  });
+
+  app.post("/api/organizations/:id/spvs", async (req, res) => {
+    const orgId = parseInt(req.params.id);
+    if (isNaN(orgId)) return res.status(400).json({ message: "Invalid ID" });
+    const org = await storage.getOrganization(orgId);
+    if (!org) return res.status(404).json({ message: "Organization not found" });
+    try {
+      const data = insertSpvSchema.parse({ ...req.body, organizationId: orgId });
+      const spv = await storage.createSpv(data);
+      res.status(201).json(spv);
+    } catch (e) {
+      if (e instanceof ZodError) {
+        return res.status(400).json({ message: fromZodError(e).message });
+      }
+      throw e;
+    }
+  });
+
+  app.patch("/api/spvs/:id", async (req, res) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    try {
+      const data = updateSpvSchema.parse(req.body);
+      const spv = await storage.updateSpv(id, data);
+      if (!spv) return res.status(404).json({ message: "SPV not found" });
+      res.json(spv);
+    } catch (e) {
+      if (e instanceof ZodError) {
+        return res.status(400).json({ message: fromZodError(e).message });
+      }
+      throw e;
+    }
+  });
+
+  app.delete("/api/spvs/:id", async (req, res) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    const deleted = await storage.deleteSpv(id);
+    if (!deleted) return res.status(404).json({ message: "SPV not found" });
+    res.json({ message: "SPV deleted" });
+  });
+
+  app.get("/api/spvs/:id/members", async (req, res) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    const members = await storage.getSpvMembers(id);
+    res.json(members);
+  });
+
+  app.post("/api/spvs/:id/members", async (req, res) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    const { accountId } = req.body;
+    if (!accountId) return res.status(400).json({ message: "accountId is required" });
+    const spv = await storage.getSpv(id);
+    if (!spv) return res.status(404).json({ message: "SPV not found" });
+    const member = await storage.addSpvMember(id, parseInt(accountId));
+    res.status(201).json(member);
+  });
+
+  app.delete("/api/spvs/:id/members/:accountId", async (req, res) => {
+    const id = parseInt(req.params.id);
+    const accountId = parseInt(req.params.accountId);
+    if (isNaN(id) || isNaN(accountId)) return res.status(400).json({ message: "Invalid ID" });
+    const removed = await storage.removeSpvMember(id, accountId);
+    if (!removed) return res.status(404).json({ message: "SPV member not found" });
+    res.json({ message: "Member removed from SPV" });
   });
 
   return httpServer;
