@@ -18,9 +18,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, Pencil, Save, X } from "lucide-react";
+import { ArrowLeft, Pencil, Save, X, Loader2, Mail, KeyRound } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
 
 const COUNTRIES = [
   "United States", "United Kingdom", "Spain", "Germany", "France",
@@ -39,8 +40,13 @@ export default function AccountDetail() {
   const [, params] = useRoute("/accounts/:id");
   const accountId = params?.id;
   const { toast } = useToast();
+  const { user } = useAuth();
   const [editing, setEditing] = useState(false);
   const [activeTab, setActiveTab] = useState("personal");
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const isOwnAccount = user && accountId && String(user.id) === String(accountId);
 
   const { data: account, isLoading } = useQuery<AccountWithRoles>({
     queryKey: ["/api/accounts", accountId],
@@ -84,6 +90,49 @@ export default function AccountDetail() {
       toast({ title: "Failed to update profile", description: error.message, variant: "destructive" });
     },
   });
+
+  const changePasswordMutation = useMutation({
+    mutationFn: async (data: { currentPassword: string; newPassword: string }) => {
+      const res = await apiRequest("POST", "/api/auth/change-password", data);
+      return res.json();
+    },
+    onSuccess: () => {
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      toast({ title: "Password changed successfully" });
+    },
+    onError: (error: Error) => {
+      let desc = error.message;
+      try { desc = JSON.parse(desc.replace(/^\d+:\s*/, "")).message; } catch {}
+      toast({ title: "Failed to change password", description: desc, variant: "destructive" });
+    },
+  });
+
+  const sendResetMutation = useMutation({
+    mutationFn: async (email: string) => {
+      const res = await apiRequest("POST", "/api/auth/forgot-password", { email });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Password reset email sent", description: "A reset link has been sent to the user's email address." });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Failed to send reset email", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const handleChangePassword = () => {
+    if (newPassword !== confirmPassword) {
+      toast({ title: "Passwords do not match", variant: "destructive" });
+      return;
+    }
+    if (newPassword.length < 6) {
+      toast({ title: "New password must be at least 6 characters", variant: "destructive" });
+      return;
+    }
+    changePasswordMutation.mutate({ currentPassword, newPassword });
+  };
 
   const handleSave = () => {
     updateMutation.mutate(formData);
@@ -393,12 +442,87 @@ export default function AccountDetail() {
                 <Label>Email Address</Label>
                 <Input value={account.email} disabled data-testid="input-login-email" />
               </div>
-              <div className="space-y-2">
-                <Label>Password</Label>
-                <Input type="password" value="password-hidden" disabled />
-                <p className="text-xs text-muted-foreground">
-                  Password management will be available in a future update.
-                </p>
+              <Separator />
+              <div className="space-y-4">
+                <div className="flex items-center gap-2">
+                  <KeyRound className="h-4 w-4 text-muted-foreground" />
+                  <Label className="text-base font-medium">Password</Label>
+                </div>
+                {isOwnAccount ? (
+                  <div className="space-y-3">
+                    <div className="space-y-2">
+                      <Label htmlFor="currentPassword">Current Password</Label>
+                      <Input
+                        id="currentPassword"
+                        type="password"
+                        value={currentPassword}
+                        onChange={(e) => setCurrentPassword(e.target.value)}
+                        placeholder="Enter current password"
+                        data-testid="input-current-password"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="newPassword">New Password</Label>
+                      <Input
+                        id="newPassword"
+                        type="password"
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        placeholder="Enter new password (min 6 characters)"
+                        data-testid="input-new-password"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="confirmPassword">Confirm New Password</Label>
+                      <Input
+                        id="confirmPassword"
+                        type="password"
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        placeholder="Confirm new password"
+                        data-testid="input-confirm-password"
+                      />
+                    </div>
+                    <Button
+                      onClick={handleChangePassword}
+                      disabled={changePasswordMutation.isPending || !currentPassword || !newPassword || !confirmPassword}
+                      data-testid="button-change-password"
+                    >
+                      {changePasswordMutation.isPending ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Changing...
+                        </>
+                      ) : (
+                        "Change Password"
+                      )}
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <p className="text-sm text-muted-foreground">
+                      Send a password reset link to this user's email address.
+                    </p>
+                    <Button
+                      variant="outline"
+                      onClick={() => account && sendResetMutation.mutate(account.email)}
+                      disabled={sendResetMutation.isPending}
+                      data-testid="button-send-reset-email"
+                    >
+                      {sendResetMutation.isPending ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Sending...
+                        </>
+                      ) : (
+                        <>
+                          <Mail className="h-4 w-4 mr-2" />
+                          Send Password Reset Email
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                )}
               </div>
               <div className="space-y-2">
                 <Label>Account Created</Label>
