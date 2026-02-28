@@ -7,6 +7,7 @@ import {
   FolderKanban,
   Settings,
   TrendingUp,
+  FileText,
 } from "lucide-react";
 import {
   Sidebar,
@@ -25,6 +26,7 @@ const mainNav = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
   { title: "Organizations", url: "/organizations", icon: Building2 },
   { title: "Funds", url: "/funds", icon: Briefcase },
+  { title: "SPVs", url: "/spvs", icon: FileText },
   { title: "Portfolio", url: "/portfolio", icon: TrendingUp },
   { title: "Accounts", url: "/accounts", icon: Users },
 ];

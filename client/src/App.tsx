@@ -14,6 +14,7 @@ import Organizations from "@/pages/organizations";
 import OrganizationDetail from "@/pages/organization-detail";
 import CreateOrganization from "@/pages/create-organization";
 import OrgLanding from "@/pages/org-landing";
+import Spvs from "@/pages/spvs";
 import CreateSpv from "@/pages/create-spv";
 import SpvDetail from "@/pages/spv-detail";
 
@@ -28,6 +29,7 @@ function AdminRouter() {
       <Route path="/organizations/new" component={CreateOrganization} />
       <Route path="/organizations/:orgId/spvs/new" component={CreateSpv} />
       <Route path="/organizations/:id" component={OrganizationDetail} />
+      <Route path="/spvs" component={Spvs} />
       <Route path="/spvs/:id" component={SpvDetail} />
       <Route component={NotFound} />
     </Switch>

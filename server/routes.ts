@@ -287,6 +287,11 @@ export async function registerRoutes(
     res.json({ member, message: "Invite accepted. You are now a member of this organization." });
   });
 
+  app.get("/api/spvs", async (req, res) => {
+    const spvsList = await storage.getAllSpvs();
+    res.json(spvsList);
+  });
+
   app.get("/api/organizations/:id/spvs", async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });

@@ -44,6 +44,7 @@ export interface SpvWithDetails extends Spv {
   manager?: { id: number; email: string; firstName: string; lastName: string } | null;
   signatory?: { id: number; email: string; firstName: string; lastName: string } | null;
   memberCount: number;
+  organization?: { id: number; name: string; slug: string } | null;
 }
 
 export interface SpvMemberWithAccount extends SpvMember {
@@ -80,6 +81,7 @@ export interface IStorage {
   getInviteByToken(token: string): Promise<InviteWithAccount | undefined>;
   useInvite(token: string, accountId: number): Promise<void>;
 
+  getAllSpvs(): Promise<SpvWithDetails[]>;
   getSpvs(organizationId: number): Promise<SpvWithDetails[]>;
   getSpv(id: number): Promise<SpvWithDetails | undefined>;
   createSpv(data: InsertSpv): Promise<SpvWithDetails>;
@@ -463,6 +465,21 @@ export class DatabaseStorage implements IStorage {
     const signatory = spv.signatoryId ? await getAccountSummary(spv.signatoryId) : null;
     const members = await db.select().from(spvMembers).where(eq(spvMembers.spvId, spv.id));
     return { ...spv, manager, signatory, memberCount: members.length };
+  }
+
+  async getAllSpvs(): Promise<SpvWithDetails[]> {
+    const spvList = await db.select().from(spvs)
+      .orderBy(sql`${spvs.createdAt} DESC`);
+    const enriched = await Promise.all(spvList.map(s => this.enrichSpv(s)));
+    for (const spv of enriched) {
+      const [org] = await db.select({
+        id: organizations.id,
+        name: organizations.name,
+        slug: organizations.slug,
+      }).from(organizations).where(eq(organizations.id, spv.organizationId));
+      spv.organization = org || null;
+    }
+    return enriched;
   }
 
   async getSpvs(organizationId: number): Promise<SpvWithDetails[]> {

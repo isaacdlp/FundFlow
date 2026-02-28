@@ -32,6 +32,7 @@ client/                   # React frontend
       organization-detail.tsx  # Org detail with Settings, Organizers, Members & Invites tabs
       create-organization.tsx  # New organization creation form
       org-landing.tsx     # Public landing page at /org/:slug (no sidebar)
+      spvs.tsx            # Top-level SPVs listing page with search
       create-spv.tsx      # Create new SPV form (5 sections)
       spv-detail.tsx      # SPV detail with Configuration and Members tabs
     lib/
@@ -92,6 +93,7 @@ shared/
 - `POST /api/invites/:token/accept` - Accept invite (body: {accountId} or {email, password, firstName, lastName} for new account), auto-approves membership
 
 ### SPVs
+- `GET /api/spvs` - List all SPVs across organizations (with org info)
 - `GET /api/organizations/:id/spvs` - List SPVs for an organization
 - `GET /api/spvs/:id` - Get single SPV with manager/signatory info and member count
 - `POST /api/organizations/:id/spvs` - Create SPV

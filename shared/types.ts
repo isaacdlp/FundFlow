@@ -116,6 +116,7 @@ export interface SpvInfo {
   manager?: { id: number; email: string; firstName: string; lastName: string } | null;
   signatory?: { id: number; email: string; firstName: string; lastName: string } | null;
   memberCount: number;
+  organization?: { id: number; name: string; slug: string } | null;
 }
 
 export interface SpvMemberInfo {
