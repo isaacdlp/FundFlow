@@ -120,6 +120,10 @@ export interface IStorage {
   addEntityManager(entityId: number, accountId: number): Promise<EntityManagerWithAccount>;
   removeEntityManager(entityId: number, accountId: number): Promise<boolean>;
 
+  getOrganizationIdsForAccount(accountId: number): Promise<number[]>;
+  getEntityIdsForAccount(accountId: number): Promise<number[]>;
+  getSpvIdsForAccount(accountId: number): Promise<number[]>;
+
   seedData(): Promise<void>;
 }
 
@@ -723,6 +727,31 @@ export class DatabaseStorage implements IStorage {
       .where(and(eq(entityManagers.entityId, entityId), eq(entityManagers.accountId, accountId)))
       .returning();
     return result.length > 0;
+  }
+
+  async getOrganizationIdsForAccount(accountId: number): Promise<number[]> {
+    const asOrganizer = await db.select({ id: organizationOrganizers.organizationId })
+      .from(organizationOrganizers)
+      .where(eq(organizationOrganizers.accountId, accountId));
+    const asMember = await db.select({ id: organizationMembers.organizationId })
+      .from(organizationMembers)
+      .where(and(eq(organizationMembers.accountId, accountId), eq(organizationMembers.status, "approved")));
+    const ids = new Set([...asOrganizer.map(r => r.id), ...asMember.map(r => r.id)]);
+    return Array.from(ids);
+  }
+
+  async getEntityIdsForAccount(accountId: number): Promise<number[]> {
+    const managed = await db.select({ id: entityManagers.entityId })
+      .from(entityManagers)
+      .where(eq(entityManagers.accountId, accountId));
+    return managed.map(r => r.id);
+  }
+
+  async getSpvIdsForAccount(accountId: number): Promise<number[]> {
+    const memberOf = await db.select({ id: spvMembers.spvId })
+      .from(spvMembers)
+      .where(eq(spvMembers.accountId, accountId));
+    return memberOf.map(r => r.id);
   }
 
   async seedData(): Promise<void> {

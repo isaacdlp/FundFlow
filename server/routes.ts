@@ -1,84 +1,42 @@
-import type { Express } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import { type Server } from "http";
 import { storage } from "./storage";
 import { insertAccountSchema, updateAccountSchema, insertOrganizationSchema, updateOrganizationSchema, insertSpvSchema, updateSpvSchema, insertEntitySchema, updateEntitySchema } from "@shared/schema";
 import { ZodError } from "zod";
 import { fromZodError } from "zod-validation-error";
+import type { AccountWithRoles } from "./storage";
 
 function stripPasswordHash(account: any) {
   const { passwordHash, ...rest } = account;
   return rest;
 }
 
+function requireAuth(req: Request, res: Response, next: NextFunction) {
+  if (!req.session.accountId) {
+    return res.status(401).json({ message: "Authentication required" });
+  }
+  next();
+}
+
+async function requireAdmin(req: Request, res: Response, next: NextFunction) {
+  if (!req.session.accountId) {
+    return res.status(401).json({ message: "Authentication required" });
+  }
+  const account = await storage.getAccount(req.session.accountId);
+  if (!account || !account.roles.some(r => r.name === "admin")) {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  next();
+}
+
+function isAdmin(account: AccountWithRoles): boolean {
+  return account.roles.some(r => r.name === "admin");
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
-
-  app.get("/api/roles", async (_req, res) => {
-    const roles = await storage.getRoles();
-    res.json(roles);
-  });
-
-  app.get("/api/accounts", async (req, res) => {
-    const search = req.query.search as string | undefined;
-    const role = req.query.role as string | undefined;
-    const accountsList = await storage.getAccounts(search, role);
-    res.json(accountsList.map(stripPasswordHash));
-  });
-
-  app.get("/api/accounts/:id", async (req, res) => {
-    const id = parseInt(req.params.id);
-    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
-    const account = await storage.getAccount(id);
-    if (!account) return res.status(404).json({ message: "Account not found" });
-    res.json(stripPasswordHash(account));
-  });
-
-  app.post("/api/accounts", async (req, res) => {
-    try {
-      const data = insertAccountSchema.parse(req.body);
-      const account = await storage.createAccount(data);
-      res.status(201).json(stripPasswordHash(account));
-    } catch (e) {
-      if (e instanceof ZodError) {
-        return res.status(400).json({ message: fromZodError(e).message });
-      }
-      const err = e as Error;
-      if (err.message?.includes("unique") || err.message?.includes("duplicate")) {
-        return res.status(409).json({ message: "An account with this email already exists" });
-      }
-      throw e;
-    }
-  });
-
-  app.patch("/api/accounts/:id", async (req, res) => {
-    const id = parseInt(req.params.id);
-    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
-    try {
-      const data = updateAccountSchema.parse(req.body);
-      const account = await storage.updateAccount(id, data);
-      if (!account) return res.status(404).json({ message: "Account not found" });
-      res.json(stripPasswordHash(account));
-    } catch (e) {
-      if (e instanceof ZodError) {
-        return res.status(400).json({ message: fromZodError(e).message });
-      }
-      const err = e as Error;
-      if (err.message?.includes("unique") || err.message?.includes("duplicate")) {
-        return res.status(409).json({ message: "An account with this email already exists" });
-      }
-      throw e;
-    }
-  });
-
-  app.delete("/api/accounts/:id", async (req, res) => {
-    const id = parseInt(req.params.id);
-    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
-    const deleted = await storage.deleteAccount(id);
-    if (!deleted) return res.status(404).json({ message: "Account not found" });
-    res.json({ message: "Account deleted" });
-  });
 
   app.post("/api/auth/login", async (req, res) => {
     const { email, password } = req.body;
@@ -93,12 +51,29 @@ export async function registerRoutes(
     if (!valid) {
       return res.status(401).json({ message: "Invalid email or password" });
     }
-    res.json(stripPasswordHash(account));
+    req.session.accountId = account.id;
+    const full = await storage.getAccount(account.id);
+    res.json(stripPasswordHash(full));
   });
 
-  app.get("/api/organizations", async (_req, res) => {
-    const orgs = await storage.getOrganizations();
-    res.json(orgs);
+  app.post("/api/auth/logout", (req, res) => {
+    req.session.destroy((err) => {
+      if (err) return res.status(500).json({ message: "Logout failed" });
+      res.clearCookie("connect.sid");
+      res.json({ message: "Logged out" });
+    });
+  });
+
+  app.get("/api/auth/me", async (req, res) => {
+    if (!req.session.accountId) {
+      return res.status(401).json({ message: "Not authenticated" });
+    }
+    const account = await storage.getAccount(req.session.accountId);
+    if (!account) {
+      req.session.destroy(() => {});
+      return res.status(401).json({ message: "Account not found" });
+    }
+    res.json(stripPasswordHash(account));
   });
 
   app.get("/api/organizations/by-slug/:slug", async (req, res) => {
@@ -106,140 +81,6 @@ export async function registerRoutes(
     if (!org) return res.status(404).json({ message: "Organization not found" });
     const { organizers, ...publicData } = org;
     res.json(publicData);
-  });
-
-  app.get("/api/organizations/:id", async (req, res) => {
-    const id = parseInt(req.params.id);
-    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
-    const org = await storage.getOrganization(id);
-    if (!org) return res.status(404).json({ message: "Organization not found" });
-    res.json(org);
-  });
-
-  app.post("/api/organizations", async (req, res) => {
-    try {
-      const data = insertOrganizationSchema.parse(req.body);
-      const org = await storage.createOrganization(data);
-      res.status(201).json(org);
-    } catch (e) {
-      if (e instanceof ZodError) {
-        return res.status(400).json({ message: fromZodError(e).message });
-      }
-      throw e;
-    }
-  });
-
-  app.patch("/api/organizations/:id", async (req, res) => {
-    const id = parseInt(req.params.id);
-    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
-    try {
-      const data = updateOrganizationSchema.parse(req.body);
-      const org = await storage.updateOrganization(id, data);
-      if (!org) return res.status(404).json({ message: "Organization not found" });
-      res.json(org);
-    } catch (e) {
-      if (e instanceof ZodError) {
-        return res.status(400).json({ message: fromZodError(e).message });
-      }
-      throw e;
-    }
-  });
-
-  app.delete("/api/organizations/:id", async (req, res) => {
-    const id = parseInt(req.params.id);
-    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
-    const deleted = await storage.deleteOrganization(id);
-    if (!deleted) return res.status(404).json({ message: "Organization not found" });
-    res.json({ message: "Organization deleted" });
-  });
-
-  app.post("/api/organizations/:id/organizers", async (req, res) => {
-    const id = parseInt(req.params.id);
-    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
-    const { accountId } = req.body;
-    if (!accountId || isNaN(parseInt(accountId))) {
-      return res.status(400).json({ message: "Valid accountId is required" });
-    }
-    const org = await storage.getOrganization(id);
-    if (!org) return res.status(404).json({ message: "Organization not found" });
-    const account = await storage.getAccount(parseInt(accountId));
-    if (!account) return res.status(404).json({ message: "Account not found" });
-    await storage.addOrganizer(id, parseInt(accountId));
-    const updated = await storage.getOrganization(id);
-    res.json(updated);
-  });
-
-  app.delete("/api/organizations/:id/organizers/:accountId", async (req, res) => {
-    const id = parseInt(req.params.id);
-    const accountId = parseInt(req.params.accountId);
-    if (isNaN(id) || isNaN(accountId)) return res.status(400).json({ message: "Invalid ID" });
-    const removed = await storage.removeOrganizer(id, accountId);
-    if (!removed) return res.status(404).json({ message: "Organizer assignment not found" });
-    const updated = await storage.getOrganization(id);
-    res.json(updated);
-  });
-
-  app.get("/api/organizations/:id/members", async (req, res) => {
-    const id = parseInt(req.params.id);
-    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
-    const members = await storage.getMembers(id);
-    res.json(members);
-  });
-
-  app.post("/api/organizations/:id/members/request", async (req, res) => {
-    const id = parseInt(req.params.id);
-    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
-    const { accountId } = req.body;
-    if (!accountId) return res.status(400).json({ message: "accountId is required" });
-
-    const org = await storage.getOrganization(id);
-    if (!org) return res.status(404).json({ message: "Organization not found" });
-
-    const existing = await storage.getMember(id, parseInt(accountId));
-    if (existing) {
-      return res.json(existing);
-    }
-
-    const member = await storage.createMemberRequest(id, parseInt(accountId));
-    res.status(201).json(member);
-  });
-
-  app.patch("/api/organizations/:id/members/:accountId", async (req, res) => {
-    const id = parseInt(req.params.id);
-    const accountId = parseInt(req.params.accountId);
-    if (isNaN(id) || isNaN(accountId)) return res.status(400).json({ message: "Invalid ID" });
-    const { status } = req.body;
-    if (!status || !["approved", "rejected"].includes(status)) {
-      return res.status(400).json({ message: "Status must be 'approved' or 'rejected'" });
-    }
-    const member = await storage.updateMemberStatus(id, accountId, status);
-    if (!member) return res.status(404).json({ message: "Member not found" });
-    res.json(member);
-  });
-
-  app.delete("/api/organizations/:id/members/:accountId", async (req, res) => {
-    const id = parseInt(req.params.id);
-    const accountId = parseInt(req.params.accountId);
-    if (isNaN(id) || isNaN(accountId)) return res.status(400).json({ message: "Invalid ID" });
-    const removed = await storage.removeMember(id, accountId);
-    if (!removed) return res.status(404).json({ message: "Member not found" });
-    res.json({ message: "Member removed" });
-  });
-
-  app.get("/api/organizations/:id/invites", async (req, res) => {
-    const id = parseInt(req.params.id);
-    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
-    const invites = await storage.getInvites(id);
-    res.json(invites);
-  });
-
-  app.post("/api/organizations/:id/invites", async (req, res) => {
-    const id = parseInt(req.params.id);
-    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
-    const org = await storage.getOrganization(id);
-    if (!org) return res.status(404).json({ message: "Organization not found" });
-    const invite = await storage.createInvite(id);
-    res.status(201).json(invite);
   });
 
   app.get("/api/invites/:token", async (req, res) => {
@@ -287,14 +128,364 @@ export async function registerRoutes(
     res.json({ member, message: "Invite accepted. You are now a member of this organization." });
   });
 
+  app.post("/api/organizations/:id/members/request", async (req, res) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    const { accountId } = req.body;
+    if (!accountId) return res.status(400).json({ message: "accountId is required" });
+
+    const org = await storage.getOrganization(id);
+    if (!org) return res.status(404).json({ message: "Organization not found" });
+
+    const existing = await storage.getMember(id, parseInt(accountId));
+    if (existing) {
+      return res.json(existing);
+    }
+
+    const member = await storage.createMemberRequest(id, parseInt(accountId));
+    res.status(201).json(member);
+  });
+
+  app.post("/api/accounts", async (req, res) => {
+    try {
+      const data = insertAccountSchema.parse(req.body);
+      const account = await storage.createAccount(data);
+      res.status(201).json(stripPasswordHash(account));
+    } catch (e) {
+      if (e instanceof ZodError) {
+        return res.status(400).json({ message: fromZodError(e).message });
+      }
+      const err = e as Error;
+      if (err.message?.includes("unique") || err.message?.includes("duplicate")) {
+        return res.status(409).json({ message: "An account with this email already exists" });
+      }
+      throw e;
+    }
+  });
+
+
+  app.use("/api", requireAuth);
+
+
+  app.get("/api/roles", async (_req, res) => {
+    const rolesList = await storage.getRoles();
+    res.json(rolesList);
+  });
+
+  app.get("/api/accounts", async (req, res) => {
+    const me = await storage.getAccount(req.session.accountId!);
+    if (!me) return res.status(401).json({ message: "Account not found" });
+
+    if (isAdmin(me)) {
+      const search = req.query.search as string | undefined;
+      const role = req.query.role as string | undefined;
+      const accountsList = await storage.getAccounts(search, role);
+      return res.json(accountsList.map(stripPasswordHash));
+    }
+
+    return res.json([stripPasswordHash(me)]);
+  });
+
+  app.get("/api/accounts/:id", async (req, res) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    const me = await storage.getAccount(req.session.accountId!);
+    if (!me) return res.status(401).json({ message: "Account not found" });
+
+    if (!isAdmin(me) && me.id !== id) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+
+    const account = await storage.getAccount(id);
+    if (!account) return res.status(404).json({ message: "Account not found" });
+    res.json(stripPasswordHash(account));
+  });
+
+  app.patch("/api/accounts/:id", async (req, res) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    const me = await storage.getAccount(req.session.accountId!);
+    if (!me) return res.status(401).json({ message: "Account not found" });
+
+    if (!isAdmin(me) && me.id !== id) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+
+    try {
+      const data = updateAccountSchema.parse(req.body);
+      if (!isAdmin(me) && data.roles) {
+        return res.status(403).json({ message: "Only admins can change roles" });
+      }
+      const account = await storage.updateAccount(id, data);
+      if (!account) return res.status(404).json({ message: "Account not found" });
+      res.json(stripPasswordHash(account));
+    } catch (e) {
+      if (e instanceof ZodError) {
+        return res.status(400).json({ message: fromZodError(e).message });
+      }
+      const err = e as Error;
+      if (err.message?.includes("unique") || err.message?.includes("duplicate")) {
+        return res.status(409).json({ message: "An account with this email already exists" });
+      }
+      throw e;
+    }
+  });
+
+  app.delete("/api/accounts/:id", requireAdmin as any, async (req: Request, res: Response) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    const deleted = await storage.deleteAccount(id);
+    if (!deleted) return res.status(404).json({ message: "Account not found" });
+    res.json({ message: "Account deleted" });
+  });
+
+  app.get("/api/organizations", async (req, res) => {
+    const me = await storage.getAccount(req.session.accountId!);
+    if (!me) return res.status(401).json({ message: "Account not found" });
+
+    if (isAdmin(me)) {
+      const orgs = await storage.getOrganizations();
+      return res.json(orgs);
+    }
+
+    const orgIds = await storage.getOrganizationIdsForAccount(me.id);
+    const allOrgs = await storage.getOrganizations();
+    return res.json(allOrgs.filter(o => orgIds.includes(o.id)));
+  });
+
+  app.get("/api/organizations/:id", async (req, res) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    const me = await storage.getAccount(req.session.accountId!);
+    if (!me) return res.status(401).json({ message: "Account not found" });
+
+    if (!isAdmin(me)) {
+      const orgIds = await storage.getOrganizationIdsForAccount(me.id);
+      if (!orgIds.includes(id)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+    }
+
+    const org = await storage.getOrganization(id);
+    if (!org) return res.status(404).json({ message: "Organization not found" });
+    res.json(org);
+  });
+
+  app.post("/api/organizations", requireAdmin as any, async (req: Request, res: Response) => {
+    try {
+      const data = insertOrganizationSchema.parse(req.body);
+      const org = await storage.createOrganization(data);
+      res.status(201).json(org);
+    } catch (e) {
+      if (e instanceof ZodError) {
+        return res.status(400).json({ message: fromZodError(e).message });
+      }
+      throw e;
+    }
+  });
+
+  app.patch("/api/organizations/:id", async (req, res) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    const me = await storage.getAccount(req.session.accountId!);
+    if (!me) return res.status(401).json({ message: "Account not found" });
+
+    if (!isAdmin(me)) {
+      const orgIds = await storage.getOrganizationIdsForAccount(me.id);
+      if (!orgIds.includes(id)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+    }
+
+    try {
+      const data = updateOrganizationSchema.parse(req.body);
+      const org = await storage.updateOrganization(id, data);
+      if (!org) return res.status(404).json({ message: "Organization not found" });
+      res.json(org);
+    } catch (e) {
+      if (e instanceof ZodError) {
+        return res.status(400).json({ message: fromZodError(e).message });
+      }
+      throw e;
+    }
+  });
+
+  app.delete("/api/organizations/:id", requireAdmin as any, async (req: Request, res: Response) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    const deleted = await storage.deleteOrganization(id);
+    if (!deleted) return res.status(404).json({ message: "Organization not found" });
+    res.json({ message: "Organization deleted" });
+  });
+
+  app.post("/api/organizations/:id/organizers", async (req, res) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    const me = await storage.getAccount(req.session.accountId!);
+    if (!me) return res.status(401).json({ message: "Account not found" });
+
+    if (!isAdmin(me)) {
+      const orgIds = await storage.getOrganizationIdsForAccount(me.id);
+      if (!orgIds.includes(id)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+    }
+
+    const { accountId } = req.body;
+    if (!accountId || isNaN(parseInt(accountId))) {
+      return res.status(400).json({ message: "Valid accountId is required" });
+    }
+    const org = await storage.getOrganization(id);
+    if (!org) return res.status(404).json({ message: "Organization not found" });
+    const account = await storage.getAccount(parseInt(accountId));
+    if (!account) return res.status(404).json({ message: "Account not found" });
+    await storage.addOrganizer(id, parseInt(accountId));
+    const updated = await storage.getOrganization(id);
+    res.json(updated);
+  });
+
+  app.delete("/api/organizations/:id/organizers/:accountId", async (req, res) => {
+    const id = parseInt(req.params.id);
+    const accountId = parseInt(req.params.accountId);
+    if (isNaN(id) || isNaN(accountId)) return res.status(400).json({ message: "Invalid ID" });
+    const me = await storage.getAccount(req.session.accountId!);
+    if (!me) return res.status(401).json({ message: "Account not found" });
+
+    if (!isAdmin(me)) {
+      const orgIds = await storage.getOrganizationIdsForAccount(me.id);
+      if (!orgIds.includes(id)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+    }
+
+    const removed = await storage.removeOrganizer(id, accountId);
+    if (!removed) return res.status(404).json({ message: "Organizer assignment not found" });
+    const updated = await storage.getOrganization(id);
+    res.json(updated);
+  });
+
+  app.get("/api/organizations/:id/members", async (req, res) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    const me = await storage.getAccount(req.session.accountId!);
+    if (!me) return res.status(401).json({ message: "Account not found" });
+
+    if (!isAdmin(me)) {
+      const orgIds = await storage.getOrganizationIdsForAccount(me.id);
+      if (!orgIds.includes(id)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+    }
+
+    const members = await storage.getMembers(id);
+    res.json(members);
+  });
+
+  app.patch("/api/organizations/:id/members/:accountId", async (req, res) => {
+    const id = parseInt(req.params.id);
+    const accountId = parseInt(req.params.accountId);
+    if (isNaN(id) || isNaN(accountId)) return res.status(400).json({ message: "Invalid ID" });
+    const me = await storage.getAccount(req.session.accountId!);
+    if (!me) return res.status(401).json({ message: "Account not found" });
+
+    if (!isAdmin(me)) {
+      const orgIds = await storage.getOrganizationIdsForAccount(me.id);
+      if (!orgIds.includes(id)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+    }
+
+    const { status } = req.body;
+    if (!status || !["approved", "rejected"].includes(status)) {
+      return res.status(400).json({ message: "Status must be 'approved' or 'rejected'" });
+    }
+    const member = await storage.updateMemberStatus(id, accountId, status);
+    if (!member) return res.status(404).json({ message: "Member not found" });
+    res.json(member);
+  });
+
+  app.delete("/api/organizations/:id/members/:accountId", async (req, res) => {
+    const id = parseInt(req.params.id);
+    const accountId = parseInt(req.params.accountId);
+    if (isNaN(id) || isNaN(accountId)) return res.status(400).json({ message: "Invalid ID" });
+    const me = await storage.getAccount(req.session.accountId!);
+    if (!me) return res.status(401).json({ message: "Account not found" });
+
+    if (!isAdmin(me)) {
+      const orgIds = await storage.getOrganizationIdsForAccount(me.id);
+      if (!orgIds.includes(id)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+    }
+
+    const removed = await storage.removeMember(id, accountId);
+    if (!removed) return res.status(404).json({ message: "Member not found" });
+    res.json({ message: "Member removed" });
+  });
+
+  app.get("/api/organizations/:id/invites", async (req, res) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    const me = await storage.getAccount(req.session.accountId!);
+    if (!me) return res.status(401).json({ message: "Account not found" });
+
+    if (!isAdmin(me)) {
+      const orgIds = await storage.getOrganizationIdsForAccount(me.id);
+      if (!orgIds.includes(id)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+    }
+
+    const invites = await storage.getInvites(id);
+    res.json(invites);
+  });
+
+  app.post("/api/organizations/:id/invites", async (req, res) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    const me = await storage.getAccount(req.session.accountId!);
+    if (!me) return res.status(401).json({ message: "Account not found" });
+
+    if (!isAdmin(me)) {
+      const orgIds = await storage.getOrganizationIdsForAccount(me.id);
+      if (!orgIds.includes(id)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+    }
+
+    const org = await storage.getOrganization(id);
+    if (!org) return res.status(404).json({ message: "Organization not found" });
+    const invite = await storage.createInvite(id);
+    res.status(201).json(invite);
+  });
+
   app.get("/api/spvs", async (req, res) => {
-    const spvsList = await storage.getAllSpvs();
-    res.json(spvsList);
+    const me = await storage.getAccount(req.session.accountId!);
+    if (!me) return res.status(401).json({ message: "Account not found" });
+
+    if (isAdmin(me)) {
+      const spvsList = await storage.getAllSpvs();
+      return res.json(spvsList);
+    }
+
+    const spvIds = await storage.getSpvIdsForAccount(me.id);
+    const allSpvs = await storage.getAllSpvs();
+    return res.json(allSpvs.filter(s => spvIds.includes(s.id)));
   });
 
   app.get("/api/organizations/:id/spvs", async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    const me = await storage.getAccount(req.session.accountId!);
+    if (!me) return res.status(401).json({ message: "Account not found" });
+
+    if (!isAdmin(me)) {
+      const orgIds = await storage.getOrganizationIdsForAccount(me.id);
+      if (!orgIds.includes(id)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+    }
+
     const spvsList = await storage.getSpvs(id);
     res.json(spvsList);
   });
@@ -302,6 +493,16 @@ export async function registerRoutes(
   app.get("/api/spvs/:id", async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    const me = await storage.getAccount(req.session.accountId!);
+    if (!me) return res.status(401).json({ message: "Account not found" });
+
+    if (!isAdmin(me)) {
+      const spvIds = await storage.getSpvIdsForAccount(me.id);
+      if (!spvIds.includes(id)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+    }
+
     const spv = await storage.getSpv(id);
     if (!spv) return res.status(404).json({ message: "SPV not found" });
     res.json(spv);
@@ -310,6 +511,16 @@ export async function registerRoutes(
   app.post("/api/organizations/:id/spvs", async (req, res) => {
     const orgId = parseInt(req.params.id);
     if (isNaN(orgId)) return res.status(400).json({ message: "Invalid ID" });
+    const me = await storage.getAccount(req.session.accountId!);
+    if (!me) return res.status(401).json({ message: "Account not found" });
+
+    if (!isAdmin(me)) {
+      const orgIds = await storage.getOrganizationIdsForAccount(me.id);
+      if (!orgIds.includes(orgId)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+    }
+
     const org = await storage.getOrganization(orgId);
     if (!org) return res.status(404).json({ message: "Organization not found" });
     try {
@@ -327,6 +538,16 @@ export async function registerRoutes(
   app.patch("/api/spvs/:id", async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    const me = await storage.getAccount(req.session.accountId!);
+    if (!me) return res.status(401).json({ message: "Account not found" });
+
+    if (!isAdmin(me)) {
+      const spvIds = await storage.getSpvIdsForAccount(me.id);
+      if (!spvIds.includes(id)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+    }
+
     try {
       const data = updateSpvSchema.parse(req.body);
       const spv = await storage.updateSpv(id, data);
@@ -340,7 +561,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/spvs/:id", async (req, res) => {
+  app.delete("/api/spvs/:id", requireAdmin as any, async (req: Request, res: Response) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
     const deleted = await storage.deleteSpv(id);
@@ -351,6 +572,16 @@ export async function registerRoutes(
   app.get("/api/spvs/:id/members", async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    const me = await storage.getAccount(req.session.accountId!);
+    if (!me) return res.status(401).json({ message: "Account not found" });
+
+    if (!isAdmin(me)) {
+      const spvIds = await storage.getSpvIdsForAccount(me.id);
+      if (!spvIds.includes(id)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+    }
+
     const members = await storage.getSpvMembers(id);
     res.json(members);
   });
@@ -358,6 +589,16 @@ export async function registerRoutes(
   app.post("/api/spvs/:id/members", async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    const me = await storage.getAccount(req.session.accountId!);
+    if (!me) return res.status(401).json({ message: "Account not found" });
+
+    if (!isAdmin(me)) {
+      const spvIds = await storage.getSpvIdsForAccount(me.id);
+      if (!spvIds.includes(id)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+    }
+
     const { accountId } = req.body;
     if (!accountId) return res.status(400).json({ message: "accountId is required" });
     const spv = await storage.getSpv(id);
@@ -370,6 +611,16 @@ export async function registerRoutes(
     const id = parseInt(req.params.id);
     const accountId = parseInt(req.params.accountId);
     if (isNaN(id) || isNaN(accountId)) return res.status(400).json({ message: "Invalid ID" });
+    const me = await storage.getAccount(req.session.accountId!);
+    if (!me) return res.status(401).json({ message: "Account not found" });
+
+    if (!isAdmin(me)) {
+      const spvIds = await storage.getSpvIdsForAccount(me.id);
+      if (!spvIds.includes(id)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+    }
+
     const removed = await storage.removeSpvMember(id, accountId);
     if (!removed) return res.status(404).json({ message: "SPV member not found" });
     res.json({ message: "Member removed from SPV" });
@@ -377,13 +628,32 @@ export async function registerRoutes(
 
   app.get("/api/entities", async (req, res) => {
     const search = req.query.search as string | undefined;
-    const entitiesList = await storage.getAllEntities(search);
-    res.json(entitiesList);
+    const me = await storage.getAccount(req.session.accountId!);
+    if (!me) return res.status(401).json({ message: "Account not found" });
+
+    if (isAdmin(me)) {
+      const entitiesList = await storage.getAllEntities(search);
+      return res.json(entitiesList);
+    }
+
+    const entityIds = await storage.getEntityIdsForAccount(me.id);
+    const allEntities = await storage.getAllEntities(search);
+    return res.json(allEntities.filter(e => entityIds.includes(e.id)));
   });
 
   app.get("/api/entities/:id", async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    const me = await storage.getAccount(req.session.accountId!);
+    if (!me) return res.status(401).json({ message: "Account not found" });
+
+    if (!isAdmin(me)) {
+      const entityIds = await storage.getEntityIdsForAccount(me.id);
+      if (!entityIds.includes(id)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+    }
+
     const entity = await storage.getEntity(id);
     if (!entity) return res.status(404).json({ message: "Entity not found" });
     res.json(entity);
@@ -405,6 +675,16 @@ export async function registerRoutes(
   app.patch("/api/entities/:id", async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    const me = await storage.getAccount(req.session.accountId!);
+    if (!me) return res.status(401).json({ message: "Account not found" });
+
+    if (!isAdmin(me)) {
+      const entityIds = await storage.getEntityIdsForAccount(me.id);
+      if (!entityIds.includes(id)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+    }
+
     try {
       const data = updateEntitySchema.parse(req.body);
       const entity = await storage.updateEntity(id, data);
@@ -418,7 +698,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/entities/:id", async (req, res) => {
+  app.delete("/api/entities/:id", requireAdmin as any, async (req: Request, res: Response) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
     const deleted = await storage.deleteEntity(id);
@@ -429,6 +709,16 @@ export async function registerRoutes(
   app.get("/api/entities/:id/owners", async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    const me = await storage.getAccount(req.session.accountId!);
+    if (!me) return res.status(401).json({ message: "Account not found" });
+
+    if (!isAdmin(me)) {
+      const entityIds = await storage.getEntityIdsForAccount(me.id);
+      if (!entityIds.includes(id)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+    }
+
     const owners = await storage.getEntityOwners(id);
     res.json(owners);
   });
@@ -436,6 +726,16 @@ export async function registerRoutes(
   app.post("/api/entities/:id/owners", async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    const me = await storage.getAccount(req.session.accountId!);
+    if (!me) return res.status(401).json({ message: "Account not found" });
+
+    if (!isAdmin(me)) {
+      const entityIds = await storage.getEntityIdsForAccount(me.id);
+      if (!entityIds.includes(id)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+    }
+
     const { ownerType, ownerAccountId, ownerEntityId, ownershipPercent, date } = req.body;
     if (!ownerType || !["account", "entity"].includes(ownerType)) {
       return res.status(400).json({ message: "ownerType must be 'account' or 'entity'" });
@@ -462,8 +762,19 @@ export async function registerRoutes(
   });
 
   app.delete("/api/entities/:id/owners/:ownerId", async (req, res) => {
+    const id = parseInt(req.params.id);
     const ownerId = parseInt(req.params.ownerId);
     if (isNaN(ownerId)) return res.status(400).json({ message: "Invalid ID" });
+    const me = await storage.getAccount(req.session.accountId!);
+    if (!me) return res.status(401).json({ message: "Account not found" });
+
+    if (!isAdmin(me)) {
+      const entityIds = await storage.getEntityIdsForAccount(me.id);
+      if (!entityIds.includes(id)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+    }
+
     const removed = await storage.removeEntityOwner(ownerId);
     if (!removed) return res.status(404).json({ message: "Owner not found" });
     res.json({ message: "Owner removed" });
@@ -472,6 +783,16 @@ export async function registerRoutes(
   app.get("/api/entities/:id/managers", async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    const me = await storage.getAccount(req.session.accountId!);
+    if (!me) return res.status(401).json({ message: "Account not found" });
+
+    if (!isAdmin(me)) {
+      const entityIds = await storage.getEntityIdsForAccount(me.id);
+      if (!entityIds.includes(id)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+    }
+
     const managers = await storage.getEntityManagers(id);
     res.json(managers);
   });
@@ -479,6 +800,16 @@ export async function registerRoutes(
   app.post("/api/entities/:id/managers", async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    const me = await storage.getAccount(req.session.accountId!);
+    if (!me) return res.status(401).json({ message: "Account not found" });
+
+    if (!isAdmin(me)) {
+      const entityIds = await storage.getEntityIdsForAccount(me.id);
+      if (!entityIds.includes(id)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+    }
+
     const { accountId } = req.body;
     if (!accountId) return res.status(400).json({ message: "accountId is required" });
     const manager = await storage.addEntityManager(id, accountId);
@@ -489,6 +820,16 @@ export async function registerRoutes(
     const id = parseInt(req.params.id);
     const accountId = parseInt(req.params.accountId);
     if (isNaN(id) || isNaN(accountId)) return res.status(400).json({ message: "Invalid ID" });
+    const me = await storage.getAccount(req.session.accountId!);
+    if (!me) return res.status(401).json({ message: "Account not found" });
+
+    if (!isAdmin(me)) {
+      const entityIds = await storage.getEntityIdsForAccount(me.id);
+      if (!entityIds.includes(id)) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+    }
+
     const removed = await storage.removeEntityManager(id, accountId);
     if (!removed) return res.status(404).json({ message: "Manager not found" });
     res.json({ message: "Manager removed" });

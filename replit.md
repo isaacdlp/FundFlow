@@ -133,6 +133,21 @@ shared/
 - `DATABASE_URL` - PostgreSQL connection string
 - `SESSION_SECRET` - Session secret
 
+## Authentication & Authorization
+- Session-based auth using express-session with connect-pg-simple store
+- Login page at root when unauthenticated; session stored in PostgreSQL
+- Auth endpoints: POST /api/auth/login, POST /api/auth/logout, GET /api/auth/me
+- Public routes (no auth required): /api/auth/login, /api/auth/me, /api/organizations/by-slug/:slug, /api/invites/:token, /api/invites/:token/accept, /api/organizations/:id/members/request, POST /api/accounts
+- All other /api routes require authentication (401 if not logged in)
+- **Admin** (role: "admin"): Full access to all resources
+- **Non-admin**: Can only see own account, entities they manage, organizations they are member/organizer of, SPVs they are members of
+- Admin-only actions: create/delete organizations, delete accounts, delete SPVs/entities
+- Frontend: AuthProvider wraps app, useAuth() hook provides user/isAdmin/loginMutation/logoutMutation
+- Sidebar hides admin-only items (Accounts) for non-admin users
+- Header shows logged-in user name and Sign Out button
+- Login page: client/src/pages/login.tsx
+- Auth hook: client/src/hooks/use-auth.tsx
+
 ## Key Implementation Details
 - Password hashing uses bcrypt (hash stored in `password_hash` column)
 - `passwordHash` is stripped from all API responses

@@ -5,7 +5,10 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
+import { AuthProvider, useAuth } from "@/hooks/use-auth";
+import { Skeleton } from "@/components/ui/skeleton";
 import NotFound from "@/pages/not-found";
+import Login from "@/pages/login";
 import Dashboard from "@/pages/dashboard";
 import Accounts from "@/pages/accounts";
 import AccountDetail from "@/pages/account-detail";
@@ -20,6 +23,8 @@ import SpvDetail from "@/pages/spv-detail";
 import Entities from "@/pages/entities";
 import CreateEntity from "@/pages/create-entity";
 import EntityDetail from "@/pages/entity-detail";
+import { Button } from "@/components/ui/button";
+import { LogOut } from "lucide-react";
 
 function AdminRouter() {
   return (
@@ -48,6 +53,8 @@ const sidebarStyle = {
 };
 
 function AdminLayout() {
+  const { user, logoutMutation } = useAuth();
+
   return (
     <SidebarProvider style={sidebarStyle as React.CSSProperties}>
       <div className="flex h-screen w-full">
@@ -55,6 +62,24 @@ function AdminLayout() {
         <div className="flex flex-col flex-1 min-w-0">
           <header className="flex items-center gap-2 p-3 border-b bg-background">
             <SidebarTrigger data-testid="button-sidebar-toggle" />
+            <div className="flex-1" />
+            {user && (
+              <div className="flex items-center gap-3">
+                <span className="text-sm text-muted-foreground" data-testid="text-user-name">
+                  {user.firstName} {user.lastName}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => logoutMutation.mutate()}
+                  disabled={logoutMutation.isPending}
+                  data-testid="button-logout"
+                >
+                  <LogOut className="h-4 w-4 mr-1" />
+                  Sign Out
+                </Button>
+              </div>
+            )}
           </header>
           <main className="flex-1 overflow-auto">
             <AdminRouter />
@@ -65,16 +90,37 @@ function AdminLayout() {
   );
 }
 
+function ProtectedApp() {
+  const { user, isLoading } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="space-y-4 w-64">
+          <Skeleton className="h-8 w-full" />
+          <Skeleton className="h-4 w-3/4" />
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <Switch>
+      <Route path="/org/:slug" component={OrgLanding} />
+      <Route>
+        {user ? <AdminLayout /> : <Login />}
+      </Route>
+    </Switch>
+  );
+}
+
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <Switch>
-          <Route path="/org/:slug" component={OrgLanding} />
-          <Route>
-            <AdminLayout />
-          </Route>
-        </Switch>
+        <AuthProvider>
+          <ProtectedApp />
+        </AuthProvider>
         <Toaster />
       </TooltipProvider>
     </QueryClientProvider>
