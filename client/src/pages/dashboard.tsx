@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Link, useSearch } from "wouter";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -280,11 +280,12 @@ export default function Dashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {groupedByCompany.map(group => {
+                  {groupedByCompany.flatMap(group => {
                     const isOpen = expanded[group.key] ?? true;
-                    return (
-                      <Fragment key={`group-${group.key}`}>
-                        <tr
+                    const rows: JSX.Element[] = [];
+                    rows.push(
+                      <tr
+                          key={`group-${group.key}`}
                           className="border-b hover-elevate cursor-pointer"
                           onClick={() => toggle(group.key)}
                           data-testid={`row-company-${group.key}`}
@@ -316,52 +317,54 @@ export default function Dashboard() {
                           </td>
                           <td className="py-3 pr-3 text-right text-muted-foreground">—</td>
                         </tr>
-                        {isOpen && group.investments.map(inv => {
-                          const initial = parseFloat(inv.initialValue || "0");
-                          const current = parseFloat(inv.currentValue || "0");
-                          const distributions = parseFloat(inv.distributions || "0");
-                          const roi = initial > 0 ? ((current + distributions - initial) / initial) * 100 : 0;
-                          return (
-                            <tr
-                              key={`inv-${inv.memberId}`}
-                              className="border-b bg-muted/20 hover-elevate"
-                              data-testid={`row-investment-${inv.memberId}`}
-                            >
-                              <td className="py-2 pr-3"></td>
-                              <td className="py-2 pr-3 pl-10">
-                                <Link href={`/spvs/${inv.spvId}`}>
-                                  <div className="flex items-center gap-2 cursor-pointer">
-                                    <Badge variant="secondary" className="font-normal">
-                                      {inv.investmentType || "SPV"}
-                                    </Badge>
-                                    <span className="text-muted-foreground hover:text-foreground">
-                                      RS {inv.spvName}
-                                    </span>
-                                  </div>
+                    );
+                    if (isOpen) {
+                      group.investments.forEach(inv => {
+                        const initial = parseFloat(inv.initialValue || "0");
+                        const current = parseFloat(inv.currentValue || "0");
+                        const distributions = parseFloat(inv.distributions || "0");
+                        const roi = initial > 0 ? ((current + distributions - initial) / initial) * 100 : 0;
+                        rows.push(
+                          <tr
+                            key={`inv-${inv.memberId}`}
+                            className="border-b bg-muted/20 hover-elevate"
+                            data-testid={`row-investment-${inv.memberId}`}
+                          >
+                            <td className="py-2 pr-3"></td>
+                            <td className="py-2 pr-3 pl-10">
+                              <Link href={`/spvs/${inv.spvId}`}>
+                                <div className="flex items-center gap-2 cursor-pointer">
+                                  <Badge variant="secondary" className="font-normal">
+                                    {inv.investmentType || "SPV"}
+                                  </Badge>
+                                  <span className="text-muted-foreground hover:text-foreground">
+                                    RS {inv.spvName}
+                                  </span>
+                                </div>
+                              </Link>
+                            </td>
+                            {isAdmin && (
+                              <td className="py-2 pr-3">
+                                <Link href={inv.investorType === "entity" ? `/entities/${inv.investorId}` : `/accounts/${inv.investorId}`}>
+                                  <span className="text-muted-foreground hover:text-foreground cursor-pointer inline-flex items-center gap-1" data-testid={`text-investor-${inv.memberId}`}>
+                                    {inv.investorType === "entity" && <Badge variant="outline" className="text-[10px] px-1 py-0">Entity</Badge>}
+                                    {inv.investorName}
+                                  </span>
                                 </Link>
                               </td>
-                              {isAdmin && (
-                                <td className="py-2 pr-3">
-                                  <Link href={inv.investorType === "entity" ? `/entities/${inv.investorId}` : `/accounts/${inv.investorId}`}>
-                                    <span className="text-muted-foreground hover:text-foreground cursor-pointer inline-flex items-center gap-1" data-testid={`text-investor-${inv.memberId}`}>
-                                      {inv.investorType === "entity" && <Badge variant="outline" className="text-[10px] px-1 py-0">Entity</Badge>}
-                                      {inv.investorName}
-                                    </span>
-                                  </Link>
-                                </td>
-                              )}
-                              <td className="py-2 pr-3 text-right">${fmtMoney(initial)}</td>
-                              <td className="py-2 pr-3 text-right">${fmtMoney(current)}</td>
-                              <td className="py-2 pr-3 text-right">${fmtMoney(distributions)}</td>
-                              <td className={`py-2 pr-3 text-right ${roi >= 0 ? "text-emerald-600" : "text-red-600"}`}>
-                                {fmtPct(roi)}
-                              </td>
-                              <td className="py-2 pr-3 text-right text-muted-foreground">{fmtDate(inv.purchaseDate)}</td>
-                            </tr>
-                          );
-                        })}
-                      </Fragment>
-                    );
+                            )}
+                            <td className="py-2 pr-3 text-right">${fmtMoney(initial)}</td>
+                            <td className="py-2 pr-3 text-right">${fmtMoney(current)}</td>
+                            <td className="py-2 pr-3 text-right">${fmtMoney(distributions)}</td>
+                            <td className={`py-2 pr-3 text-right ${roi >= 0 ? "text-emerald-600" : "text-red-600"}`}>
+                              {fmtPct(roi)}
+                            </td>
+                            <td className="py-2 pr-3 text-right text-muted-foreground">{fmtDate(inv.purchaseDate)}</td>
+                          </tr>
+                        );
+                      });
+                    }
+                    return rows;
                   })}
                 </tbody>
               </table>

@@ -7,6 +7,7 @@ import {
   FolderKanban,
   Settings,
   FileText,
+  TrendingUp,
 } from "lucide-react";
 import {
   Sidebar,
