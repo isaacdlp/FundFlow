@@ -1,13 +1,11 @@
 import { useLocation, Link } from "wouter";
 import {
   LayoutDashboard,
-  Briefcase,
   Building2,
   Building,
   Users,
   FolderKanban,
   Settings,
-  TrendingUp,
   FileText,
 } from "lucide-react";
 import {
@@ -34,9 +32,7 @@ interface NavItem {
 const mainNav: NavItem[] = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
   { title: "Organizations", url: "/organizations", icon: Building2 },
-  { title: "Funds", url: "/funds", icon: Briefcase },
   { title: "SPVs", url: "/spvs", icon: FileText },
-  { title: "Portfolio", url: "/portfolio", icon: TrendingUp },
   { title: "Accounts", url: "/accounts", icon: Users },
   { title: "Entities", url: "/entities", icon: Building },
 ];
