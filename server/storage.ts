@@ -1,4 +1,4 @@
-import { eq, ilike, or, sql, and, lt } from "drizzle-orm";
+import { eq, ilike, or, sql, and, lt, inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import {
   accounts, roles, accountRoles, organizations, organizationOrganizers,
@@ -129,7 +129,8 @@ export interface IStorage {
   addSpvMember(spvId: number, accountId: number, investment?: { initialValue?: string; currentValue?: string; distributions?: string; purchaseDate?: string | null }): Promise<SpvMemberWithAccount>;
   updateSpvMember(spvId: number, accountId: number, investment: { initialValue?: string; currentValue?: string; distributions?: string; purchaseDate?: string | null }): Promise<SpvMemberWithAccount | undefined>;
   removeSpvMember(spvId: number, accountId: number): Promise<boolean>;
-  getPortfolio(accountId?: number): Promise<PortfolioInvestment[]>;
+  getPortfolio(filter?: { accountIds?: number[] }): Promise<PortfolioInvestment[]>;
+  getEntityOwnerAccountIds(entityId: number): Promise<number[]>;
 
   getAllEntities(search?: string): Promise<EntityWithDetails[]>;
   getEntity(id: number): Promise<EntityWithDetails | undefined>;
@@ -642,8 +643,14 @@ export class DatabaseStorage implements IStorage {
     return result.length > 0;
   }
 
-  async getPortfolio(accountId?: number): Promise<PortfolioInvestment[]> {
-    const where = accountId !== undefined ? eq(spvMembers.accountId, accountId) : sql`TRUE`;
+  async getPortfolio(filter?: { accountIds?: number[] }): Promise<PortfolioInvestment[]> {
+    let where;
+    if (filter?.accountIds !== undefined) {
+      if (filter.accountIds.length === 0) return [];
+      where = inArray(spvMembers.accountId, filter.accountIds);
+    } else {
+      where = sql`TRUE`;
+    }
     const rows = await db
       .select({
         memberId: spvMembers.id,
@@ -688,6 +695,33 @@ export class DatabaseStorage implements IStorage {
       distributions: r.distributions ?? "0",
       purchaseDate: r.purchaseDate ?? null,
     }));
+  }
+
+  async getEntityOwnerAccountIds(entityId: number): Promise<number[]> {
+    const accountIds = new Set<number>();
+    const visited = new Set<number>();
+    const stack = [entityId];
+    while (stack.length > 0) {
+      const eid = stack.pop()!;
+      if (visited.has(eid)) continue;
+      visited.add(eid);
+      const owners = await db
+        .select({
+          ownerType: entityOwners.ownerType,
+          ownerAccountId: entityOwners.ownerAccountId,
+          ownerEntityId: entityOwners.ownerEntityId,
+        })
+        .from(entityOwners)
+        .where(eq(entityOwners.entityId, eid));
+      for (const o of owners) {
+        if (o.ownerType === "account" && o.ownerAccountId !== null) {
+          accountIds.add(o.ownerAccountId);
+        } else if (o.ownerType === "entity" && o.ownerEntityId !== null) {
+          stack.push(o.ownerEntityId);
+        }
+      }
+    }
+    return Array.from(accountIds);
   }
 
   private async enrichEntity(entity: Entity): Promise<EntityWithDetails> {
