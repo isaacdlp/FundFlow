@@ -21,8 +21,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { ArrowLeft, Pencil, Save, X, UserPlus, UserMinus, Building2, Check, Ban, Copy, Link2, Trash2, Plus, FileText } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { useOrgPermissions } from "@/hooks/use-org-permissions";
 
-function MembersTab({ orgId }: { orgId: string }) {
+function MembersTab({ orgId, canEdit }: { orgId: string; canEdit: boolean }) {
   const { toast } = useToast();
 
   const { data: members, isLoading } = useQuery<MemberInfo[]>({
@@ -85,30 +86,32 @@ function MembersTab({ orgId }: { orgId: string }) {
                   <p className="text-sm font-medium truncate">{member.account.firstName} {member.account.lastName}</p>
                   <p className="text-xs text-muted-foreground truncate">{member.account.email}</p>
                 </div>
-                <div className="flex gap-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="text-green-600 border-green-300 hover:bg-green-50"
-                    onClick={() => updateStatusMutation.mutate({ accountId: member.accountId, status: "approved" })}
-                    disabled={updateStatusMutation.isPending}
-                    data-testid={`button-approve-${member.accountId}`}
-                  >
-                    <Check className="h-3.5 w-3.5 mr-1" />
-                    Approve
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="text-red-600 border-red-300 hover:bg-red-50"
-                    onClick={() => updateStatusMutation.mutate({ accountId: member.accountId, status: "rejected" })}
-                    disabled={updateStatusMutation.isPending}
-                    data-testid={`button-reject-${member.accountId}`}
-                  >
-                    <Ban className="h-3.5 w-3.5 mr-1" />
-                    Reject
-                  </Button>
-                </div>
+                {canEdit && (
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-green-600 border-green-300 hover:bg-green-50"
+                      onClick={() => updateStatusMutation.mutate({ accountId: member.accountId, status: "approved" })}
+                      disabled={updateStatusMutation.isPending}
+                      data-testid={`button-approve-${member.accountId}`}
+                    >
+                      <Check className="h-3.5 w-3.5 mr-1" />
+                      Approve
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-red-600 border-red-300 hover:bg-red-50"
+                      onClick={() => updateStatusMutation.mutate({ accountId: member.accountId, status: "rejected" })}
+                      disabled={updateStatusMutation.isPending}
+                      data-testid={`button-reject-${member.accountId}`}
+                    >
+                      <Ban className="h-3.5 w-3.5 mr-1" />
+                      Reject
+                    </Button>
+                  </div>
+                )}
               </div>
             ))}
           </CardContent>
@@ -135,15 +138,17 @@ function MembersTab({ orgId }: { orgId: string }) {
                     <p className="text-xs text-muted-foreground truncate">{member.account.email}</p>
                   </div>
                   {member.inviteId && <Badge variant="outline" className="text-xs">Via Invite</Badge>}
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => removeMutation.mutate(member.accountId)}
-                    disabled={removeMutation.isPending}
-                    data-testid={`button-remove-member-${member.accountId}`}
-                  >
-                    <Trash2 className="h-4 w-4 text-destructive" />
-                  </Button>
+                  {canEdit && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => removeMutation.mutate(member.accountId)}
+                      disabled={removeMutation.isPending}
+                      data-testid={`button-remove-member-${member.accountId}`}
+                    >
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
+                  )}
                 </div>
               ))}
             </div>
@@ -171,25 +176,29 @@ function MembersTab({ orgId }: { orgId: string }) {
                   <p className="text-sm font-medium truncate">{member.account.firstName} {member.account.lastName}</p>
                   <p className="text-xs text-muted-foreground truncate">{member.account.email}</p>
                 </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => updateStatusMutation.mutate({ accountId: member.accountId, status: "approved" })}
-                  disabled={updateStatusMutation.isPending}
-                  data-testid={`button-reapprove-${member.accountId}`}
-                >
-                  <Check className="h-3.5 w-3.5 mr-1" />
-                  Re-approve
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => removeMutation.mutate(member.accountId)}
-                  disabled={removeMutation.isPending}
-                  data-testid={`button-remove-rejected-${member.accountId}`}
-                >
-                  <Trash2 className="h-4 w-4 text-destructive" />
-                </Button>
+                {canEdit && (
+                  <>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => updateStatusMutation.mutate({ accountId: member.accountId, status: "approved" })}
+                      disabled={updateStatusMutation.isPending}
+                      data-testid={`button-reapprove-${member.accountId}`}
+                    >
+                      <Check className="h-3.5 w-3.5 mr-1" />
+                      Re-approve
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => removeMutation.mutate(member.accountId)}
+                      disabled={removeMutation.isPending}
+                      data-testid={`button-remove-rejected-${member.accountId}`}
+                    >
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
+                  </>
+                )}
               </div>
             ))}
           </CardContent>
@@ -207,7 +216,7 @@ function MembersTab({ orgId }: { orgId: string }) {
   );
 }
 
-function SpvsTab({ orgId }: { orgId: string }) {
+function SpvsTab({ orgId, canEdit }: { orgId: string; canEdit: boolean }) {
   const { toast } = useToast();
   const [, navigate] = useLocation();
 
@@ -241,12 +250,14 @@ function SpvsTab({ orgId }: { orgId: string }) {
               SPVs created within this organization
             </p>
           </div>
-          <Link href={`/organizations/${orgId}/spvs/new`}>
-            <Button data-testid="button-add-spv">
-              <Plus className="h-4 w-4 mr-2" />
-              Add SPV
-            </Button>
-          </Link>
+          {canEdit && (
+            <Link href={`/organizations/${orgId}/spvs/new`}>
+              <Button data-testid="button-add-spv">
+                <Plus className="h-4 w-4 mr-2" />
+                Add SPV
+              </Button>
+            </Link>
+          )}
         </CardHeader>
         <CardContent>
           {spvsList && spvsList.length > 0 ? (
@@ -300,15 +311,17 @@ function SpvsTab({ orgId }: { orgId: string }) {
                           <Button variant="ghost" size="icon" onClick={() => navigate(`/spvs/${spv.id}`)} data-testid={`button-view-spv-${spv.id}`}>
                             <FileText className="h-4 w-4" />
                           </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => deleteMutation.mutate(spv.id)}
-                            disabled={deleteMutation.isPending}
-                            data-testid={`button-delete-spv-${spv.id}`}
-                          >
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
+                          {canEdit && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => deleteMutation.mutate(spv.id)}
+                              disabled={deleteMutation.isPending}
+                              data-testid={`button-delete-spv-${spv.id}`}
+                            >
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>
@@ -328,7 +341,7 @@ function SpvsTab({ orgId }: { orgId: string }) {
   );
 }
 
-function InvitesTab({ orgId, slug }: { orgId: string; slug: string }) {
+function InvitesTab({ orgId, slug, canEdit }: { orgId: string; slug: string; canEdit: boolean }) {
   const { toast } = useToast();
 
   const { data: invites, isLoading } = useQuery<InviteInfo[]>({
@@ -395,14 +408,16 @@ function InvitesTab({ orgId, slug }: { orgId: string; slug: string }) {
             <h2 className="text-lg font-semibold">Invite Links</h2>
             <p className="text-sm text-muted-foreground mt-1">Single-use links that grant pre-approved access</p>
           </div>
-          <Button
-            onClick={() => createInviteMutation.mutate()}
-            disabled={createInviteMutation.isPending}
-            data-testid="button-generate-invite"
-          >
-            <Link2 className="h-4 w-4 mr-2" />
-            {createInviteMutation.isPending ? "Generating..." : "Generate Invite"}
-          </Button>
+          {canEdit && (
+            <Button
+              onClick={() => createInviteMutation.mutate()}
+              disabled={createInviteMutation.isPending}
+              data-testid="button-generate-invite"
+            >
+              <Link2 className="h-4 w-4 mr-2" />
+              {createInviteMutation.isPending ? "Generating..." : "Generate Invite"}
+            </Button>
+          )}
         </CardHeader>
         <CardContent>
           {invites && invites.length > 0 ? (
@@ -458,6 +473,8 @@ export default function OrganizationDetail() {
   const [, params] = useRoute("/organizations/:id");
   const orgId = params?.id;
   const { toast } = useToast();
+  const { canManageOrg } = useOrgPermissions();
+  const canEdit = canManageOrg(orgId ? parseInt(orgId) : null);
   const [editing, setEditing] = useState(false);
   const [activeTab, setActiveTab] = useState("settings");
   const [selectedAccountId, setSelectedAccountId] = useState("");
@@ -621,7 +638,7 @@ export default function OrganizationDetail() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0">
               <h2 className="text-lg font-semibold">Organization Settings</h2>
-              {!editing ? (
+              {canEdit && (!editing ? (
                 <Button variant="outline" size="sm" onClick={() => setEditing(true)} data-testid="button-edit">
                   <Pencil className="h-3.5 w-3.5 mr-1.5" />
                   Edit
@@ -642,7 +659,7 @@ export default function OrganizationDetail() {
                     {updateMutation.isPending ? "Saving..." : "Save"}
                   </Button>
                 </div>
-              )}
+              ))}
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
@@ -752,37 +769,41 @@ export default function OrganizationDetail() {
               </div>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div className="flex items-end gap-3">
-                <div className="flex-1 space-y-2">
-                  <Label>Add Organizer</Label>
-                  <Select value={selectedAccountId} onValueChange={setSelectedAccountId}>
-                    <SelectTrigger data-testid="select-organizer">
-                      <SelectValue placeholder="Select an account..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {availableAccounts && availableAccounts.length > 0 ? (
-                        availableAccounts.map((a) => (
-                          <SelectItem key={a.id} value={String(a.id)}>
-                            {a.firstName} {a.lastName} ({a.email})
-                          </SelectItem>
-                        ))
-                      ) : (
-                        <SelectItem value="none" disabled>No accounts available</SelectItem>
-                      )}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <Button
-                  onClick={() => selectedAccountId && addOrganizerMutation.mutate(parseInt(selectedAccountId))}
-                  disabled={!selectedAccountId || addOrganizerMutation.isPending}
-                  data-testid="button-add-organizer"
-                >
-                  <UserPlus className="h-4 w-4 mr-2" />
-                  {addOrganizerMutation.isPending ? "Adding..." : "Add"}
-                </Button>
-              </div>
+              {canEdit && (
+                <>
+                  <div className="flex items-end gap-3">
+                    <div className="flex-1 space-y-2">
+                      <Label>Add Organizer</Label>
+                      <Select value={selectedAccountId} onValueChange={setSelectedAccountId}>
+                        <SelectTrigger data-testid="select-organizer">
+                          <SelectValue placeholder="Select an account..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {availableAccounts && availableAccounts.length > 0 ? (
+                            availableAccounts.map((a) => (
+                              <SelectItem key={a.id} value={String(a.id)}>
+                                {a.firstName} {a.lastName} ({a.email})
+                              </SelectItem>
+                            ))
+                          ) : (
+                            <SelectItem value="none" disabled>No accounts available</SelectItem>
+                          )}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <Button
+                      onClick={() => selectedAccountId && addOrganizerMutation.mutate(parseInt(selectedAccountId))}
+                      disabled={!selectedAccountId || addOrganizerMutation.isPending}
+                      data-testid="button-add-organizer"
+                    >
+                      <UserPlus className="h-4 w-4 mr-2" />
+                      {addOrganizerMutation.isPending ? "Adding..." : "Add"}
+                    </Button>
+                  </div>
 
-              <Separator />
+                  <Separator />
+                </>
+              )}
 
               {org.organizers.length > 0 ? (
                 <div className="space-y-3">
@@ -801,15 +822,17 @@ export default function OrganizationDetail() {
                         </p>
                         <p className="text-xs text-muted-foreground truncate">{organizer.account.email}</p>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => removeOrganizerMutation.mutate(organizer.accountId)}
-                        disabled={removeOrganizerMutation.isPending}
-                        data-testid={`button-remove-organizer-${organizer.accountId}`}
-                      >
-                        <UserMinus className="h-4 w-4 text-destructive" />
-                      </Button>
+                      {canEdit && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => removeOrganizerMutation.mutate(organizer.accountId)}
+                          disabled={removeOrganizerMutation.isPending}
+                          data-testid={`button-remove-organizer-${organizer.accountId}`}
+                        >
+                          <UserMinus className="h-4 w-4 text-destructive" />
+                        </Button>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -825,15 +848,15 @@ export default function OrganizationDetail() {
         </TabsContent>
 
         <TabsContent value="spvs" className="mt-6">
-          <SpvsTab orgId={orgId!} />
+          <SpvsTab orgId={orgId!} canEdit={canEdit} />
         </TabsContent>
 
         <TabsContent value="members" className="mt-6">
-          <MembersTab orgId={orgId!} />
+          <MembersTab orgId={orgId!} canEdit={canEdit} />
         </TabsContent>
 
         <TabsContent value="invites" className="mt-6">
-          <InvitesTab orgId={orgId!} slug={org.slug} />
+          <InvitesTab orgId={orgId!} slug={org.slug} canEdit={canEdit} />
         </TabsContent>
       </Tabs>
     </div>

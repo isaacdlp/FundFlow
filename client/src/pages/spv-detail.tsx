@@ -21,6 +21,7 @@ import {
 import { ArrowLeft, Pencil, Save, X, UserPlus, Trash2, FileText, Users } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { useOrgPermissions } from "@/hooks/use-org-permissions";
 
 const ENTITY_TYPES = ["LLC", "LP", "Corporation", "Trust", "Other"];
 const ALLOCATION_METHODS = ["By capital invested", "Pro rata", "Custom"];
@@ -31,7 +32,7 @@ function formatCurrency(value: string | null): string {
   return num.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-function SpvMembersTab({ spvId, orgId }: { spvId: string; orgId: number }) {
+function SpvMembersTab({ spvId, orgId, canEdit }: { spvId: string; orgId: number; canEdit: boolean }) {
   const { toast } = useToast();
   const [investorType, setInvestorType] = useState<"account" | "entity">("account");
   const [selectedAccountId, setSelectedAccountId] = useState("");
@@ -139,6 +140,7 @@ function SpvMembersTab({ spvId, orgId }: { spvId: string; orgId: number }) {
         </div>
       </CardHeader>
       <CardContent className="space-y-6">
+        {canEdit && (
         <div className="space-y-3 p-4 rounded-md border bg-muted/30">
           <div className="space-y-2">
             <Label>Investor Type</Label>
@@ -232,8 +234,9 @@ function SpvMembersTab({ spvId, orgId }: { spvId: string; orgId: number }) {
             </Button>
           </div>
         </div>
+        )}
 
-        <Separator />
+        {canEdit && <Separator />}
 
         {spvMembers && spvMembers.length > 0 ? (
           <div className="space-y-3">
@@ -280,22 +283,24 @@ function SpvMembersTab({ spvId, orgId }: { spvId: string; orgId: number }) {
                         {subText}
                       </p>
                     </div>
-                    {!isEditing && (
+                    {canEdit && !isEditing && (
                       <Button variant="ghost" size="icon" onClick={() => startEdit(member)} data-testid={`button-edit-spv-member-${member.id}`}>
                         <Pencil className="h-4 w-4" />
                       </Button>
                     )}
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => removeMutation.mutate(member.id)}
-                      disabled={removeMutation.isPending}
-                      data-testid={`button-remove-spv-member-${member.id}`}
-                    >
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
+                    {canEdit && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => removeMutation.mutate(member.id)}
+                        disabled={removeMutation.isPending}
+                        data-testid={`button-remove-spv-member-${member.id}`}
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    )}
                   </div>
-                  {isEditing ? (
+                  {isEditing && canEdit ? (
                     <div className="mt-3 space-y-3">
                       <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                         <div className="space-y-1">
@@ -369,6 +374,7 @@ export default function SpvDetail() {
   const [, params] = useRoute("/spvs/:id");
   const spvId = params?.id;
   const { toast } = useToast();
+  const { canManageOrg } = useOrgPermissions();
   const [editing, setEditing] = useState(false);
   const [activeTab, setActiveTab] = useState("configuration");
 
@@ -553,25 +559,27 @@ export default function SpvDetail() {
         </TabsList>
 
         <TabsContent value="configuration" className="mt-6 space-y-6">
-          <div className="flex justify-end">
-            {!editing ? (
-              <Button variant="outline" size="sm" onClick={() => setEditing(true)} data-testid="button-edit">
-                <Pencil className="h-3.5 w-3.5 mr-1.5" />
-                Edit
-              </Button>
-            ) : (
-              <div className="flex gap-2">
-                <Button variant="ghost" size="sm" onClick={handleCancel} data-testid="button-cancel">
-                  <X className="h-3.5 w-3.5 mr-1.5" />
-                  Cancel
+          {canManageOrg(spv.organizationId) && (
+            <div className="flex justify-end">
+              {!editing ? (
+                <Button variant="outline" size="sm" onClick={() => setEditing(true)} data-testid="button-edit">
+                  <Pencil className="h-3.5 w-3.5 mr-1.5" />
+                  Edit
                 </Button>
-                <Button size="sm" onClick={handleSave} disabled={updateMutation.isPending} data-testid="button-save">
-                  <Save className="h-3.5 w-3.5 mr-1.5" />
-                  {updateMutation.isPending ? "Saving..." : "Save"}
-                </Button>
-              </div>
-            )}
-          </div>
+              ) : (
+                <div className="flex gap-2">
+                  <Button variant="ghost" size="sm" onClick={handleCancel} data-testid="button-cancel">
+                    <X className="h-3.5 w-3.5 mr-1.5" />
+                    Cancel
+                  </Button>
+                  <Button size="sm" onClick={handleSave} disabled={updateMutation.isPending} data-testid="button-save">
+                    <Save className="h-3.5 w-3.5 mr-1.5" />
+                    {updateMutation.isPending ? "Saving..." : "Save"}
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
 
           <Card>
             <CardHeader>
@@ -813,7 +821,7 @@ export default function SpvDetail() {
         </TabsContent>
 
         <TabsContent value="members" className="mt-6">
-          <SpvMembersTab spvId={spvId!} orgId={spv.organizationId} />
+          <SpvMembersTab spvId={spvId!} orgId={spv.organizationId} canEdit={canManageOrg(spv.organizationId)} />
         </TabsContent>
       </Tabs>
     </div>

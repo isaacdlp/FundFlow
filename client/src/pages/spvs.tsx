@@ -11,10 +11,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { FileText, Search, Trash2, Building2 } from "lucide-react";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { useOrgPermissions } from "@/hooks/use-org-permissions";
 
 export default function Spvs() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
+  const { canManageOrg } = useOrgPermissions();
   const [search, setSearch] = useState("");
 
   const { data: spvsList, isLoading } = useQuery<SpvInfo[]>({
@@ -138,15 +140,17 @@ export default function Spvs() {
                           <Button variant="ghost" size="icon" onClick={() => navigate(`/spvs/${spv.id}`)} data-testid={`button-view-spv-${spv.id}`}>
                             <FileText className="h-4 w-4" />
                           </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => deleteMutation.mutate(spv.id)}
-                            disabled={deleteMutation.isPending}
-                            data-testid={`button-delete-spv-${spv.id}`}
-                          >
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
+                          {canManageOrg(spv.organizationId) && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => deleteMutation.mutate(spv.id)}
+                              disabled={deleteMutation.isPending}
+                              data-testid={`button-delete-spv-${spv.id}`}
+                            >
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>

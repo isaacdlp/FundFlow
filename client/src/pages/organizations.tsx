@@ -3,6 +3,7 @@ import { Link } from "wouter";
 import type { OrganizationWithOrganizers } from "@shared/types";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
+import { useOrgPermissions } from "@/hooks/use-org-permissions";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -35,6 +36,7 @@ export default function Organizations() {
   const [search, setSearch] = useState("");
   const { toast } = useToast();
   const { isAdmin } = useAuth();
+  const { canManageOrg } = useOrgPermissions();
 
   const { data: orgs, isLoading } = useQuery<OrganizationWithOrganizers[]>({
     queryKey: ["/api/organizations"],
@@ -147,30 +149,32 @@ export default function Organizations() {
                       </TableCell>
                       <TableCell>
                         <div className="flex gap-1 items-center justify-end">
-                          <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                              <Button variant="ghost" size="icon" data-testid={`button-delete-org-${org.id}`}>
-                                <Trash2 className="h-4 w-4 text-destructive" />
-                              </Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                              <AlertDialogHeader>
-                                <AlertDialogTitle>Delete Organization</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                  Are you sure you want to delete "{org.name}"? This will also remove all associated funds and SPVs. This action cannot be undone.
-                                </AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                <AlertDialogAction
-                                  onClick={() => deleteMutation.mutate(org.id)}
-                                  data-testid={`button-confirm-delete-org-${org.id}`}
-                                >
-                                  Delete
-                                </AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
+                          {canManageOrg(org.id) && (
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button variant="ghost" size="icon" data-testid={`button-delete-org-${org.id}`}>
+                                  <Trash2 className="h-4 w-4 text-destructive" />
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>Delete Organization</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    Are you sure you want to delete "{org.name}"? This will also remove all associated funds and SPVs. This action cannot be undone.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                  <AlertDialogAction
+                                    onClick={() => deleteMutation.mutate(org.id)}
+                                    data-testid={`button-confirm-delete-org-${org.id}`}
+                                  >
+                                    Delete
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          )}
                           <Link href={`/organizations/${org.id}`}>
                             <Button variant="ghost" size="icon" data-testid={`button-view-org-${org.id}`}>
                               <ChevronRight className="h-4 w-4" />
