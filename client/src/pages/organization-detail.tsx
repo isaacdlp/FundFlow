@@ -629,9 +629,9 @@ export default function OrganizationDetail() {
         <TabsList>
           <TabsTrigger value="settings" data-testid="tab-settings">Settings</TabsTrigger>
           <TabsTrigger value="organizers" data-testid="tab-organizers">Organizers</TabsTrigger>
-          <TabsTrigger value="spvs" data-testid="tab-spvs">SPVs</TabsTrigger>
-          <TabsTrigger value="members" data-testid="tab-members">Members</TabsTrigger>
-          <TabsTrigger value="invites" data-testid="tab-invites">Invites</TabsTrigger>
+          {canEdit && <TabsTrigger value="spvs" data-testid="tab-spvs">SPVs</TabsTrigger>}
+          {canEdit && <TabsTrigger value="members" data-testid="tab-members">Members</TabsTrigger>}
+          {canEdit && <TabsTrigger value="invites" data-testid="tab-invites">Invites</TabsTrigger>}
         </TabsList>
 
         <TabsContent value="settings" className="mt-6">
