@@ -11,10 +11,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Building, Search, Trash2, Plus } from "lucide-react";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
 
 export default function Entities() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
+  const { isAdmin } = useAuth();
   const [search, setSearch] = useState("");
 
   const { data: entitiesList, isLoading } = useQuery<EntityInfo[]>({
@@ -52,12 +54,14 @@ export default function Entities() {
           <h1 className="text-2xl font-semibold" data-testid="text-page-title">Entities</h1>
           <p className="text-muted-foreground mt-1">Manage associated entities (companies, trusts, etc.)</p>
         </div>
-        <Link href="/entities/new">
-          <Button data-testid="button-add-entity">
-            <Plus className="h-4 w-4 mr-2" />
-            Add Entity
-          </Button>
-        </Link>
+        {isAdmin && (
+          <Link href="/entities/new">
+            <Button data-testid="button-add-entity">
+              <Plus className="h-4 w-4 mr-2" />
+              Add Entity
+            </Button>
+          </Link>
+        )}
       </div>
 
       <div className="relative max-w-sm">
@@ -119,15 +123,17 @@ export default function Entities() {
                           <Button variant="ghost" size="icon" onClick={() => navigate(`/entities/${entity.id}`)} data-testid={`button-view-entity-${entity.id}`}>
                             <Building className="h-4 w-4" />
                           </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => deleteMutation.mutate(entity.id)}
-                            disabled={deleteMutation.isPending}
-                            data-testid={`button-delete-entity-${entity.id}`}
-                          >
-                            <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
+                          {isAdmin && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => deleteMutation.mutate(entity.id)}
+                              disabled={deleteMutation.isPending}
+                              data-testid={`button-delete-entity-${entity.id}`}
+                            >
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>
