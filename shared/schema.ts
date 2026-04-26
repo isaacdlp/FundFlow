@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, serial, text, varchar, date, boolean, timestamp, integer, uniqueIndex, numeric } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, varchar, date, boolean, timestamp, integer, uniqueIndex, numeric, check } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -121,19 +121,6 @@ export const spvs = pgTable("spvs", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const spvMembers = pgTable("spv_members", {
-  id: serial("id").primaryKey(),
-  spvId: integer("spv_id").notNull().references(() => spvs.id, { onDelete: "cascade" }),
-  accountId: integer("account_id").notNull().references(() => accounts.id, { onDelete: "cascade" }),
-  initialValue: numeric("initial_value", { precision: 15, scale: 2 }).default("0"),
-  currentValue: numeric("current_value", { precision: 15, scale: 2 }).default("0"),
-  distributions: numeric("distributions", { precision: 15, scale: 2 }).default("0"),
-  purchaseDate: date("purchase_date"),
-  createdAt: timestamp("created_at").defaultNow(),
-}, (table) => [
-  uniqueIndex("spv_member_unique").on(table.spvId, table.accountId),
-]);
-
 export const entities = pgTable("entities", {
   id: serial("id").primaryKey(),
   name: varchar("name", { length: 255 }).notNull(),
@@ -178,6 +165,22 @@ export const entityManagers = pgTable("entity_managers", {
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
   uniqueIndex("entity_manager_unique").on(table.entityId, table.accountId),
+]);
+
+export const spvMembers = pgTable("spv_members", {
+  id: serial("id").primaryKey(),
+  spvId: integer("spv_id").notNull().references(() => spvs.id, { onDelete: "cascade" }),
+  accountId: integer("account_id").references(() => accounts.id, { onDelete: "cascade" }),
+  entityId: integer("entity_id").references(() => entities.id, { onDelete: "cascade" }),
+  initialValue: numeric("initial_value", { precision: 15, scale: 2 }).default("0"),
+  currentValue: numeric("current_value", { precision: 15, scale: 2 }).default("0"),
+  distributions: numeric("distributions", { precision: 15, scale: 2 }).default("0"),
+  purchaseDate: date("purchase_date"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("spv_member_account_unique").on(table.spvId, table.accountId).where(sql`account_id IS NOT NULL`),
+  uniqueIndex("spv_member_entity_unique").on(table.spvId, table.entityId).where(sql`entity_id IS NOT NULL`),
+  check("spv_member_investor_xor", sql`(account_id IS NOT NULL)::int + (entity_id IS NOT NULL)::int = 1`),
 ]);
 
 export const passwordResetTokens = pgTable("password_reset_tokens", {

@@ -59,7 +59,7 @@ shared/
 - `organization_members` - Membership requests with status (pending/approved/rejected), optional inviteId
 - `organization_invites` - Single-use invite tokens with used/usedByAccountId tracking
 - `spvs` - Special Purpose Vehicles with full entity details (legal, address, bank, investment)
-- `spv_members` - SPV-account associations with per-member investment data: `initialValue`, `currentValue`, `distributions`, `purchaseDate` (drives Portfolio Summary)
+- `spv_members` - Polymorphic SPV investor associations with per-member investment data: `initialValue`, `currentValue`, `distributions`, `purchaseDate` (drives Portfolio Summary). Investor is either an Account (`account_id`) **or** an Entity (`entity_id`) — exactly one is non-null (enforced by `spv_member_investor_xor` CHECK constraint and partial unique indexes `spv_member_account_unique`/`spv_member_entity_unique`)
 - `entities` - Entity records (LLC, Corp, Trust, etc.) with address and bank info
 - `entity_owners` - Owners of entities (can be Accounts or other Entities, with ownership %)
 - `entity_managers` - Managers of entities (always Accounts, unique per entity+account)
@@ -105,9 +105,14 @@ shared/
 - `POST /api/organizations/:id/spvs` - Create SPV
 - `PATCH /api/spvs/:id` - Update SPV
 - `DELETE /api/spvs/:id` - Delete SPV
-- `GET /api/spvs/:id/members` - List SPV members with account info
-- `POST /api/spvs/:id/members` - Add member to SPV (body: {accountId})
-- `DELETE /api/spvs/:id/members/:accountId` - Remove member from SPV
+- `GET /api/spvs/:id/members` - List SPV members; each row includes `investorType` plus either an `account` or `entity` block
+- `POST /api/spvs/:id/members` - Add investor to SPV (body: exactly one of `{accountId}` or `{entityId}`, plus optional investment fields). Accounts must be approved members of the SPV's organization
+- `PATCH /api/spvs/:id/members/:memberId` - Update investment fields (initialValue, currentValue, distributions, purchaseDate)
+- `DELETE /api/spvs/:id/members/:memberId` - Remove investor from SPV
+- `GET /api/portfolio` - Portfolio investments. Optional query params:
+  - `?accountId=<id>` — investments owned directly by that account **plus** investments held by entities the account owns (via `entity_owners`, recursively). Non-admins may only request their own accountId
+  - `?entityId=<id>` — investments held directly by that entity. Non-admins must own or manage the entity
+  - No params: admin sees all; non-admin sees own + owned entities
 
 ### Entities
 - `GET /api/entities` - List all entities with managers and owner count (supports ?search=)

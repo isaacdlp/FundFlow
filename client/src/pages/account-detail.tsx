@@ -18,7 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, Pencil, Save, X, Loader2, Mail, KeyRound } from "lucide-react";
+import { ArrowLeft, Pencil, Save, X, Loader2, Mail, KeyRound, Briefcase } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
@@ -225,6 +225,12 @@ export default function AccountDetail() {
             ))}
           </div>
         </div>
+        <Link href={`/?accountId=${account.id}`}>
+          <Button variant="outline" className="gap-2" data-testid="button-view-portfolio">
+            <Briefcase className="h-4 w-4" />
+            View Portfolio
+          </Button>
+        </Link>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>

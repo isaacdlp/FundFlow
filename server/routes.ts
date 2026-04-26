@@ -682,21 +682,46 @@ export async function registerRoutes(
       return res.status(403).json({ message: "Only admins or organization organizers can add SPV investments" });
     }
 
-    const { accountId } = req.body;
-    if (!accountId) return res.status(400).json({ message: "accountId is required" });
+    const { accountId, entityId } = req.body;
+    const hasAccount = accountId !== undefined && accountId !== null && accountId !== "";
+    const hasEntity = entityId !== undefined && entityId !== null && entityId !== "";
+    if (hasAccount === hasEntity) {
+      return res.status(400).json({ message: "Provide exactly one of accountId or entityId" });
+    }
+
     const validation = validateInvestmentFields(req.body);
     if (!validation.ok) return res.status(400).json({ message: validation.error });
 
     const spv = await storage.getSpv(id);
     if (!spv) return res.status(404).json({ message: "SPV not found" });
-    const member = await storage.addSpvMember(id, parseInt(accountId), validation.data);
+
+    let investor: { accountId: number } | { entityId: number };
+    if (hasAccount) {
+      const aid = parseInt(accountId);
+      if (!Number.isInteger(aid) || aid <= 0) return res.status(400).json({ message: "Invalid accountId" });
+      const acct = await storage.getAccount(aid);
+      if (!acct) return res.status(404).json({ message: "Account not found" });
+      const orgMembership = await storage.getMember(spv.organizationId, aid);
+      if (!orgMembership || orgMembership.status !== "approved") {
+        return res.status(400).json({ message: "Account must be an approved member of the SPV's organization" });
+      }
+      investor = { accountId: aid };
+    } else {
+      const eid = parseInt(entityId);
+      if (!Number.isInteger(eid) || eid <= 0) return res.status(400).json({ message: "Invalid entityId" });
+      const ent = await storage.getEntity(eid);
+      if (!ent) return res.status(404).json({ message: "Entity not found" });
+      investor = { entityId: eid };
+    }
+
+    const member = await storage.addSpvMember(id, investor, validation.data);
     res.status(201).json(member);
   });
 
-  app.patch("/api/spvs/:id/members/:accountId", async (req, res) => {
+  app.patch("/api/spvs/:id/members/:memberId", async (req, res) => {
     const id = parseInt(req.params.id);
-    const accountId = parseInt(req.params.accountId);
-    if (isNaN(id) || isNaN(accountId)) return res.status(400).json({ message: "Invalid ID" });
+    const memberId = parseInt(req.params.memberId);
+    if (isNaN(id) || isNaN(memberId)) return res.status(400).json({ message: "Invalid ID" });
     const me = await storage.getAccount(req.session.accountId!);
     if (!me) return res.status(401).json({ message: "Account not found" });
 
@@ -704,38 +729,83 @@ export async function registerRoutes(
       return res.status(403).json({ message: "Only admins or organization organizers can edit SPV investments" });
     }
 
+    const existing = (await storage.getSpvMembers(id)).find(m => m.id === memberId);
+    if (!existing) return res.status(404).json({ message: "SPV member not found" });
+
     const validation = validateInvestmentFields(req.body);
     if (!validation.ok) return res.status(400).json({ message: validation.error });
 
-    const member = await storage.updateSpvMember(id, accountId, validation.data);
+    const investor: { accountId: number } | { entityId: number } = existing.accountId !== null
+      ? { accountId: existing.accountId }
+      : { entityId: existing.entityId! };
+    const member = await storage.updateSpvMember(id, investor, validation.data);
     if (!member) return res.status(404).json({ message: "SPV member not found" });
     res.json(member);
+  });
+
+  app.delete("/api/spvs/:id/members/:memberId", async (req, res) => {
+    const id = parseInt(req.params.id);
+    const memberId = parseInt(req.params.memberId);
+    if (isNaN(id) || isNaN(memberId)) return res.status(400).json({ message: "Invalid ID" });
+    const me = await storage.getAccount(req.session.accountId!);
+    if (!me) return res.status(401).json({ message: "Account not found" });
+
+    if (!(await canManageSpv(me, id))) {
+      return res.status(403).json({ message: "Only admins or organization organizers can remove SPV investments" });
+    }
+
+    const existing = (await storage.getSpvMembers(id)).find(m => m.id === memberId);
+    if (!existing) return res.status(404).json({ message: "SPV member not found" });
+
+    const investor: { accountId: number } | { entityId: number } = existing.accountId !== null
+      ? { accountId: existing.accountId }
+      : { entityId: existing.entityId! };
+    const removed = await storage.removeSpvMember(id, investor);
+    if (!removed) return res.status(404).json({ message: "SPV member not found" });
+    res.json({ message: "Member removed from SPV" });
   });
 
   app.get("/api/portfolio", async (req, res) => {
     const me = await storage.getAccount(req.session.accountId!);
     if (!me) return res.status(401).json({ message: "Account not found" });
-    const investments = await storage.getPortfolio(isAdmin(me) ? undefined : me.id);
-    res.json(investments);
-  });
 
-  app.delete("/api/spvs/:id/members/:accountId", async (req, res) => {
-    const id = parseInt(req.params.id);
-    const accountId = parseInt(req.params.accountId);
-    if (isNaN(id) || isNaN(accountId)) return res.status(400).json({ message: "Invalid ID" });
-    const me = await storage.getAccount(req.session.accountId!);
-    if (!me) return res.status(401).json({ message: "Account not found" });
+    const accountIdQ = req.query.accountId ? parseInt(req.query.accountId as string) : null;
+    const entityIdQ = req.query.entityId ? parseInt(req.query.entityId as string) : null;
 
-    if (!isAdmin(me)) {
-      const spvIds = await storage.getSpvIdsForAccount(me.id);
-      if (!spvIds.includes(id)) {
-        return res.status(403).json({ message: "Access denied" });
-      }
+    if (accountIdQ !== null && entityIdQ !== null) {
+      return res.status(400).json({ message: "Provide either accountId or entityId, not both" });
     }
 
-    const removed = await storage.removeSpvMember(id, accountId);
-    if (!removed) return res.status(404).json({ message: "SPV member not found" });
-    res.json({ message: "Member removed from SPV" });
+    if (accountIdQ !== null) {
+      if (isNaN(accountIdQ)) return res.status(400).json({ message: "Invalid accountId" });
+      if (!isAdmin(me) && me.id !== accountIdQ) {
+        return res.status(403).json({ message: "Access denied" });
+      }
+      const ownedEntities = await storage.getEntityIdsOwnedByAccount(accountIdQ);
+      const investments = await storage.getPortfolio({ accountIds: [accountIdQ], entityIds: ownedEntities });
+      return res.json(investments);
+    }
+
+    if (entityIdQ !== null) {
+      if (isNaN(entityIdQ)) return res.status(400).json({ message: "Invalid entityId" });
+      if (!isAdmin(me)) {
+        const ownedEntities = await storage.getEntityIdsOwnedByAccount(me.id);
+        const managedEntities = await storage.getEntityIdsForAccount(me.id);
+        if (!ownedEntities.includes(entityIdQ) && !managedEntities.includes(entityIdQ)) {
+          return res.status(403).json({ message: "Access denied" });
+        }
+      }
+      const investments = await storage.getPortfolio({ entityIds: [entityIdQ] });
+      return res.json(investments);
+    }
+
+    if (isAdmin(me)) {
+      const investments = await storage.getPortfolio();
+      return res.json(investments);
+    }
+    const ownedEntities = await storage.getEntityIdsOwnedByAccount(me.id);
+    const investments = await storage.getPortfolio({ accountIds: [me.id], entityIds: ownedEntities });
+    res.json(investments);
   });
 
   app.get("/api/entities", async (req, res) => {

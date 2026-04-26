@@ -53,7 +53,9 @@ export interface SpvWithDetails extends Spv {
 }
 
 export interface SpvMemberWithAccount extends SpvMember {
-  account: { id: number; email: string; firstName: string; lastName: string };
+  investorType: "account" | "entity";
+  account: { id: number; email: string; firstName: string; lastName: string } | null;
+  entity: { id: number; name: string; entityType: string } | null;
 }
 
 export interface PortfolioInvestment {
@@ -65,10 +67,11 @@ export interface PortfolioInvestment {
   organizationId: number;
   organizationName: string;
   organizationSlug: string;
-  accountId: number;
-  accountFirstName: string;
-  accountLastName: string;
-  accountEmail: string;
+  investorType: "account" | "entity";
+  investorId: number;
+  investorName: string;
+  investorEmail: string | null;
+  investorEntityType: string | null;
   initialValue: string;
   currentValue: string;
   distributions: string;
@@ -126,11 +129,11 @@ export interface IStorage {
   updateSpv(id: number, data: UpdateSpv): Promise<SpvWithDetails | undefined>;
   deleteSpv(id: number): Promise<boolean>;
   getSpvMembers(spvId: number): Promise<SpvMemberWithAccount[]>;
-  addSpvMember(spvId: number, accountId: number, investment?: { initialValue?: string; currentValue?: string; distributions?: string; purchaseDate?: string | null }): Promise<SpvMemberWithAccount>;
-  updateSpvMember(spvId: number, accountId: number, investment: { initialValue?: string; currentValue?: string; distributions?: string; purchaseDate?: string | null }): Promise<SpvMemberWithAccount | undefined>;
-  removeSpvMember(spvId: number, accountId: number): Promise<boolean>;
-  getPortfolio(filter?: { accountIds?: number[] }): Promise<PortfolioInvestment[]>;
-  getEntityOwnerAccountIds(entityId: number): Promise<number[]>;
+  addSpvMember(spvId: number, investor: { accountId: number } | { entityId: number }, investment?: { initialValue?: string; currentValue?: string; distributions?: string; purchaseDate?: string | null }): Promise<SpvMemberWithAccount>;
+  updateSpvMember(spvId: number, investor: { accountId: number } | { entityId: number }, investment: { initialValue?: string; currentValue?: string; distributions?: string; purchaseDate?: string | null }): Promise<SpvMemberWithAccount | undefined>;
+  removeSpvMember(spvId: number, investor: { accountId: number } | { entityId: number }): Promise<boolean>;
+  getPortfolio(filter?: { accountIds?: number[]; entityIds?: number[] }): Promise<PortfolioInvestment[]>;
+  getEntityIdsOwnedByAccount(accountId: number): Promise<number[]>;
 
   getAllEntities(search?: string): Promise<EntityWithDetails[]>;
   getEntity(id: number): Promise<EntityWithDetails | undefined>;
@@ -205,6 +208,12 @@ async function getAccountSummary(accountId: number): Promise<{ id: number; email
   const [acct] = await db.select().from(accounts).where(eq(accounts.id, accountId));
   if (!acct) return null;
   return { id: acct.id, email: acct.email, firstName: acct.firstName, lastName: acct.lastName };
+}
+
+async function getEntitySummary(entityId: number): Promise<{ id: number; name: string; entityType: string } | null> {
+  const [ent] = await db.select().from(entities).where(eq(entities.id, entityId));
+  if (!ent) return null;
+  return { id: ent.id, name: ent.name, entityType: ent.entityType };
 }
 
 export class DatabaseStorage implements IStorage {
@@ -585,16 +594,29 @@ export class DatabaseStorage implements IStorage {
 
     const result: SpvMemberWithAccount[] = [];
     for (const m of members) {
-      const acct = await getAccountSummary(m.accountId);
-      if (acct) {
-        result.push({ ...m, account: acct });
+      if (m.accountId !== null) {
+        const acct = await getAccountSummary(m.accountId);
+        if (acct) {
+          result.push({ ...m, investorType: "account", account: acct, entity: null });
+        }
+      } else if (m.entityId !== null) {
+        const ent = await getEntitySummary(m.entityId);
+        if (ent) {
+          result.push({ ...m, investorType: "entity", account: null, entity: ent });
+        }
       }
     }
     return result;
   }
 
-  async addSpvMember(spvId: number, accountId: number, investment?: { initialValue?: string; currentValue?: string; distributions?: string; purchaseDate?: string | null }): Promise<SpvMemberWithAccount> {
-    const values: any = { spvId, accountId };
+  async addSpvMember(
+    spvId: number,
+    investor: { accountId: number } | { entityId: number },
+    investment?: { initialValue?: string; currentValue?: string; distributions?: string; purchaseDate?: string | null }
+  ): Promise<SpvMemberWithAccount> {
+    const values: any = { spvId };
+    if ("accountId" in investor) values.accountId = investor.accountId;
+    else values.entityId = investor.entityId;
     if (investment) {
       if (investment.initialValue !== undefined) values.initialValue = investment.initialValue;
       if (investment.currentValue !== undefined) values.currentValue = investment.currentValue;
@@ -604,53 +626,76 @@ export class DatabaseStorage implements IStorage {
     const [member] = await db.insert(spvMembers).values(values)
       .onConflictDoNothing().returning();
 
-    if (!member) {
-      const [existing] = await db.select().from(spvMembers)
-        .where(and(eq(spvMembers.spvId, spvId), eq(spvMembers.accountId, accountId)));
-      const acct = await getAccountSummary(accountId);
-      return { ...existing, account: acct! };
-    }
+    const finalMember = member ?? (await db.select().from(spvMembers)
+      .where("accountId" in investor
+        ? and(eq(spvMembers.spvId, spvId), eq(spvMembers.accountId, investor.accountId))
+        : and(eq(spvMembers.spvId, spvId), eq(spvMembers.entityId, investor.entityId))))[0];
 
-    const acct = await getAccountSummary(accountId);
-    return { ...member, account: acct! };
+    if ("accountId" in investor) {
+      const acct = await getAccountSummary(investor.accountId);
+      return { ...finalMember, investorType: "account", account: acct!, entity: null };
+    } else {
+      const ent = await getEntitySummary(investor.entityId);
+      return { ...finalMember, investorType: "entity", account: null, entity: ent! };
+    }
   }
 
-  async updateSpvMember(spvId: number, accountId: number, investment: { initialValue?: string; currentValue?: string; distributions?: string; purchaseDate?: string | null }): Promise<SpvMemberWithAccount | undefined> {
+  async updateSpvMember(
+    spvId: number,
+    investor: { accountId: number } | { entityId: number },
+    investment: { initialValue?: string; currentValue?: string; distributions?: string; purchaseDate?: string | null }
+  ): Promise<SpvMemberWithAccount | undefined> {
+    const investorWhere = "accountId" in investor
+      ? and(eq(spvMembers.spvId, spvId), eq(spvMembers.accountId, investor.accountId))
+      : and(eq(spvMembers.spvId, spvId), eq(spvMembers.entityId, investor.entityId));
+
     const updates: any = {};
     if (investment.initialValue !== undefined) updates.initialValue = investment.initialValue;
     if (investment.currentValue !== undefined) updates.currentValue = investment.currentValue;
     if (investment.distributions !== undefined) updates.distributions = investment.distributions;
     if (investment.purchaseDate !== undefined) updates.purchaseDate = investment.purchaseDate;
+
+    let row;
     if (Object.keys(updates).length === 0) {
-      const [existing] = await db.select().from(spvMembers)
-        .where(and(eq(spvMembers.spvId, spvId), eq(spvMembers.accountId, accountId)));
-      if (!existing) return undefined;
-      const acct = await getAccountSummary(accountId);
-      return { ...existing, account: acct! };
+      [row] = await db.select().from(spvMembers).where(investorWhere);
+    } else {
+      [row] = await db.update(spvMembers).set(updates).where(investorWhere).returning();
     }
-    const [member] = await db.update(spvMembers).set(updates)
-      .where(and(eq(spvMembers.spvId, spvId), eq(spvMembers.accountId, accountId)))
-      .returning();
-    if (!member) return undefined;
-    const acct = await getAccountSummary(accountId);
-    return { ...member, account: acct! };
+    if (!row) return undefined;
+
+    if ("accountId" in investor) {
+      const acct = await getAccountSummary(investor.accountId);
+      return { ...row, investorType: "account", account: acct!, entity: null };
+    } else {
+      const ent = await getEntitySummary(investor.entityId);
+      return { ...row, investorType: "entity", account: null, entity: ent! };
+    }
   }
 
-  async removeSpvMember(spvId: number, accountId: number): Promise<boolean> {
-    const result = await db.delete(spvMembers)
-      .where(and(eq(spvMembers.spvId, spvId), eq(spvMembers.accountId, accountId)))
-      .returning();
+  async removeSpvMember(spvId: number, investor: { accountId: number } | { entityId: number }): Promise<boolean> {
+    const investorWhere = "accountId" in investor
+      ? and(eq(spvMembers.spvId, spvId), eq(spvMembers.accountId, investor.accountId))
+      : and(eq(spvMembers.spvId, spvId), eq(spvMembers.entityId, investor.entityId));
+    const result = await db.delete(spvMembers).where(investorWhere).returning();
     return result.length > 0;
   }
 
-  async getPortfolio(filter?: { accountIds?: number[] }): Promise<PortfolioInvestment[]> {
+  async getPortfolio(filter?: { accountIds?: number[]; entityIds?: number[] }): Promise<PortfolioInvestment[]> {
     let where;
-    if (filter?.accountIds !== undefined) {
-      if (filter.accountIds.length === 0) return [];
-      where = inArray(spvMembers.accountId, filter.accountIds);
+    if (filter !== undefined) {
+      const conds: any[] = [];
+      if (filter.accountIds !== undefined && filter.accountIds.length > 0) {
+        conds.push(inArray(spvMembers.accountId, filter.accountIds));
+      }
+      if (filter.entityIds !== undefined && filter.entityIds.length > 0) {
+        conds.push(inArray(spvMembers.entityId, filter.entityIds));
+      }
+      if (conds.length === 0) return [];
+      where = conds.length === 1 ? conds[0] : or(...conds);
     } else {
       where = sql`TRUE`;
     }
+
     const rows = await db
       .select({
         memberId: spvMembers.id,
@@ -661,10 +706,13 @@ export class DatabaseStorage implements IStorage {
         organizationId: organizations.id,
         organizationName: organizations.name,
         organizationSlug: organizations.slug,
-        accountId: accounts.id,
+        accountId: spvMembers.accountId,
+        entityId: spvMembers.entityId,
         accountFirstName: accounts.firstName,
         accountLastName: accounts.lastName,
         accountEmail: accounts.email,
+        entityName: entities.name,
+        entityType: entities.entityType,
         initialValue: spvMembers.initialValue,
         currentValue: spvMembers.currentValue,
         distributions: spvMembers.distributions,
@@ -673,55 +721,56 @@ export class DatabaseStorage implements IStorage {
       .from(spvMembers)
       .innerJoin(spvs, eq(spvs.id, spvMembers.spvId))
       .innerJoin(organizations, eq(organizations.id, spvs.organizationId))
-      .innerJoin(accounts, eq(accounts.id, spvMembers.accountId))
+      .leftJoin(accounts, eq(accounts.id, spvMembers.accountId))
+      .leftJoin(entities, eq(entities.id, spvMembers.entityId))
       .where(where)
       .orderBy(sql`${spvs.displayName} ASC`);
 
-    return rows.map(r => ({
-      memberId: r.memberId,
-      spvId: r.spvId,
-      spvName: r.spvName,
-      investmentCompanyName: r.investmentCompanyName ?? "",
-      investmentType: r.investmentType ?? "",
-      organizationId: r.organizationId,
-      organizationName: r.organizationName,
-      organizationSlug: r.organizationSlug,
-      accountId: r.accountId,
-      accountFirstName: r.accountFirstName,
-      accountLastName: r.accountLastName,
-      accountEmail: r.accountEmail,
-      initialValue: r.initialValue ?? "0",
-      currentValue: r.currentValue ?? "0",
-      distributions: r.distributions ?? "0",
-      purchaseDate: r.purchaseDate ?? null,
-    }));
+    return rows.map(r => {
+      const isAccount = r.accountId !== null;
+      return {
+        memberId: r.memberId,
+        spvId: r.spvId,
+        spvName: r.spvName,
+        investmentCompanyName: r.investmentCompanyName ?? "",
+        investmentType: r.investmentType ?? "",
+        organizationId: r.organizationId,
+        organizationName: r.organizationName,
+        organizationSlug: r.organizationSlug,
+        investorType: isAccount ? "account" as const : "entity" as const,
+        investorId: isAccount ? r.accountId! : r.entityId!,
+        investorName: isAccount
+          ? `${r.accountFirstName ?? ""} ${r.accountLastName ?? ""}`.trim()
+          : (r.entityName ?? ""),
+        investorEmail: isAccount ? (r.accountEmail ?? null) : null,
+        investorEntityType: isAccount ? null : (r.entityType ?? null),
+        initialValue: r.initialValue ?? "0",
+        currentValue: r.currentValue ?? "0",
+        distributions: r.distributions ?? "0",
+        purchaseDate: r.purchaseDate ?? null,
+      };
+    });
   }
 
-  async getEntityOwnerAccountIds(entityId: number): Promise<number[]> {
-    const accountIds = new Set<number>();
-    const visited = new Set<number>();
-    const stack = [entityId];
+  async getEntityIdsOwnedByAccount(accountId: number): Promise<number[]> {
+    const directRows = await db.select({ id: entityOwners.entityId })
+      .from(entityOwners)
+      .where(and(eq(entityOwners.ownerType, "account"), eq(entityOwners.ownerAccountId, accountId)));
+    const found = new Set<number>(directRows.map(r => r.id));
+    const stack = Array.from(found);
     while (stack.length > 0) {
       const eid = stack.pop()!;
-      if (visited.has(eid)) continue;
-      visited.add(eid);
-      const owners = await db
-        .select({
-          ownerType: entityOwners.ownerType,
-          ownerAccountId: entityOwners.ownerAccountId,
-          ownerEntityId: entityOwners.ownerEntityId,
-        })
+      const children = await db.select({ id: entityOwners.entityId })
         .from(entityOwners)
-        .where(eq(entityOwners.entityId, eid));
-      for (const o of owners) {
-        if (o.ownerType === "account" && o.ownerAccountId !== null) {
-          accountIds.add(o.ownerAccountId);
-        } else if (o.ownerType === "entity" && o.ownerEntityId !== null) {
-          stack.push(o.ownerEntityId);
+        .where(and(eq(entityOwners.ownerType, "entity"), eq(entityOwners.ownerEntityId, eid)));
+      for (const c of children) {
+        if (!found.has(c.id)) {
+          found.add(c.id);
+          stack.push(c.id);
         }
       }
     }
-    return Array.from(accountIds);
+    return Array.from(found);
   }
 
   private async enrichEntity(entity: Entity): Promise<EntityWithDetails> {
@@ -905,10 +954,15 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getSpvIdsForAccount(accountId: number): Promise<number[]> {
+    const ownedEntityIds = await this.getEntityIdsOwnedByAccount(accountId);
+    const conds: any[] = [eq(spvMembers.accountId, accountId)];
+    if (ownedEntityIds.length > 0) {
+      conds.push(inArray(spvMembers.entityId, ownedEntityIds));
+    }
     const memberOf = await db.select({ id: spvMembers.spvId })
       .from(spvMembers)
-      .where(eq(spvMembers.accountId, accountId));
-    return memberOf.map(r => r.id);
+      .where(or(...conds));
+    return Array.from(new Set(memberOf.map(r => r.id)));
   }
 
   async seedData(): Promise<void> {

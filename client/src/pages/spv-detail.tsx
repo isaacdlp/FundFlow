@@ -1,6 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useRoute, Link } from "wouter";
-import type { SpvInfo, SpvMemberInfo, MemberInfo, OrganizerAccount } from "@shared/types";
+import type { SpvInfo, SpvMemberInfo, MemberInfo, OrganizerAccount, EntityInfo } from "@shared/types";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -33,7 +33,9 @@ function formatCurrency(value: string | null): string {
 
 function SpvMembersTab({ spvId, orgId }: { spvId: string; orgId: number }) {
   const { toast } = useToast();
-  const [selectedMemberId, setSelectedMemberId] = useState("");
+  const [investorType, setInvestorType] = useState<"account" | "entity">("account");
+  const [selectedAccountId, setSelectedAccountId] = useState("");
+  const [selectedEntityId, setSelectedEntityId] = useState("");
   const [newInitialValue, setNewInitialValue] = useState("");
   const [newCurrentValue, setNewCurrentValue] = useState("");
   const [newDistributions, setNewDistributions] = useState("");
@@ -49,38 +51,45 @@ function SpvMembersTab({ spvId, orgId }: { spvId: string; orgId: number }) {
     queryKey: ["/api/organizations", String(orgId), "members"],
   });
 
+  const { data: entitiesList } = useQuery<EntityInfo[]>({
+    queryKey: ["/api/entities"],
+  });
+
   const approvedOrgMembers = orgMembers?.filter(m => m.status === "approved") || [];
-  const availableMembers = approvedOrgMembers.filter(
+  const availableAccounts = approvedOrgMembers.filter(
     om => !spvMembers?.some(sm => sm.accountId === om.accountId)
+  );
+  const availableEntities = (entitiesList || []).filter(
+    e => !spvMembers?.some(sm => sm.entityId === e.id)
   );
 
   const addMutation = useMutation({
-    mutationFn: async (payload: { accountId: number; initialValue: string; currentValue: string; distributions: string; purchaseDate: string | null }) => {
+    mutationFn: async (payload: { accountId?: number; entityId?: number; initialValue: string; currentValue: string; distributions: string; purchaseDate: string | null }) => {
       const res = await apiRequest("POST", `/api/spvs/${spvId}/members`, payload);
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/spvs", spvId, "members"] });
       queryClient.invalidateQueries({ queryKey: ["/api/spvs", spvId] });
-      queryClient.invalidateQueries({ queryKey: ["/api/portfolio"] });
-      setSelectedMemberId("");
+      queryClient.invalidateQueries({ predicate: q => typeof q.queryKey[0] === "string" && (q.queryKey[0] as string).startsWith("/api/portfolio") });
+      setSelectedAccountId(""); setSelectedEntityId("");
       setNewInitialValue(""); setNewCurrentValue(""); setNewDistributions(""); setNewPurchaseDate("");
-      toast({ title: "Member added to SPV" });
+      toast({ title: "Investment added to SPV" });
     },
     onError: (error: Error) => {
-      toast({ title: "Failed to add member", description: error.message, variant: "destructive" });
+      toast({ title: "Failed to add investment", description: error.message, variant: "destructive" });
     },
   });
 
   const updateMutation = useMutation({
-    mutationFn: async (payload: { accountId: number; initialValue: string; currentValue: string; distributions: string; purchaseDate: string | null }) => {
-      const { accountId, ...rest } = payload;
-      const res = await apiRequest("PATCH", `/api/spvs/${spvId}/members/${accountId}`, rest);
+    mutationFn: async (payload: { memberId: number; initialValue: string; currentValue: string; distributions: string; purchaseDate: string | null }) => {
+      const { memberId, ...rest } = payload;
+      const res = await apiRequest("PATCH", `/api/spvs/${spvId}/members/${memberId}`, rest);
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/spvs", spvId, "members"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/portfolio"] });
+      queryClient.invalidateQueries({ predicate: q => typeof q.queryKey[0] === "string" && (q.queryKey[0] as string).startsWith("/api/portfolio") });
       setEditingMemberId(null);
       toast({ title: "Investment updated" });
     },
@@ -90,23 +99,23 @@ function SpvMembersTab({ spvId, orgId }: { spvId: string; orgId: number }) {
   });
 
   const removeMutation = useMutation({
-    mutationFn: async (accountId: number) => {
-      const res = await apiRequest("DELETE", `/api/spvs/${spvId}/members/${accountId}`);
+    mutationFn: async (memberId: number) => {
+      const res = await apiRequest("DELETE", `/api/spvs/${spvId}/members/${memberId}`);
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/spvs", spvId, "members"] });
       queryClient.invalidateQueries({ queryKey: ["/api/spvs", spvId] });
-      queryClient.invalidateQueries({ queryKey: ["/api/portfolio"] });
-      toast({ title: "Member removed from SPV" });
+      queryClient.invalidateQueries({ predicate: q => typeof q.queryKey[0] === "string" && (q.queryKey[0] as string).startsWith("/api/portfolio") });
+      toast({ title: "Investment removed from SPV" });
     },
     onError: (error: Error) => {
-      toast({ title: "Failed to remove member", description: error.message, variant: "destructive" });
+      toast({ title: "Failed to remove investment", description: error.message, variant: "destructive" });
     },
   });
 
   const startEdit = (m: SpvMemberInfo) => {
-    setEditingMemberId(m.accountId);
+    setEditingMemberId(m.id);
     setEditValues({
       initialValue: m.initialValue || "0",
       currentValue: m.currentValue || "0",
@@ -115,38 +124,71 @@ function SpvMembersTab({ spvId, orgId }: { spvId: string; orgId: number }) {
     });
   };
 
+  const canSubmit = investorType === "account" ? !!selectedAccountId : !!selectedEntityId;
+
   if (membersLoading) return <Skeleton className="h-64 w-full" />;
 
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0">
         <div>
-          <h2 className="text-lg font-semibold">SPV Members</h2>
+          <h2 className="text-lg font-semibold">SPV Investments</h2>
           <p className="text-sm text-muted-foreground mt-1">
-            Add approved organization members to this SPV
+            Add accounts (approved organization members) or entities as investors
           </p>
         </div>
       </CardHeader>
       <CardContent className="space-y-6">
         <div className="space-y-3 p-4 rounded-md border bg-muted/30">
           <div className="space-y-2">
-            <Label>Investor</Label>
-            <Select value={selectedMemberId} onValueChange={setSelectedMemberId}>
-              <SelectTrigger data-testid="select-spv-member">
-                <SelectValue placeholder="Select an approved organization member..." />
+            <Label>Investor Type</Label>
+            <Select value={investorType} onValueChange={v => { setInvestorType(v as "account" | "entity"); setSelectedAccountId(""); setSelectedEntityId(""); }}>
+              <SelectTrigger data-testid="select-investor-type">
+                <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {availableMembers.length > 0 ? (
-                  availableMembers.map(m => (
-                    <SelectItem key={m.accountId} value={String(m.accountId)}>
-                      {m.account.firstName} {m.account.lastName} ({m.account.email})
-                    </SelectItem>
-                  ))
-                ) : (
-                  <SelectItem value="none" disabled>No available members</SelectItem>
-                )}
+                <SelectItem value="account">Account (Individual)</SelectItem>
+                <SelectItem value="entity">Entity</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>Investor</Label>
+            {investorType === "account" ? (
+              <Select value={selectedAccountId} onValueChange={setSelectedAccountId}>
+                <SelectTrigger data-testid="select-spv-account">
+                  <SelectValue placeholder="Select an approved organization member..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableAccounts.length > 0 ? (
+                    availableAccounts.map(m => (
+                      <SelectItem key={m.accountId} value={String(m.accountId)}>
+                        {m.account.firstName} {m.account.lastName} ({m.account.email})
+                      </SelectItem>
+                    ))
+                  ) : (
+                    <SelectItem value="none" disabled>No available accounts</SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
+            ) : (
+              <Select value={selectedEntityId} onValueChange={setSelectedEntityId}>
+                <SelectTrigger data-testid="select-spv-entity">
+                  <SelectValue placeholder="Select an entity..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableEntities.length > 0 ? (
+                    availableEntities.map(e => (
+                      <SelectItem key={e.id} value={String(e.id)}>
+                        {e.name} ({e.entityType})
+                      </SelectItem>
+                    ))
+                  ) : (
+                    <SelectItem value="none" disabled>No available entities</SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
+            )}
           </div>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
             <div className="space-y-1">
@@ -168,14 +210,21 @@ function SpvMembersTab({ spvId, orgId }: { spvId: string; orgId: number }) {
           </div>
           <div className="flex justify-end">
             <Button
-              onClick={() => selectedMemberId && addMutation.mutate({
-                accountId: parseInt(selectedMemberId),
-                initialValue: newInitialValue || "0",
-                currentValue: newCurrentValue || newInitialValue || "0",
-                distributions: newDistributions || "0",
-                purchaseDate: newPurchaseDate || null,
-              })}
-              disabled={!selectedMemberId || addMutation.isPending}
+              onClick={() => {
+                if (!canSubmit) return;
+                const base = {
+                  initialValue: newInitialValue || "0",
+                  currentValue: newCurrentValue || newInitialValue || "0",
+                  distributions: newDistributions || "0",
+                  purchaseDate: newPurchaseDate || null,
+                };
+                if (investorType === "account") {
+                  addMutation.mutate({ accountId: parseInt(selectedAccountId), ...base });
+                } else {
+                  addMutation.mutate({ entityId: parseInt(selectedEntityId), ...base });
+                }
+              }}
+              disabled={!canSubmit || addMutation.isPending}
               data-testid="button-add-spv-member"
             >
               <UserPlus className="h-4 w-4 mr-2" />
@@ -189,32 +238,59 @@ function SpvMembersTab({ spvId, orgId }: { spvId: string; orgId: number }) {
         {spvMembers && spvMembers.length > 0 ? (
           <div className="space-y-3">
             {spvMembers.map(member => {
-              const isEditing = editingMemberId === member.accountId;
+              const isEditing = editingMemberId === member.id;
               const initial = parseFloat(member.initialValue || "0");
               const current = parseFloat(member.currentValue || "0");
               const dist = parseFloat(member.distributions || "0");
               const roi = initial > 0 ? ((current + dist - initial) / initial) * 100 : 0;
+              const isAccount = member.investorType === "account" && member.account;
+              const isEntity = member.investorType === "entity" && member.entity;
+              const initials = isAccount
+                ? `${member.account!.firstName[0] || ""}${member.account!.lastName[0] || ""}`
+                : isEntity
+                ? member.entity!.name.slice(0, 2).toUpperCase()
+                : "??";
+              const displayName = isAccount
+                ? `${member.account!.firstName} ${member.account!.lastName}`
+                : isEntity
+                ? member.entity!.name
+                : "Unknown";
+              const subText = isAccount
+                ? member.account!.email
+                : isEntity
+                ? member.entity!.entityType
+                : "";
+              const profileHref = isAccount ? `/accounts/${member.account!.id}` : isEntity ? `/entities/${member.entity!.id}` : null;
               return (
-                <div key={member.id} className="p-3 rounded-md border" data-testid={`spv-member-${member.accountId}`}>
+                <div key={member.id} className="p-3 rounded-md border" data-testid={`spv-member-${member.id}`}>
                   <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary text-sm font-semibold flex-shrink-0">
-                      {member.account.firstName[0]}{member.account.lastName[0]}
+                    <div className={`h-10 w-10 rounded-full ${isEntity ? "bg-blue-500/10 text-blue-600" : "bg-primary/10 text-primary"} flex items-center justify-center text-sm font-semibold flex-shrink-0`}>
+                      {initials}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{member.account.firstName} {member.account.lastName}</p>
-                      <p className="text-xs text-muted-foreground truncate">{member.account.email}</p>
+                      {profileHref ? (
+                        <Link href={profileHref}>
+                          <a className="text-sm font-medium truncate hover:underline" data-testid={`link-investor-${member.id}`}>{displayName}</a>
+                        </Link>
+                      ) : (
+                        <p className="text-sm font-medium truncate">{displayName}</p>
+                      )}
+                      <p className="text-xs text-muted-foreground truncate">
+                        {isEntity && <Badge variant="secondary" className="mr-2 text-[10px]">Entity</Badge>}
+                        {subText}
+                      </p>
                     </div>
                     {!isEditing && (
-                      <Button variant="ghost" size="icon" onClick={() => startEdit(member)} data-testid={`button-edit-spv-member-${member.accountId}`}>
+                      <Button variant="ghost" size="icon" onClick={() => startEdit(member)} data-testid={`button-edit-spv-member-${member.id}`}>
                         <Pencil className="h-4 w-4" />
                       </Button>
                     )}
                     <Button
                       variant="ghost"
                       size="icon"
-                      onClick={() => removeMutation.mutate(member.accountId)}
+                      onClick={() => removeMutation.mutate(member.id)}
                       disabled={removeMutation.isPending}
-                      data-testid={`button-remove-spv-member-${member.accountId}`}
+                      data-testid={`button-remove-spv-member-${member.id}`}
                     >
                       <Trash2 className="h-4 w-4 text-destructive" />
                     </Button>
@@ -224,26 +300,26 @@ function SpvMembersTab({ spvId, orgId }: { spvId: string; orgId: number }) {
                       <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                         <div className="space-y-1">
                           <Label className="text-xs">Initial Value</Label>
-                          <Input type="number" step="0.01" value={editValues.initialValue} onChange={e => setEditValues(v => ({ ...v, initialValue: e.target.value }))} data-testid={`input-edit-initial-${member.accountId}`} />
+                          <Input type="number" step="0.01" value={editValues.initialValue} onChange={e => setEditValues(v => ({ ...v, initialValue: e.target.value }))} data-testid={`input-edit-initial-${member.id}`} />
                         </div>
                         <div className="space-y-1">
                           <Label className="text-xs">Current Value</Label>
-                          <Input type="number" step="0.01" value={editValues.currentValue} onChange={e => setEditValues(v => ({ ...v, currentValue: e.target.value }))} data-testid={`input-edit-current-${member.accountId}`} />
+                          <Input type="number" step="0.01" value={editValues.currentValue} onChange={e => setEditValues(v => ({ ...v, currentValue: e.target.value }))} data-testid={`input-edit-current-${member.id}`} />
                         </div>
                         <div className="space-y-1">
                           <Label className="text-xs">Distributions</Label>
-                          <Input type="number" step="0.01" value={editValues.distributions} onChange={e => setEditValues(v => ({ ...v, distributions: e.target.value }))} data-testid={`input-edit-dist-${member.accountId}`} />
+                          <Input type="number" step="0.01" value={editValues.distributions} onChange={e => setEditValues(v => ({ ...v, distributions: e.target.value }))} data-testid={`input-edit-dist-${member.id}`} />
                         </div>
                         <div className="space-y-1">
                           <Label className="text-xs">Purchase Date</Label>
-                          <Input type="date" value={editValues.purchaseDate} onChange={e => setEditValues(v => ({ ...v, purchaseDate: e.target.value }))} data-testid={`input-edit-date-${member.accountId}`} />
+                          <Input type="date" value={editValues.purchaseDate} onChange={e => setEditValues(v => ({ ...v, purchaseDate: e.target.value }))} data-testid={`input-edit-date-${member.id}`} />
                         </div>
                       </div>
                       <div className="flex justify-end gap-2">
-                        <Button variant="outline" size="sm" onClick={() => setEditingMemberId(null)} data-testid={`button-cancel-edit-${member.accountId}`}>
+                        <Button variant="outline" size="sm" onClick={() => setEditingMemberId(null)} data-testid={`button-cancel-edit-${member.id}`}>
                           <X className="h-4 w-4 mr-1" /> Cancel
                         </Button>
-                        <Button size="sm" onClick={() => updateMutation.mutate({ accountId: member.accountId, ...editValues, purchaseDate: editValues.purchaseDate || null })} disabled={updateMutation.isPending} data-testid={`button-save-edit-${member.accountId}`}>
+                        <Button size="sm" onClick={() => updateMutation.mutate({ memberId: member.id, ...editValues, purchaseDate: editValues.purchaseDate || null })} disabled={updateMutation.isPending} data-testid={`button-save-edit-${member.id}`}>
                           <Save className="h-4 w-4 mr-1" /> {updateMutation.isPending ? "Saving..." : "Save"}
                         </Button>
                       </div>
@@ -252,11 +328,11 @@ function SpvMembersTab({ spvId, orgId }: { spvId: string; orgId: number }) {
                     <div className="mt-3 grid grid-cols-2 md:grid-cols-5 gap-3 text-xs">
                       <div>
                         <p className="text-muted-foreground">Initial</p>
-                        <p className="font-medium" data-testid={`text-initial-${member.accountId}`}>${formatCurrency(member.initialValue)}</p>
+                        <p className="font-medium" data-testid={`text-initial-${member.id}`}>${formatCurrency(member.initialValue)}</p>
                       </div>
                       <div>
                         <p className="text-muted-foreground">Current</p>
-                        <p className="font-medium" data-testid={`text-current-${member.accountId}`}>${formatCurrency(member.currentValue)}</p>
+                        <p className="font-medium" data-testid={`text-current-${member.id}`}>${formatCurrency(member.currentValue)}</p>
                       </div>
                       <div>
                         <p className="text-muted-foreground">Distributions</p>
@@ -280,7 +356,7 @@ function SpvMembersTab({ spvId, orgId }: { spvId: string; orgId: number }) {
           <div className="text-center py-8">
             <Users className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
             <p className="text-sm text-muted-foreground">
-              No investments yet. Add an approved organization member above.
+              No investments yet. Add an account or entity above.
             </p>
           </div>
         )}

@@ -26,7 +26,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { ArrowLeft, Pencil, Save, X as XIcon, Plus, Trash2, Building, Users, UserPlus } from "lucide-react";
+import { ArrowLeft, Pencil, Save, X as XIcon, Plus, Trash2, Building, Users, UserPlus, Briefcase } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -479,6 +479,12 @@ export default function EntityDetail() {
             <Badge variant="outline">{entity.ownerCount} Owner{entity.ownerCount !== 1 ? "s" : ""}</Badge>
           </div>
         </div>
+        <Link href={`/?entityId=${entity.id}`}>
+          <Button variant="outline" className="gap-2" data-testid="button-view-portfolio">
+            <Briefcase className="h-4 w-4" />
+            View Portfolio
+          </Button>
+        </Link>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>

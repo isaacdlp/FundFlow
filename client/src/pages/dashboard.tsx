@@ -1,14 +1,13 @@
 import { Fragment, useMemo, useState } from "react";
-import { Link } from "wouter";
+import { Link, useSearch } from "wouter";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
-import type { PortfolioInvestment } from "@shared/types";
-import { Search, TrendingUp, TrendingDown, ArrowRight, ChevronDown, ChevronRight, Briefcase } from "lucide-react";
+import type { PortfolioInvestment, AccountWithRoles, EntityInfo } from "@shared/types";
+import { Search, TrendingUp, TrendingDown, ArrowRight, ChevronDown, ChevronRight, Briefcase, ArrowLeft } from "lucide-react";
 
 function fmtMoney(n: number): string {
   return n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -45,8 +44,29 @@ export default function Dashboard() {
   const [search, setSearch] = useState("");
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
+  const searchString = useSearch();
+  const params = new URLSearchParams(searchString);
+  const accountIdParam = params.get("accountId");
+  const entityIdParam = params.get("entityId");
+
+  const portfolioPath = accountIdParam
+    ? `/api/portfolio?accountId=${accountIdParam}`
+    : entityIdParam
+      ? `/api/portfolio?entityId=${entityIdParam}`
+      : "/api/portfolio";
+
   const { data: investments, isLoading } = useQuery<PortfolioInvestment[]>({
-    queryKey: ["/api/portfolio"],
+    queryKey: [portfolioPath],
+  });
+
+  const { data: contextAccount } = useQuery<AccountWithRoles>({
+    queryKey: ["/api/accounts", accountIdParam],
+    enabled: !!accountIdParam,
+  });
+
+  const { data: contextEntity } = useQuery<EntityInfo>({
+    queryKey: ["/api/entities", entityIdParam],
+    enabled: !!entityIdParam,
   });
 
   const filtered = useMemo(() => {
@@ -58,8 +78,8 @@ export default function Dashboard() {
       i.investmentCompanyName.toLowerCase().includes(q) ||
       i.investmentType.toLowerCase().includes(q) ||
       i.organizationName.toLowerCase().includes(q) ||
-      `${i.accountFirstName} ${i.accountLastName}`.toLowerCase().includes(q) ||
-      i.accountEmail.toLowerCase().includes(q)
+      i.investorName.toLowerCase().includes(q) ||
+      (i.investorEmail || "").toLowerCase().includes(q)
     );
   }, [investments, search]);
 
@@ -109,13 +129,29 @@ export default function Dashboard() {
     <div className="p-6 space-y-6">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
+          {(accountIdParam || entityIdParam) && (
+            <Link href={accountIdParam ? `/accounts/${accountIdParam}` : `/entities/${entityIdParam}`}>
+              <a className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground mb-2" data-testid="link-back-to-context">
+                <ArrowLeft className="h-4 w-4 mr-1" />
+                Back to {accountIdParam ? "account" : "entity"}
+              </a>
+            </Link>
+          )}
           <h1 className="text-2xl font-semibold" data-testid="text-page-title">
-            Portfolio Summary
+            {accountIdParam && contextAccount
+              ? `${contextAccount.firstName} ${contextAccount.lastName} — Portfolio`
+              : entityIdParam && contextEntity
+                ? `${contextEntity.name} — Portfolio`
+                : "Portfolio Summary"}
           </h1>
           <p className="text-muted-foreground mt-1">
-            {isAdmin
-              ? "All investments across every account on the platform"
-              : `Welcome${user ? `, ${user.firstName}` : ""}. Here is a breakdown of your investments.`}
+            {accountIdParam
+              ? "Direct investments by this account plus investments held by entities it owns."
+              : entityIdParam
+                ? "All investments held directly by this entity."
+                : isAdmin
+                  ? "All investments across every account and entity on the platform"
+                  : `Welcome${user ? `, ${user.firstName}` : ""}. Here is a breakdown of your investments.`}
           </p>
         </div>
       </div>
@@ -306,9 +342,10 @@ export default function Dashboard() {
                               </td>
                               {isAdmin && (
                                 <td className="py-2 pr-3">
-                                  <Link href={`/accounts/${inv.accountId}`}>
-                                    <span className="text-muted-foreground hover:text-foreground cursor-pointer" data-testid={`text-investor-${inv.memberId}`}>
-                                      {inv.accountFirstName} {inv.accountLastName}
+                                  <Link href={inv.investorType === "entity" ? `/entities/${inv.investorId}` : `/accounts/${inv.investorId}`}>
+                                    <span className="text-muted-foreground hover:text-foreground cursor-pointer inline-flex items-center gap-1" data-testid={`text-investor-${inv.memberId}`}>
+                                      {inv.investorType === "entity" && <Badge variant="outline" className="text-[10px] px-1 py-0">Entity</Badge>}
+                                      {inv.investorName}
                                     </span>
                                   </Link>
                                 </td>
