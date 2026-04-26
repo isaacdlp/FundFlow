@@ -34,6 +34,12 @@ function formatCurrency(value: string | null): string {
 function SpvMembersTab({ spvId, orgId }: { spvId: string; orgId: number }) {
   const { toast } = useToast();
   const [selectedMemberId, setSelectedMemberId] = useState("");
+  const [newInitialValue, setNewInitialValue] = useState("");
+  const [newCurrentValue, setNewCurrentValue] = useState("");
+  const [newDistributions, setNewDistributions] = useState("");
+  const [newPurchaseDate, setNewPurchaseDate] = useState("");
+  const [editingMemberId, setEditingMemberId] = useState<number | null>(null);
+  const [editValues, setEditValues] = useState<{ initialValue: string; currentValue: string; distributions: string; purchaseDate: string }>({ initialValue: "", currentValue: "", distributions: "", purchaseDate: "" });
 
   const { data: spvMembers, isLoading: membersLoading } = useQuery<SpvMemberInfo[]>({
     queryKey: ["/api/spvs", spvId, "members"],
@@ -49,18 +55,37 @@ function SpvMembersTab({ spvId, orgId }: { spvId: string; orgId: number }) {
   );
 
   const addMutation = useMutation({
-    mutationFn: async (accountId: number) => {
-      const res = await apiRequest("POST", `/api/spvs/${spvId}/members`, { accountId });
+    mutationFn: async (payload: { accountId: number; initialValue: string; currentValue: string; distributions: string; purchaseDate: string | null }) => {
+      const res = await apiRequest("POST", `/api/spvs/${spvId}/members`, payload);
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/spvs", spvId, "members"] });
       queryClient.invalidateQueries({ queryKey: ["/api/spvs", spvId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/portfolio"] });
       setSelectedMemberId("");
+      setNewInitialValue(""); setNewCurrentValue(""); setNewDistributions(""); setNewPurchaseDate("");
       toast({ title: "Member added to SPV" });
     },
     onError: (error: Error) => {
       toast({ title: "Failed to add member", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async (payload: { accountId: number; initialValue: string; currentValue: string; distributions: string; purchaseDate: string | null }) => {
+      const { accountId, ...rest } = payload;
+      const res = await apiRequest("PATCH", `/api/spvs/${spvId}/members/${accountId}`, rest);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/spvs", spvId, "members"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/portfolio"] });
+      setEditingMemberId(null);
+      toast({ title: "Investment updated" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Failed to update investment", description: error.message, variant: "destructive" });
     },
   });
 
@@ -72,12 +97,23 @@ function SpvMembersTab({ spvId, orgId }: { spvId: string; orgId: number }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/spvs", spvId, "members"] });
       queryClient.invalidateQueries({ queryKey: ["/api/spvs", spvId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/portfolio"] });
       toast({ title: "Member removed from SPV" });
     },
     onError: (error: Error) => {
       toast({ title: "Failed to remove member", description: error.message, variant: "destructive" });
     },
   });
+
+  const startEdit = (m: SpvMemberInfo) => {
+    setEditingMemberId(m.accountId);
+    setEditValues({
+      initialValue: m.initialValue || "0",
+      currentValue: m.currentValue || "0",
+      distributions: m.distributions || "0",
+      purchaseDate: m.purchaseDate || "",
+    });
+  };
 
   if (membersLoading) return <Skeleton className="h-64 w-full" />;
 
@@ -92,9 +128,9 @@ function SpvMembersTab({ spvId, orgId }: { spvId: string; orgId: number }) {
         </div>
       </CardHeader>
       <CardContent className="space-y-6">
-        <div className="flex items-end gap-3">
-          <div className="flex-1 space-y-2">
-            <Label>Add Member</Label>
+        <div className="space-y-3 p-4 rounded-md border bg-muted/30">
+          <div className="space-y-2">
+            <Label>Investor</Label>
             <Select value={selectedMemberId} onValueChange={setSelectedMemberId}>
               <SelectTrigger data-testid="select-spv-member">
                 <SelectValue placeholder="Select an approved organization member..." />
@@ -112,46 +148,139 @@ function SpvMembersTab({ spvId, orgId }: { spvId: string; orgId: number }) {
               </SelectContent>
             </Select>
           </div>
-          <Button
-            onClick={() => selectedMemberId && addMutation.mutate(parseInt(selectedMemberId))}
-            disabled={!selectedMemberId || addMutation.isPending}
-            data-testid="button-add-spv-member"
-          >
-            <UserPlus className="h-4 w-4 mr-2" />
-            {addMutation.isPending ? "Adding..." : "Add"}
-          </Button>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+            <div className="space-y-1">
+              <Label className="text-xs">Initial Value</Label>
+              <Input type="number" step="0.01" placeholder="0.00" value={newInitialValue} onChange={e => setNewInitialValue(e.target.value)} data-testid="input-new-initial-value" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Current Value</Label>
+              <Input type="number" step="0.01" placeholder="0.00" value={newCurrentValue} onChange={e => setNewCurrentValue(e.target.value)} data-testid="input-new-current-value" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Distributions</Label>
+              <Input type="number" step="0.01" placeholder="0.00" value={newDistributions} onChange={e => setNewDistributions(e.target.value)} data-testid="input-new-distributions" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Purchase Date</Label>
+              <Input type="date" value={newPurchaseDate} onChange={e => setNewPurchaseDate(e.target.value)} data-testid="input-new-purchase-date" />
+            </div>
+          </div>
+          <div className="flex justify-end">
+            <Button
+              onClick={() => selectedMemberId && addMutation.mutate({
+                accountId: parseInt(selectedMemberId),
+                initialValue: newInitialValue || "0",
+                currentValue: newCurrentValue || newInitialValue || "0",
+                distributions: newDistributions || "0",
+                purchaseDate: newPurchaseDate || null,
+              })}
+              disabled={!selectedMemberId || addMutation.isPending}
+              data-testid="button-add-spv-member"
+            >
+              <UserPlus className="h-4 w-4 mr-2" />
+              {addMutation.isPending ? "Adding..." : "Add Investment"}
+            </Button>
+          </div>
         </div>
 
         <Separator />
 
         {spvMembers && spvMembers.length > 0 ? (
           <div className="space-y-3">
-            {spvMembers.map(member => (
-              <div key={member.id} className="flex items-center gap-3 p-3 rounded-md border" data-testid={`spv-member-${member.accountId}`}>
-                <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary text-sm font-semibold flex-shrink-0">
-                  {member.account.firstName[0]}{member.account.lastName[0]}
+            {spvMembers.map(member => {
+              const isEditing = editingMemberId === member.accountId;
+              const initial = parseFloat(member.initialValue || "0");
+              const current = parseFloat(member.currentValue || "0");
+              const dist = parseFloat(member.distributions || "0");
+              const roi = initial > 0 ? ((current + dist - initial) / initial) * 100 : 0;
+              return (
+                <div key={member.id} className="p-3 rounded-md border" data-testid={`spv-member-${member.accountId}`}>
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary text-sm font-semibold flex-shrink-0">
+                      {member.account.firstName[0]}{member.account.lastName[0]}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{member.account.firstName} {member.account.lastName}</p>
+                      <p className="text-xs text-muted-foreground truncate">{member.account.email}</p>
+                    </div>
+                    {!isEditing && (
+                      <Button variant="ghost" size="icon" onClick={() => startEdit(member)} data-testid={`button-edit-spv-member-${member.accountId}`}>
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                    )}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => removeMutation.mutate(member.accountId)}
+                      disabled={removeMutation.isPending}
+                      data-testid={`button-remove-spv-member-${member.accountId}`}
+                    >
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
+                  </div>
+                  {isEditing ? (
+                    <div className="mt-3 space-y-3">
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                        <div className="space-y-1">
+                          <Label className="text-xs">Initial Value</Label>
+                          <Input type="number" step="0.01" value={editValues.initialValue} onChange={e => setEditValues(v => ({ ...v, initialValue: e.target.value }))} data-testid={`input-edit-initial-${member.accountId}`} />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Current Value</Label>
+                          <Input type="number" step="0.01" value={editValues.currentValue} onChange={e => setEditValues(v => ({ ...v, currentValue: e.target.value }))} data-testid={`input-edit-current-${member.accountId}`} />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Distributions</Label>
+                          <Input type="number" step="0.01" value={editValues.distributions} onChange={e => setEditValues(v => ({ ...v, distributions: e.target.value }))} data-testid={`input-edit-dist-${member.accountId}`} />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Purchase Date</Label>
+                          <Input type="date" value={editValues.purchaseDate} onChange={e => setEditValues(v => ({ ...v, purchaseDate: e.target.value }))} data-testid={`input-edit-date-${member.accountId}`} />
+                        </div>
+                      </div>
+                      <div className="flex justify-end gap-2">
+                        <Button variant="outline" size="sm" onClick={() => setEditingMemberId(null)} data-testid={`button-cancel-edit-${member.accountId}`}>
+                          <X className="h-4 w-4 mr-1" /> Cancel
+                        </Button>
+                        <Button size="sm" onClick={() => updateMutation.mutate({ accountId: member.accountId, ...editValues, purchaseDate: editValues.purchaseDate || null })} disabled={updateMutation.isPending} data-testid={`button-save-edit-${member.accountId}`}>
+                          <Save className="h-4 w-4 mr-1" /> {updateMutation.isPending ? "Saving..." : "Save"}
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="mt-3 grid grid-cols-2 md:grid-cols-5 gap-3 text-xs">
+                      <div>
+                        <p className="text-muted-foreground">Initial</p>
+                        <p className="font-medium" data-testid={`text-initial-${member.accountId}`}>${formatCurrency(member.initialValue)}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Current</p>
+                        <p className="font-medium" data-testid={`text-current-${member.accountId}`}>${formatCurrency(member.currentValue)}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Distributions</p>
+                        <p className="font-medium">${formatCurrency(member.distributions)}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">ROI</p>
+                        <p className={`font-medium ${roi >= 0 ? "text-emerald-600" : "text-red-600"}`}>{roi.toFixed(2)}%</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Purchase Date</p>
+                        <p className="font-medium">{member.purchaseDate || "—"}</p>
+                      </div>
+                    </div>
+                  )}
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{member.account.firstName} {member.account.lastName}</p>
-                  <p className="text-xs text-muted-foreground truncate">{member.account.email}</p>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => removeMutation.mutate(member.accountId)}
-                  disabled={removeMutation.isPending}
-                  data-testid={`button-remove-spv-member-${member.accountId}`}
-                >
-                  <Trash2 className="h-4 w-4 text-destructive" />
-                </Button>
-              </div>
-            ))}
+              );
+            })}
           </div>
         ) : (
           <div className="text-center py-8">
             <Users className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
             <p className="text-sm text-muted-foreground">
-              No members added to this SPV yet. Add approved organization members above.
+              No investments yet. Add an approved organization member above.
             </p>
           </div>
         )}

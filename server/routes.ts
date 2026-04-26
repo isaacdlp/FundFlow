@@ -34,6 +34,15 @@ function isAdmin(account: AccountWithRoles): boolean {
   return account.roles.some(r => r.name === "admin");
 }
 
+async function canManageSpv(me: AccountWithRoles, spvId: number): Promise<boolean> {
+  if (isAdmin(me)) return true;
+  const spv = await storage.getSpv(spvId);
+  if (!spv) return false;
+  const org = await storage.getOrganization(spv.organizationId);
+  if (!org) return false;
+  return org.organizers.some(o => o.accountId === me.id);
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -639,25 +648,75 @@ export async function registerRoutes(
     res.json(members);
   });
 
+  function validateInvestmentFields(body: any): { ok: true; data: { initialValue?: string; currentValue?: string; distributions?: string; purchaseDate?: string | null } } | { ok: false; error: string } {
+    const out: any = {};
+    for (const f of ["initialValue", "currentValue", "distributions"] as const) {
+      if (body[f] === undefined || body[f] === null || body[f] === "") continue;
+      const n = parseFloat(String(body[f]));
+      if (!isFinite(n) || n < 0) {
+        return { ok: false, error: `${f} must be a non-negative number` };
+      }
+      out[f] = n.toFixed(2);
+    }
+    if (body.purchaseDate !== undefined) {
+      if (body.purchaseDate === null || body.purchaseDate === "") {
+        out.purchaseDate = null;
+      } else {
+        const d = new Date(String(body.purchaseDate));
+        if (isNaN(d.getTime())) {
+          return { ok: false, error: "purchaseDate must be a valid date (YYYY-MM-DD)" };
+        }
+        out.purchaseDate = String(body.purchaseDate);
+      }
+    }
+    return { ok: true, data: out };
+  }
+
   app.post("/api/spvs/:id/members", async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
     const me = await storage.getAccount(req.session.accountId!);
     if (!me) return res.status(401).json({ message: "Account not found" });
 
-    if (!isAdmin(me)) {
-      const spvIds = await storage.getSpvIdsForAccount(me.id);
-      if (!spvIds.includes(id)) {
-        return res.status(403).json({ message: "Access denied" });
-      }
+    if (!(await canManageSpv(me, id))) {
+      return res.status(403).json({ message: "Only admins or organization organizers can add SPV investments" });
     }
 
     const { accountId } = req.body;
     if (!accountId) return res.status(400).json({ message: "accountId is required" });
+    const validation = validateInvestmentFields(req.body);
+    if (!validation.ok) return res.status(400).json({ message: validation.error });
+
     const spv = await storage.getSpv(id);
     if (!spv) return res.status(404).json({ message: "SPV not found" });
-    const member = await storage.addSpvMember(id, parseInt(accountId));
+    const member = await storage.addSpvMember(id, parseInt(accountId), validation.data);
     res.status(201).json(member);
+  });
+
+  app.patch("/api/spvs/:id/members/:accountId", async (req, res) => {
+    const id = parseInt(req.params.id);
+    const accountId = parseInt(req.params.accountId);
+    if (isNaN(id) || isNaN(accountId)) return res.status(400).json({ message: "Invalid ID" });
+    const me = await storage.getAccount(req.session.accountId!);
+    if (!me) return res.status(401).json({ message: "Account not found" });
+
+    if (!(await canManageSpv(me, id))) {
+      return res.status(403).json({ message: "Only admins or organization organizers can edit SPV investments" });
+    }
+
+    const validation = validateInvestmentFields(req.body);
+    if (!validation.ok) return res.status(400).json({ message: validation.error });
+
+    const member = await storage.updateSpvMember(id, accountId, validation.data);
+    if (!member) return res.status(404).json({ message: "SPV member not found" });
+    res.json(member);
+  });
+
+  app.get("/api/portfolio", async (req, res) => {
+    const me = await storage.getAccount(req.session.accountId!);
+    if (!me) return res.status(401).json({ message: "Account not found" });
+    const investments = await storage.getPortfolio(isAdmin(me) ? undefined : me.id);
+    res.json(investments);
   });
 
   app.delete("/api/spvs/:id/members/:accountId", async (req, res) => {

@@ -56,6 +56,25 @@ export interface SpvMemberWithAccount extends SpvMember {
   account: { id: number; email: string; firstName: string; lastName: string };
 }
 
+export interface PortfolioInvestment {
+  memberId: number;
+  spvId: number;
+  spvName: string;
+  investmentCompanyName: string;
+  investmentType: string;
+  organizationId: number;
+  organizationName: string;
+  organizationSlug: string;
+  accountId: number;
+  accountFirstName: string;
+  accountLastName: string;
+  accountEmail: string;
+  initialValue: string;
+  currentValue: string;
+  distributions: string;
+  purchaseDate: string | null;
+}
+
 export interface EntityWithDetails extends Entity {
   managers: { id: number; accountId: number; account: { id: number; email: string; firstName: string; lastName: string } }[];
   ownerCount: number;
@@ -107,8 +126,10 @@ export interface IStorage {
   updateSpv(id: number, data: UpdateSpv): Promise<SpvWithDetails | undefined>;
   deleteSpv(id: number): Promise<boolean>;
   getSpvMembers(spvId: number): Promise<SpvMemberWithAccount[]>;
-  addSpvMember(spvId: number, accountId: number): Promise<SpvMemberWithAccount>;
+  addSpvMember(spvId: number, accountId: number, investment?: { initialValue?: string; currentValue?: string; distributions?: string; purchaseDate?: string | null }): Promise<SpvMemberWithAccount>;
+  updateSpvMember(spvId: number, accountId: number, investment: { initialValue?: string; currentValue?: string; distributions?: string; purchaseDate?: string | null }): Promise<SpvMemberWithAccount | undefined>;
   removeSpvMember(spvId: number, accountId: number): Promise<boolean>;
+  getPortfolio(accountId?: number): Promise<PortfolioInvestment[]>;
 
   getAllEntities(search?: string): Promise<EntityWithDetails[]>;
   getEntity(id: number): Promise<EntityWithDetails | undefined>;
@@ -571,8 +592,15 @@ export class DatabaseStorage implements IStorage {
     return result;
   }
 
-  async addSpvMember(spvId: number, accountId: number): Promise<SpvMemberWithAccount> {
-    const [member] = await db.insert(spvMembers).values({ spvId, accountId })
+  async addSpvMember(spvId: number, accountId: number, investment?: { initialValue?: string; currentValue?: string; distributions?: string; purchaseDate?: string | null }): Promise<SpvMemberWithAccount> {
+    const values: any = { spvId, accountId };
+    if (investment) {
+      if (investment.initialValue !== undefined) values.initialValue = investment.initialValue;
+      if (investment.currentValue !== undefined) values.currentValue = investment.currentValue;
+      if (investment.distributions !== undefined) values.distributions = investment.distributions;
+      if (investment.purchaseDate !== undefined) values.purchaseDate = investment.purchaseDate;
+    }
+    const [member] = await db.insert(spvMembers).values(values)
       .onConflictDoNothing().returning();
 
     if (!member) {
@@ -586,11 +614,80 @@ export class DatabaseStorage implements IStorage {
     return { ...member, account: acct! };
   }
 
+  async updateSpvMember(spvId: number, accountId: number, investment: { initialValue?: string; currentValue?: string; distributions?: string; purchaseDate?: string | null }): Promise<SpvMemberWithAccount | undefined> {
+    const updates: any = {};
+    if (investment.initialValue !== undefined) updates.initialValue = investment.initialValue;
+    if (investment.currentValue !== undefined) updates.currentValue = investment.currentValue;
+    if (investment.distributions !== undefined) updates.distributions = investment.distributions;
+    if (investment.purchaseDate !== undefined) updates.purchaseDate = investment.purchaseDate;
+    if (Object.keys(updates).length === 0) {
+      const [existing] = await db.select().from(spvMembers)
+        .where(and(eq(spvMembers.spvId, spvId), eq(spvMembers.accountId, accountId)));
+      if (!existing) return undefined;
+      const acct = await getAccountSummary(accountId);
+      return { ...existing, account: acct! };
+    }
+    const [member] = await db.update(spvMembers).set(updates)
+      .where(and(eq(spvMembers.spvId, spvId), eq(spvMembers.accountId, accountId)))
+      .returning();
+    if (!member) return undefined;
+    const acct = await getAccountSummary(accountId);
+    return { ...member, account: acct! };
+  }
+
   async removeSpvMember(spvId: number, accountId: number): Promise<boolean> {
     const result = await db.delete(spvMembers)
       .where(and(eq(spvMembers.spvId, spvId), eq(spvMembers.accountId, accountId)))
       .returning();
     return result.length > 0;
+  }
+
+  async getPortfolio(accountId?: number): Promise<PortfolioInvestment[]> {
+    const where = accountId !== undefined ? eq(spvMembers.accountId, accountId) : sql`TRUE`;
+    const rows = await db
+      .select({
+        memberId: spvMembers.id,
+        spvId: spvs.id,
+        spvName: spvs.displayName,
+        investmentCompanyName: spvs.investmentCompanyName,
+        investmentType: spvs.investmentType,
+        organizationId: organizations.id,
+        organizationName: organizations.name,
+        organizationSlug: organizations.slug,
+        accountId: accounts.id,
+        accountFirstName: accounts.firstName,
+        accountLastName: accounts.lastName,
+        accountEmail: accounts.email,
+        initialValue: spvMembers.initialValue,
+        currentValue: spvMembers.currentValue,
+        distributions: spvMembers.distributions,
+        purchaseDate: spvMembers.purchaseDate,
+      })
+      .from(spvMembers)
+      .innerJoin(spvs, eq(spvs.id, spvMembers.spvId))
+      .innerJoin(organizations, eq(organizations.id, spvs.organizationId))
+      .innerJoin(accounts, eq(accounts.id, spvMembers.accountId))
+      .where(where)
+      .orderBy(sql`${spvs.displayName} ASC`);
+
+    return rows.map(r => ({
+      memberId: r.memberId,
+      spvId: r.spvId,
+      spvName: r.spvName,
+      investmentCompanyName: r.investmentCompanyName ?? "",
+      investmentType: r.investmentType ?? "",
+      organizationId: r.organizationId,
+      organizationName: r.organizationName,
+      organizationSlug: r.organizationSlug,
+      accountId: r.accountId,
+      accountFirstName: r.accountFirstName,
+      accountLastName: r.accountLastName,
+      accountEmail: r.accountEmail,
+      initialValue: r.initialValue ?? "0",
+      currentValue: r.currentValue ?? "0",
+      distributions: r.distributions ?? "0",
+      purchaseDate: r.purchaseDate ?? null,
+    }));
   }
 
   private async enrichEntity(entity: Entity): Promise<EntityWithDetails> {

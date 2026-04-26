@@ -123,6 +123,10 @@ export interface SpvMemberInfo {
   id: number;
   spvId: number;
   accountId: number;
+  initialValue: string | null;
+  currentValue: string | null;
+  distributions: string | null;
+  purchaseDate: string | null;
   createdAt: string;
   account: {
     id: number;
@@ -130,6 +134,25 @@ export interface SpvMemberInfo {
     firstName: string;
     lastName: string;
   };
+}
+
+export interface PortfolioInvestment {
+  memberId: number;
+  spvId: number;
+  spvName: string;
+  investmentCompanyName: string;
+  investmentType: string;
+  organizationId: number;
+  organizationName: string;
+  organizationSlug: string;
+  accountId: number;
+  accountFirstName: string;
+  accountLastName: string;
+  accountEmail: string;
+  initialValue: string;
+  currentValue: string;
+  distributions: string;
+  purchaseDate: string | null;
 }
 
 export interface EntityInfo {

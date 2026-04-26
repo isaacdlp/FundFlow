@@ -24,7 +24,7 @@ client/                   # React frontend
       app-sidebar.tsx     # Main navigation sidebar
       ui/                 # shadcn/ui components
     pages/
-      dashboard.tsx       # Dashboard with stats overview
+      dashboard.tsx       # Portfolio Summary dashboard (investments breakdown)
       accounts.tsx        # Account list (search/filter)
       account-detail.tsx  # Account detail with tabs (Personal Info, Login, Permissions)
       create-account.tsx  # New account creation form
@@ -59,7 +59,7 @@ shared/
 - `organization_members` - Membership requests with status (pending/approved/rejected), optional inviteId
 - `organization_invites` - Single-use invite tokens with used/usedByAccountId tracking
 - `spvs` - Special Purpose Vehicles with full entity details (legal, address, bank, investment)
-- `spv_members` - Many-to-many SPV-account associations
+- `spv_members` - SPV-account associations with per-member investment data: `initialValue`, `currentValue`, `distributions`, `purchaseDate` (drives Portfolio Summary)
 - `entities` - Entity records (LLC, Corp, Trust, etc.) with address and bank info
 - `entity_owners` - Owners of entities (can be Accounts or other Entities, with ownership %)
 - `entity_managers` - Managers of entities (always Accounts, unique per entity+account)

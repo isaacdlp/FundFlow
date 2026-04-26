@@ -125,6 +125,10 @@ export const spvMembers = pgTable("spv_members", {
   id: serial("id").primaryKey(),
   spvId: integer("spv_id").notNull().references(() => spvs.id, { onDelete: "cascade" }),
   accountId: integer("account_id").notNull().references(() => accounts.id, { onDelete: "cascade" }),
+  initialValue: numeric("initial_value", { precision: 15, scale: 2 }).default("0"),
+  currentValue: numeric("current_value", { precision: 15, scale: 2 }).default("0"),
+  distributions: numeric("distributions", { precision: 15, scale: 2 }).default("0"),
+  purchaseDate: date("purchase_date"),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
   uniqueIndex("spv_member_unique").on(table.spvId, table.accountId),
