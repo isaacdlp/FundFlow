@@ -96,6 +96,13 @@ export function makeMockStorage(overrides: Partial<Record<string, any>> = {}) {
 
     // Portfolio
     getPortfolio: vi.fn().mockResolvedValue([]),
+
+    // API tokens
+    createApiToken: vi.fn(),
+    getApiTokenByHash: vi.fn().mockResolvedValue(null),
+    listApiTokensForAccount: vi.fn().mockResolvedValue([]),
+    revokeApiToken: vi.fn().mockResolvedValue(true),
+    touchApiTokenLastUsed: vi.fn().mockResolvedValue(undefined),
   };
 
   return { ...defaults, ...overrides } as any;
@@ -194,6 +201,18 @@ export const fixtures = {
     token: "test-invite-token",
     used: false,
     usedByAccountId: null,
+    createdAt: new Date(),
+    ...overrides,
+  }),
+  apiToken: (overrides: Record<string, any> = {}) => ({
+    id: 300,
+    accountId: 2,
+    name: "Test Token",
+    prefix: "abcd1234",
+    tokenHash: "fake-hash",
+    lastUsedAt: null,
+    expiresAt: null,
+    revokedAt: null,
     createdAt: new Date(),
     ...overrides,
   }),

@@ -10,7 +10,7 @@ tests/
     setup/
       test-app.ts         # Builds an isolated Express app for each test
       mock-storage.ts     # Mock IStorage factory + shared fixtures
-      auth-helper.ts      # `loginAs(app, mockStorage, account)` helper
+      auth-helper.ts      # `loginAs(...)` (session) and `loginAsToken(...)` (bearer) helpers
     auth.test.ts          # /api/auth/login, /logout, /me
     accounts.test.ts      # CRUD + role/permission gating + search
     roles.test.ts         # GET /api/roles
@@ -25,6 +25,7 @@ tests/
     entity-owners.test.ts # owner add/remove + payload validation
     entity-managers.test.ts # manager add/remove
     password-reset.test.ts # forgot/reset + change-password
+    api-tokens.test.ts    # generator/hash/parser primitives + token CRUD + bearer auth on protected routes
   client/                 # Frontend tests (Vitest + jsdom + RTL)
     setup.ts              # jest-dom matchers + cleanup
     use-org-permissions.test.tsx

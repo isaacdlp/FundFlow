@@ -192,6 +192,23 @@ export const passwordResetTokens = pgTable("password_reset_tokens", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const apiTokens = pgTable("api_tokens", {
+  id: serial("id").primaryKey(),
+  accountId: integer("account_id").notNull().references(() => accounts.id, { onDelete: "cascade" }),
+  name: varchar("name", { length: 100 }).notNull(),
+  prefix: varchar("prefix", { length: 16 }).notNull(),
+  tokenHash: varchar("token_hash", { length: 128 }).notNull().unique(),
+  lastUsedAt: timestamp("last_used_at"),
+  expiresAt: timestamp("expires_at"),
+  revokedAt: timestamp("revoked_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const createApiTokenSchema = z.object({
+  name: z.string().min(1, "Name is required").max(100),
+  expiresInDays: z.number().int().positive().max(3650).optional(),
+});
+
 export const insertAccountSchema = createInsertSchema(accounts).omit({
   id: true,
   passwordHash: true,
@@ -271,3 +288,6 @@ export type UpdateSpv = z.infer<typeof updateSpvSchema>;
 export type InsertEntity = z.infer<typeof insertEntitySchema>;
 export type UpdateEntity = z.infer<typeof updateEntitySchema>;
 export type PasswordResetToken = typeof passwordResetTokens.$inferSelect;
+export type ApiToken = typeof apiTokens.$inferSelect;
+export type CreateApiTokenInput = z.infer<typeof createApiTokenSchema>;
+export type PublicApiToken = Omit<ApiToken, "tokenHash">;

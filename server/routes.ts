@@ -1,31 +1,82 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { type Server } from "http";
 import { storage } from "./storage";
-import { insertAccountSchema, updateAccountSchema, insertOrganizationSchema, updateOrganizationSchema, insertSpvSchema, updateSpvSchema, insertEntitySchema, updateEntitySchema } from "@shared/schema";
+import { insertAccountSchema, updateAccountSchema, insertOrganizationSchema, updateOrganizationSchema, insertSpvSchema, updateSpvSchema, insertEntitySchema, updateEntitySchema, createApiTokenSchema } from "@shared/schema";
 import { ZodError } from "zod";
 import { fromZodError } from "zod-validation-error";
 import type { AccountWithRoles } from "./storage";
 import { sendPasswordResetEmail } from "./email";
+import { generateApiToken, hashApiToken, parseBearerToken } from "./api-tokens";
 
 function stripPasswordHash(account: any) {
   const { passwordHash, ...rest } = account;
   return rest;
 }
 
+/**
+ * Returns the authenticated account id from either the session cookie OR a
+ * bearer-token-authenticated request. Bearer auth populates `req.apiAccountId`
+ * via the `bearerAuth` middleware mounted at the top of the route stack.
+ */
+function getAuthAccountId(req: Request): number | undefined {
+  return req.session.accountId ?? (req as any).apiAccountId;
+}
+
+/**
+ * If the request carries a valid `Authorization: Bearer ff_...` header that
+ * resolves to a non-revoked, non-expired API token, attaches the token's
+ * account id to the request. A session cookie always wins if both are present.
+ * Invalid / unknown tokens silently fall through (no 401 here — `requireAuth`
+ * decides that based on the resulting auth state).
+ */
+async function bearerAuth(req: Request, _res: Response, next: NextFunction) {
+  if (req.session.accountId) return next();
+  const plaintext = parseBearerToken(req.headers.authorization);
+  if (!plaintext) return next();
+  const tokenHash = hashApiToken(plaintext);
+  const tok = await storage.getApiTokenByHash(tokenHash);
+  if (!tok) return next();
+  if (tok.revokedAt) return next();
+  if (tok.expiresAt && tok.expiresAt.getTime() < Date.now()) return next();
+  // Verify the underlying account still exists. Tokens cascade-delete with
+  // their account, but we re-check here so manual DB edits / replication lag
+  // can't leave a token live with no owner.
+  const account = await storage.getAccount(tok.accountId);
+  if (!account) return next();
+  (req as any).apiAccountId = tok.accountId;
+  (req as any).apiTokenId = tok.id;
+  // Fire-and-forget — don't block request on a metadata write
+  storage.touchApiTokenLastUsed(tok.id).catch(() => {});
+  next();
+}
+
 function requireAuth(req: Request, res: Response, next: NextFunction) {
-  if (!req.session.accountId) {
+  if (!getAuthAccountId(req)) {
     return res.status(401).json({ message: "Authentication required" });
   }
   next();
 }
 
 async function requireAdmin(req: Request, res: Response, next: NextFunction) {
-  if (!req.session.accountId) {
+  const id = getAuthAccountId(req);
+  if (!id) {
     return res.status(401).json({ message: "Authentication required" });
   }
-  const account = await storage.getAccount(req.session.accountId);
+  const account = await storage.getAccount(id);
   if (!account || !account.roles.some(r => r.name === "admin")) {
     return res.status(403).json({ message: "Admin access required" });
+  }
+  next();
+}
+
+/**
+ * Stricter than `requireAuth` — only allows session-cookie auth. Used to gate
+ * sensitive identity operations (creating / revoking API tokens) so that a
+ * leaked token cannot be used to mint additional tokens or revoke siblings.
+ */
+function requireSession(req: Request, res: Response, next: NextFunction) {
+  if (!req.session.accountId) {
+    return res.status(401).json({ message: "Session authentication required for this operation" });
   }
   next();
 }
@@ -47,6 +98,11 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+
+  // Bearer token auth runs before everything else so that programmatic API
+  // clients can hit any /api/* endpoint with `Authorization: Bearer ff_...`
+  // and have all downstream permission checks see them as the token's owner.
+  app.use(bearerAuth);
 
   app.post("/api/auth/login", async (req, res) => {
     const { email, password } = req.body;
@@ -75,12 +131,14 @@ export async function registerRoutes(
   });
 
   app.get("/api/auth/me", async (req, res) => {
-    if (!req.session.accountId) {
+    const id = getAuthAccountId(req);
+    if (!id) {
       return res.status(401).json({ message: "Not authenticated" });
     }
-    const account = await storage.getAccount(req.session.accountId);
+    const account = await storage.getAccount(id);
     if (!account) {
-      req.session.destroy(() => {});
+      // Only destroy the cookie session — bearer auth has nothing to clean up.
+      if (req.session.accountId) req.session.destroy(() => {});
       return res.status(401).json({ message: "Account not found" });
     }
     res.json(stripPasswordHash(account));
@@ -213,7 +271,50 @@ export async function registerRoutes(
   app.use("/api", requireAuth);
 
 
-  app.post("/api/auth/change-password", async (req, res) => {
+  // ─────────────────────────────────────────────────────────────────────────
+  // API token management
+  // Token CRUD requires session auth (not bearer) so a leaked token cannot be
+  // used to mint additional tokens or revoke siblings — see `requireSession`.
+  // The plaintext token is returned ONLY in the POST response and never again.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  app.get("/api/auth/tokens", async (req, res) => {
+    const id = getAuthAccountId(req)!;
+    const tokens = await storage.listApiTokensForAccount(id);
+    res.json(tokens);
+  });
+
+  app.post("/api/auth/tokens", requireSession, async (req: Request, res: Response) => {
+    try {
+      const data = createApiTokenSchema.parse(req.body);
+      const id = req.session.accountId!;
+      const expiresAt = data.expiresInDays
+        ? new Date(Date.now() + data.expiresInDays * 24 * 60 * 60 * 1000)
+        : null;
+      const generated = generateApiToken();
+      const stored = await storage.createApiToken(id, data.name, generated.prefix, generated.hash, expiresAt);
+      // CRITICAL: this is the only place the plaintext token is ever returned.
+      res.status(201).json({ ...stored, token: generated.plaintext });
+    } catch (e) {
+      if (e instanceof ZodError) {
+        return res.status(400).json({ message: fromZodError(e).message });
+      }
+      throw e;
+    }
+  });
+
+  app.delete("/api/auth/tokens/:id", requireSession, async (req: Request, res: Response) => {
+    const tokenId = parseInt(req.params.id);
+    if (isNaN(tokenId)) return res.status(400).json({ message: "Invalid ID" });
+    const accountId = req.session.accountId!;
+    const revoked = await storage.revokeApiToken(tokenId, accountId);
+    if (!revoked) return res.status(404).json({ message: "Token not found" });
+    res.json({ message: "Token revoked" });
+  });
+
+  // Password changes are session-only by design: a leaked API token must not
+  // be able to lock the account owner out of their own account.
+  app.post("/api/auth/change-password", requireSession, async (req, res) => {
     const { currentPassword, newPassword } = req.body;
     if (!currentPassword || !newPassword) {
       return res.status(400).json({ message: "Current password and new password are required" });
@@ -221,11 +322,11 @@ export async function registerRoutes(
     if (newPassword.length < 6) {
       return res.status(400).json({ message: "New password must be at least 6 characters" });
     }
-    const valid = await storage.verifyPassword(req.session.accountId!, currentPassword);
+    const valid = await storage.verifyPassword(getAuthAccountId(req)!, currentPassword);
     if (!valid) {
       return res.status(400).json({ message: "Current password is incorrect" });
     }
-    await storage.updatePassword(req.session.accountId!, newPassword);
+    await storage.updatePassword(getAuthAccountId(req)!, newPassword);
     res.json({ message: "Password changed successfully" });
   });
 
@@ -236,7 +337,7 @@ export async function registerRoutes(
   });
 
   app.get("/api/accounts", async (req, res) => {
-    const me = await storage.getAccount(req.session.accountId!);
+    const me = await storage.getAccount(getAuthAccountId(req)!);
     if (!me) return res.status(401).json({ message: "Account not found" });
 
     if (isAdmin(me)) {
@@ -251,7 +352,7 @@ export async function registerRoutes(
   app.get("/api/accounts/:id", async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
-    const me = await storage.getAccount(req.session.accountId!);
+    const me = await storage.getAccount(getAuthAccountId(req)!);
     if (!me) return res.status(401).json({ message: "Account not found" });
 
     if (!isAdmin(me) && me.id !== id) {
@@ -266,7 +367,7 @@ export async function registerRoutes(
   app.patch("/api/accounts/:id", async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
-    const me = await storage.getAccount(req.session.accountId!);
+    const me = await storage.getAccount(getAuthAccountId(req)!);
     if (!me) return res.status(401).json({ message: "Account not found" });
 
     if (!isAdmin(me) && me.id !== id) {
@@ -302,7 +403,7 @@ export async function registerRoutes(
   });
 
   app.get("/api/organizations", async (req, res) => {
-    const me = await storage.getAccount(req.session.accountId!);
+    const me = await storage.getAccount(getAuthAccountId(req)!);
     if (!me) return res.status(401).json({ message: "Account not found" });
 
     if (isAdmin(me)) {
@@ -318,7 +419,7 @@ export async function registerRoutes(
   app.get("/api/organizations/:id", async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
-    const me = await storage.getAccount(req.session.accountId!);
+    const me = await storage.getAccount(getAuthAccountId(req)!);
     if (!me) return res.status(401).json({ message: "Account not found" });
 
     if (!isAdmin(me)) {
@@ -349,7 +450,7 @@ export async function registerRoutes(
   app.patch("/api/organizations/:id", async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
-    const me = await storage.getAccount(req.session.accountId!);
+    const me = await storage.getAccount(getAuthAccountId(req)!);
     if (!me) return res.status(401).json({ message: "Account not found" });
 
     if (!isAdmin(me)) {
@@ -383,7 +484,7 @@ export async function registerRoutes(
   app.post("/api/organizations/:id/organizers", async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
-    const me = await storage.getAccount(req.session.accountId!);
+    const me = await storage.getAccount(getAuthAccountId(req)!);
     if (!me) return res.status(401).json({ message: "Account not found" });
 
     if (!isAdmin(me)) {
@@ -410,7 +511,7 @@ export async function registerRoutes(
     const id = parseInt(req.params.id);
     const accountId = parseInt(req.params.accountId);
     if (isNaN(id) || isNaN(accountId)) return res.status(400).json({ message: "Invalid ID" });
-    const me = await storage.getAccount(req.session.accountId!);
+    const me = await storage.getAccount(getAuthAccountId(req)!);
     if (!me) return res.status(401).json({ message: "Account not found" });
 
     if (!isAdmin(me)) {
@@ -429,7 +530,7 @@ export async function registerRoutes(
   app.get("/api/organizations/:id/members", async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
-    const me = await storage.getAccount(req.session.accountId!);
+    const me = await storage.getAccount(getAuthAccountId(req)!);
     if (!me) return res.status(401).json({ message: "Account not found" });
 
     if (!isAdmin(me)) {
@@ -447,7 +548,7 @@ export async function registerRoutes(
     const id = parseInt(req.params.id);
     const accountId = parseInt(req.params.accountId);
     if (isNaN(id) || isNaN(accountId)) return res.status(400).json({ message: "Invalid ID" });
-    const me = await storage.getAccount(req.session.accountId!);
+    const me = await storage.getAccount(getAuthAccountId(req)!);
     if (!me) return res.status(401).json({ message: "Account not found" });
 
     if (!isAdmin(me)) {
@@ -470,7 +571,7 @@ export async function registerRoutes(
     const id = parseInt(req.params.id);
     const accountId = parseInt(req.params.accountId);
     if (isNaN(id) || isNaN(accountId)) return res.status(400).json({ message: "Invalid ID" });
-    const me = await storage.getAccount(req.session.accountId!);
+    const me = await storage.getAccount(getAuthAccountId(req)!);
     if (!me) return res.status(401).json({ message: "Account not found" });
 
     if (!isAdmin(me)) {
@@ -488,7 +589,7 @@ export async function registerRoutes(
   app.get("/api/organizations/:id/invites", async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
-    const me = await storage.getAccount(req.session.accountId!);
+    const me = await storage.getAccount(getAuthAccountId(req)!);
     if (!me) return res.status(401).json({ message: "Account not found" });
 
     if (!isAdmin(me)) {
@@ -505,7 +606,7 @@ export async function registerRoutes(
   app.post("/api/organizations/:id/invites", async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
-    const me = await storage.getAccount(req.session.accountId!);
+    const me = await storage.getAccount(getAuthAccountId(req)!);
     if (!me) return res.status(401).json({ message: "Account not found" });
 
     if (!isAdmin(me)) {
@@ -522,7 +623,7 @@ export async function registerRoutes(
   });
 
   app.get("/api/spvs", async (req, res) => {
-    const me = await storage.getAccount(req.session.accountId!);
+    const me = await storage.getAccount(getAuthAccountId(req)!);
     if (!me) return res.status(401).json({ message: "Account not found" });
 
     if (isAdmin(me)) {
@@ -538,7 +639,7 @@ export async function registerRoutes(
   app.get("/api/organizations/:id/spvs", async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
-    const me = await storage.getAccount(req.session.accountId!);
+    const me = await storage.getAccount(getAuthAccountId(req)!);
     if (!me) return res.status(401).json({ message: "Account not found" });
 
     if (!isAdmin(me)) {
@@ -555,7 +656,7 @@ export async function registerRoutes(
   app.get("/api/spvs/:id", async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
-    const me = await storage.getAccount(req.session.accountId!);
+    const me = await storage.getAccount(getAuthAccountId(req)!);
     if (!me) return res.status(401).json({ message: "Account not found" });
 
     if (!isAdmin(me)) {
@@ -573,7 +674,7 @@ export async function registerRoutes(
   app.post("/api/organizations/:id/spvs", async (req, res) => {
     const orgId = parseInt(req.params.id);
     if (isNaN(orgId)) return res.status(400).json({ message: "Invalid ID" });
-    const me = await storage.getAccount(req.session.accountId!);
+    const me = await storage.getAccount(getAuthAccountId(req)!);
     if (!me) return res.status(401).json({ message: "Account not found" });
 
     if (!isAdmin(me)) {
@@ -600,7 +701,7 @@ export async function registerRoutes(
   app.patch("/api/spvs/:id", async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
-    const me = await storage.getAccount(req.session.accountId!);
+    const me = await storage.getAccount(getAuthAccountId(req)!);
     if (!me) return res.status(401).json({ message: "Account not found" });
 
     if (!isAdmin(me)) {
@@ -634,7 +735,7 @@ export async function registerRoutes(
   app.get("/api/spvs/:id/members", async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
-    const me = await storage.getAccount(req.session.accountId!);
+    const me = await storage.getAccount(getAuthAccountId(req)!);
     if (!me) return res.status(401).json({ message: "Account not found" });
 
     if (!isAdmin(me)) {
@@ -675,7 +776,7 @@ export async function registerRoutes(
   app.post("/api/spvs/:id/members", async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
-    const me = await storage.getAccount(req.session.accountId!);
+    const me = await storage.getAccount(getAuthAccountId(req)!);
     if (!me) return res.status(401).json({ message: "Account not found" });
 
     if (!(await canManageSpv(me, id))) {
@@ -722,7 +823,7 @@ export async function registerRoutes(
     const id = parseInt(req.params.id);
     const memberId = parseInt(req.params.memberId);
     if (isNaN(id) || isNaN(memberId)) return res.status(400).json({ message: "Invalid ID" });
-    const me = await storage.getAccount(req.session.accountId!);
+    const me = await storage.getAccount(getAuthAccountId(req)!);
     if (!me) return res.status(401).json({ message: "Account not found" });
 
     if (!(await canManageSpv(me, id))) {
@@ -747,7 +848,7 @@ export async function registerRoutes(
     const id = parseInt(req.params.id);
     const memberId = parseInt(req.params.memberId);
     if (isNaN(id) || isNaN(memberId)) return res.status(400).json({ message: "Invalid ID" });
-    const me = await storage.getAccount(req.session.accountId!);
+    const me = await storage.getAccount(getAuthAccountId(req)!);
     if (!me) return res.status(401).json({ message: "Account not found" });
 
     if (!(await canManageSpv(me, id))) {
@@ -766,7 +867,7 @@ export async function registerRoutes(
   });
 
   app.get("/api/portfolio", async (req, res) => {
-    const me = await storage.getAccount(req.session.accountId!);
+    const me = await storage.getAccount(getAuthAccountId(req)!);
     if (!me) return res.status(401).json({ message: "Account not found" });
 
     const accountIdQ = req.query.accountId ? parseInt(req.query.accountId as string) : null;
@@ -810,7 +911,7 @@ export async function registerRoutes(
 
   app.get("/api/entities", async (req, res) => {
     const search = req.query.search as string | undefined;
-    const me = await storage.getAccount(req.session.accountId!);
+    const me = await storage.getAccount(getAuthAccountId(req)!);
     if (!me) return res.status(401).json({ message: "Account not found" });
 
     if (isAdmin(me)) {
@@ -826,7 +927,7 @@ export async function registerRoutes(
   app.get("/api/entities/:id", async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
-    const me = await storage.getAccount(req.session.accountId!);
+    const me = await storage.getAccount(getAuthAccountId(req)!);
     if (!me) return res.status(401).json({ message: "Account not found" });
 
     if (!isAdmin(me)) {
@@ -857,7 +958,7 @@ export async function registerRoutes(
   app.patch("/api/entities/:id", async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
-    const me = await storage.getAccount(req.session.accountId!);
+    const me = await storage.getAccount(getAuthAccountId(req)!);
     if (!me) return res.status(401).json({ message: "Account not found" });
 
     if (!isAdmin(me)) {
@@ -891,7 +992,7 @@ export async function registerRoutes(
   app.get("/api/entities/:id/owners", async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
-    const me = await storage.getAccount(req.session.accountId!);
+    const me = await storage.getAccount(getAuthAccountId(req)!);
     if (!me) return res.status(401).json({ message: "Account not found" });
 
     if (!isAdmin(me)) {
@@ -908,7 +1009,7 @@ export async function registerRoutes(
   app.post("/api/entities/:id/owners", async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
-    const me = await storage.getAccount(req.session.accountId!);
+    const me = await storage.getAccount(getAuthAccountId(req)!);
     if (!me) return res.status(401).json({ message: "Account not found" });
 
     if (!isAdmin(me)) {
@@ -947,7 +1048,7 @@ export async function registerRoutes(
     const id = parseInt(req.params.id);
     const ownerId = parseInt(req.params.ownerId);
     if (isNaN(ownerId)) return res.status(400).json({ message: "Invalid ID" });
-    const me = await storage.getAccount(req.session.accountId!);
+    const me = await storage.getAccount(getAuthAccountId(req)!);
     if (!me) return res.status(401).json({ message: "Account not found" });
 
     if (!isAdmin(me)) {
@@ -965,7 +1066,7 @@ export async function registerRoutes(
   app.get("/api/entities/:id/managers", async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
-    const me = await storage.getAccount(req.session.accountId!);
+    const me = await storage.getAccount(getAuthAccountId(req)!);
     if (!me) return res.status(401).json({ message: "Account not found" });
 
     if (!isAdmin(me)) {
@@ -982,7 +1083,7 @@ export async function registerRoutes(
   app.post("/api/entities/:id/managers", async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
-    const me = await storage.getAccount(req.session.accountId!);
+    const me = await storage.getAccount(getAuthAccountId(req)!);
     if (!me) return res.status(401).json({ message: "Account not found" });
 
     if (!isAdmin(me)) {
@@ -1002,7 +1103,7 @@ export async function registerRoutes(
     const id = parseInt(req.params.id);
     const accountId = parseInt(req.params.accountId);
     if (isNaN(id) || isNaN(accountId)) return res.status(400).json({ message: "Invalid ID" });
-    const me = await storage.getAccount(req.session.accountId!);
+    const me = await storage.getAccount(getAuthAccountId(req)!);
     if (!me) return res.status(401).json({ message: "Account not found" });
 
     if (!isAdmin(me)) {

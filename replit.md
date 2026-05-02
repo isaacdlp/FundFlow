@@ -55,6 +55,7 @@ shared/
 - `accounts` - User accounts with personal info and address
 - `roles` - Role definitions (admin, gp, lp)
 - `account_roles` - Many-to-many account-role associations (with cascade delete)
+- `api_tokens` - Personal API tokens (id, account_id, name, prefix, token_hash UNIQUE, last_used_at, expires_at, revoked_at, created_at). Only the SHA-256 hash is stored; plaintext is shown to the caller exactly once at creation.
 - `organizations` - Organizations with unique slug for public landing pages
 - `organization_organizers` - Many-to-many organization-account associations (Organizer role)
 - `organization_members` - Membership requests with status (pending/approved/rejected), optional inviteId
@@ -76,6 +77,16 @@ shared/
 
 ### Auth
 - `POST /api/auth/login` - Email/password login, returns account data (no passwordHash)
+- `POST /api/auth/logout` - Destroys the session
+- `GET /api/auth/me` - Returns the currently-authenticated account (works with both session cookie and bearer token)
+- `POST /api/auth/change-password` - Change password (requires current password)
+- `POST /api/auth/forgot-password` / `POST /api/auth/reset-password` - Reset flow
+
+### API Tokens (programmatic access)
+- `GET /api/auth/tokens` - List the caller's tokens (no plaintext, no hashes)
+- `POST /api/auth/tokens` - Create a new token (body: `{name, expiresInDays?}`). Returns the plaintext token **once** as `token` in the response — never retrievable again. Session-only (a token cannot mint more tokens).
+- `DELETE /api/auth/tokens/:id` - Revoke a token. Session-only. Scoped to caller's `accountId` so you cannot revoke other users' tokens.
+- Tokens are formatted as `ff_<48 hex chars>`. Only the SHA-256 hash is stored. Send via `Authorization: Bearer ff_...` on any `/api/*` request to authenticate. Bearer-authenticated requests inherit the token owner's account roles and permissions exactly (admin tokens hit admin routes; member tokens hit member routes). Revoked or expired tokens fall through to 401.
 
 ### Organizations
 - `GET /api/organizations` - List all organizations with organizers
@@ -141,6 +152,7 @@ shared/
 
 ## Authentication & Authorization
 - Session-based auth using express-session with connect-pg-simple store
+- **Bearer token auth** for programmatic API clients — see "API Tokens" above. The `bearerAuth` middleware runs before all routes; if a valid `Authorization: Bearer ff_...` header is present, the request is treated as the token-owning account for the rest of the pipeline (including `requireAuth` and `requireAdmin`). Session cookies always win if both are present. Token CRUD itself (`POST/DELETE /api/auth/tokens`) requires session auth so a leaked token cannot create more tokens or revoke siblings.
 - Login page at root when unauthenticated; session stored in PostgreSQL
 - Auth endpoints: POST /api/auth/login, POST /api/auth/logout, GET /api/auth/me
 - Public routes (no auth required): /api/auth/login, /api/auth/me, /api/organizations/by-slug/:slug, /api/invites/:token, /api/invites/:token/accept, /api/organizations/:id/members/request, POST /api/accounts

@@ -4,6 +4,7 @@ import {
   accounts, roles, accountRoles, organizations, organizationOrganizers,
   organizationMembers, organizationInvites, spvs, spvMembers,
   entities, entityOwners, entityManagers, passwordResetTokens,
+  apiTokens,
   type Account, type Role, type InsertAccount, type UpdateAccount,
   type Organization, type InsertOrganization, type UpdateOrganization,
   type OrganizationMember, type OrganizationInvite,
@@ -11,6 +12,7 @@ import {
   type Entity, type EntityOwner, type EntityManager,
   type InsertEntity, type UpdateEntity,
   type PasswordResetToken,
+  type ApiToken, type PublicApiToken,
 } from "@shared/schema";
 import crypto from "crypto";
 import bcrypt from "bcrypt";
@@ -155,6 +157,12 @@ export interface IStorage {
   getPasswordResetToken(token: string): Promise<PasswordResetToken | undefined>;
   usePasswordResetToken(token: string): Promise<void>;
   updatePassword(accountId: number, newPassword: string): Promise<void>;
+
+  createApiToken(accountId: number, name: string, prefix: string, tokenHash: string, expiresAt: Date | null): Promise<PublicApiToken>;
+  getApiTokenByHash(tokenHash: string): Promise<ApiToken | undefined>;
+  listApiTokensForAccount(accountId: number): Promise<PublicApiToken[]>;
+  revokeApiToken(id: number, accountId: number): Promise<boolean>;
+  touchApiTokenLastUsed(id: number): Promise<void>;
 
   seedData(): Promise<void>;
 }
@@ -933,6 +941,55 @@ export class DatabaseStorage implements IStorage {
     await db.update(accounts)
       .set({ passwordHash: hash, updatedAt: new Date() })
       .where(eq(accounts.id, accountId));
+  }
+
+  async createApiToken(
+    accountId: number,
+    name: string,
+    prefix: string,
+    tokenHash: string,
+    expiresAt: Date | null,
+  ): Promise<PublicApiToken> {
+    const [row] = await db.insert(apiTokens).values({
+      accountId,
+      name,
+      prefix,
+      tokenHash,
+      expiresAt,
+    }).returning();
+    const { tokenHash: _omit, ...rest } = row;
+    return rest;
+  }
+
+  async getApiTokenByHash(tokenHash: string): Promise<ApiToken | undefined> {
+    const [row] = await db.select().from(apiTokens)
+      .where(eq(apiTokens.tokenHash, tokenHash))
+      .limit(1);
+    return row;
+  }
+
+  async listApiTokensForAccount(accountId: number): Promise<PublicApiToken[]> {
+    const rows = await db.select().from(apiTokens)
+      .where(eq(apiTokens.accountId, accountId));
+    return rows.map(({ tokenHash: _omit, ...rest }) => rest);
+  }
+
+  async revokeApiToken(id: number, accountId: number): Promise<boolean> {
+    const result = await db.update(apiTokens)
+      .set({ revokedAt: new Date() })
+      .where(and(
+        eq(apiTokens.id, id),
+        eq(apiTokens.accountId, accountId),
+        sql`${apiTokens.revokedAt} IS NULL`,
+      ))
+      .returning({ id: apiTokens.id });
+    return result.length > 0;
+  }
+
+  async touchApiTokenLastUsed(id: number): Promise<void> {
+    await db.update(apiTokens)
+      .set({ lastUsedAt: new Date() })
+      .where(eq(apiTokens.id, id));
   }
 
   async getOrganizationIdsForAccount(accountId: number): Promise<number[]> {
