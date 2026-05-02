@@ -8,6 +8,7 @@ import {
   Settings,
   FileText,
   TrendingUp,
+  Key,
 } from "lucide-react";
 import {
   Sidebar,
@@ -41,6 +42,7 @@ const mainNav: NavItem[] = [
 const managementNav: NavItem[] = [
   { title: "Management", url: "/management", icon: FolderKanban },
   { title: "Settings", url: "/settings", icon: Settings },
+  { title: "API Tokens", url: "/settings/api-tokens", icon: Key, adminOnly: true },
 ];
 
 export function AppSidebar() {
@@ -48,6 +50,7 @@ export function AppSidebar() {
   const { user, isAdmin } = useAuth();
 
   const visibleMainNav = mainNav.filter(item => !item.adminOnly || isAdmin);
+  const visibleManagementNav = managementNav.filter(item => !item.adminOnly || isAdmin);
 
   const initials = user
     ? `${user.firstName[0] || ""}${user.lastName[0] || ""}`.toUpperCase()
@@ -93,7 +96,7 @@ export function AppSidebar() {
           <SidebarGroupLabel>Administration</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {managementNav.map((item) => (
+              {visibleManagementNav.map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton
                     asChild

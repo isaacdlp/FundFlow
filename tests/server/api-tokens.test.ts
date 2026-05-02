@@ -64,34 +64,39 @@ describe("API tokens", () => {
       expect(res.status).toBe(401);
     });
 
-    it("lists tokens for the authenticated account (without hashes)", async () => {
-      // The real DatabaseStorage.listApiTokensForAccount strips tokenHash before
-      // returning, so the route trusts whatever storage hands back. We mirror
-      // that contract here by stripping the hash from the fixtures.
+    it("rejects non-admin users with 403", async () => {
+      const agent = await loginAs(app, mockStorage, fixtures.memberAccount);
+      const res = await agent.get("/api/auth/tokens");
+      expect(res.status).toBe(403);
+    });
+
+    it("lists tokens for an admin (without hashes)", async () => {
+      // The real DatabaseStorage.listApiTokensForAccount strips tokenHash
+      // before returning, so the route trusts whatever storage hands back.
       const tokens = [
-        fixtures.apiToken({ id: 1, name: "Laptop", prefix: "aaaabbbb" }),
-        fixtures.apiToken({ id: 2, name: "CI", prefix: "ccccdddd" }),
+        fixtures.apiToken({ id: 1, accountId: fixtures.adminAccount.id, name: "Laptop", prefix: "aaaabbbb" }),
+        fixtures.apiToken({ id: 2, accountId: fixtures.adminAccount.id, name: "CI", prefix: "ccccdddd" }),
       ].map(({ tokenHash: _h, ...rest }) => rest);
       mockStorage.listApiTokensForAccount.mockResolvedValue(tokens);
 
-      const agent = await loginAs(app, mockStorage, fixtures.memberAccount);
+      const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
       const res = await agent.get("/api/auth/tokens");
 
       expect(res.status).toBe(200);
       expect(res.body).toHaveLength(2);
       expect(res.body[0]).not.toHaveProperty("tokenHash");
-      expect(mockStorage.listApiTokensForAccount).toHaveBeenCalledWith(fixtures.memberAccount.id);
+      expect(mockStorage.listApiTokensForAccount).toHaveBeenCalledWith(fixtures.adminAccount.id);
     });
 
-    it("works for bearer-authenticated callers (lists their own tokens)", async () => {
-      mockStorage.listApiTokensForAccount.mockResolvedValue([]);
+    it("blocks bearer-authenticated callers — admin tokens cannot list tokens either", async () => {
       const plaintext = "ff_" + "1".repeat(48);
-      const agent = loginAsToken(app, mockStorage, fixtures.memberAccount, plaintext);
+      const agent = loginAsToken(app, mockStorage, fixtures.adminAccount, plaintext);
 
       const res = await agent.get("/api/auth/tokens");
 
-      expect(res.status).toBe(200);
-      expect(mockStorage.listApiTokensForAccount).toHaveBeenCalledWith(fixtures.memberAccount.id);
+      // requireSessionAdmin rejects anything that isn't a real browser session
+      expect(res.status).toBe(401);
+      expect(mockStorage.listApiTokensForAccount).not.toHaveBeenCalled();
     });
   });
 
@@ -102,14 +107,21 @@ describe("API tokens", () => {
       expect(res.status).toBe(401);
     });
 
-    it("rejects an empty name", async () => {
+    it("rejects non-admin users with 403", async () => {
       const agent = await loginAs(app, mockStorage, fixtures.memberAccount);
+      const res = await agent.post("/api/auth/tokens").send({ name: "x" });
+      expect(res.status).toBe(403);
+      expect(mockStorage.createApiToken).not.toHaveBeenCalled();
+    });
+
+    it("rejects an empty name", async () => {
+      const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
       const res = await agent.post("/api/auth/tokens").send({ name: "" });
       expect(res.status).toBe(400);
     });
 
     it("rejects a non-positive expiresInDays", async () => {
-      const agent = await loginAs(app, mockStorage, fixtures.memberAccount);
+      const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
       const res = await agent.post("/api/auth/tokens").send({ name: "x", expiresInDays: 0 });
       expect(res.status).toBe(400);
     });
@@ -124,7 +136,7 @@ describe("API tokens", () => {
         },
       );
 
-      const agent = await loginAs(app, mockStorage, fixtures.memberAccount);
+      const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
       const res = await agent.post("/api/auth/tokens").send({ name: "Laptop" });
 
       expect(res.status).toBe(201);
@@ -134,7 +146,7 @@ describe("API tokens", () => {
 
       // Verify storage received the SHA-256 hash, never the plaintext
       const [accountId, name, prefix, hash, expiresAt] = mockStorage.createApiToken.mock.calls[0];
-      expect(accountId).toBe(fixtures.memberAccount.id);
+      expect(accountId).toBe(fixtures.adminAccount.id);
       expect(name).toBe("Laptop");
       expect(prefix).toBe(res.body.token.slice(3, 11));
       expect(hash).toBe(hashApiToken(res.body.token));
@@ -148,7 +160,7 @@ describe("API tokens", () => {
           fixtures.apiToken({ name, prefix, expiresAt }),
       );
 
-      const agent = await loginAs(app, mockStorage, fixtures.memberAccount);
+      const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
       const before = Date.now();
       const res = await agent.post("/api/auth/tokens").send({ name: "30d", expiresInDays: 30 });
       const after = Date.now();
@@ -160,9 +172,9 @@ describe("API tokens", () => {
       expect(expiresAt.getTime()).toBeLessThanOrEqual(after + target + 100);
     });
 
-    it("blocks bearer-authenticated callers from minting more tokens", async () => {
+    it("blocks bearer-authenticated callers — even admin tokens cannot mint more tokens", async () => {
       const plaintext = "ff_" + "2".repeat(48);
-      const agent = loginAsToken(app, mockStorage, fixtures.memberAccount, plaintext);
+      const agent = loginAsToken(app, mockStorage, fixtures.adminAccount, plaintext);
 
       const res = await agent.post("/api/auth/tokens").send({ name: "Sneaky" });
 
@@ -179,46 +191,53 @@ describe("API tokens", () => {
       expect(res.status).toBe(401);
     });
 
-    it("rejects a non-numeric id", async () => {
+    it("rejects non-admin users with 403", async () => {
       const agent = await loginAs(app, mockStorage, fixtures.memberAccount);
+      const res = await agent.delete("/api/auth/tokens/1");
+      expect(res.status).toBe(403);
+      expect(mockStorage.revokeApiToken).not.toHaveBeenCalled();
+    });
+
+    it("rejects a non-numeric id", async () => {
+      const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
       const res = await agent.delete("/api/auth/tokens/abc");
       expect(res.status).toBe(400);
     });
 
     it("returns 404 if storage reports no row was revoked", async () => {
       mockStorage.revokeApiToken.mockResolvedValue(false);
-      const agent = await loginAs(app, mockStorage, fixtures.memberAccount);
+      const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
 
       const res = await agent.delete("/api/auth/tokens/42");
 
       expect(res.status).toBe(404);
-      expect(mockStorage.revokeApiToken).toHaveBeenCalledWith(42, fixtures.memberAccount.id);
+      expect(mockStorage.revokeApiToken).toHaveBeenCalledWith(42, fixtures.adminAccount.id);
     });
 
     it("revokes a token owned by the caller", async () => {
       mockStorage.revokeApiToken.mockResolvedValue(true);
-      const agent = await loginAs(app, mockStorage, fixtures.memberAccount);
+      const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
 
       const res = await agent.delete("/api/auth/tokens/7");
 
       expect(res.status).toBe(200);
-      expect(mockStorage.revokeApiToken).toHaveBeenCalledWith(7, fixtures.memberAccount.id);
+      expect(mockStorage.revokeApiToken).toHaveBeenCalledWith(7, fixtures.adminAccount.id);
     });
 
-    it("scopes revocation to the caller's accountId (cannot revoke other users' tokens)", async () => {
+    it("scopes revocation to the caller's accountId (cannot revoke other admins' tokens)", async () => {
       mockStorage.revokeApiToken.mockResolvedValue(false);
-      const agent = await loginAs(app, mockStorage, fixtures.memberAccount);
+      const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
 
       const res = await agent.delete("/api/auth/tokens/999");
 
       expect(res.status).toBe(404);
       // Storage was asked with the caller's accountId — DB-level WHERE prevents cross-tenant revocation
-      expect(mockStorage.revokeApiToken).toHaveBeenCalledWith(999, fixtures.memberAccount.id);
+      expect(mockStorage.revokeApiToken).toHaveBeenCalledWith(999, fixtures.adminAccount.id);
     });
 
     it("blocks bearer-authenticated callers from revoking tokens", async () => {
       const plaintext = "ff_" + "3".repeat(48);
-      const agent = loginAsToken(app, mockStorage, fixtures.memberAccount, plaintext);
+      const agent = loginAsToken(app, mockStorage, fixtures.adminAccount, plaintext);
 
       const res = await agent.delete("/api/auth/tokens/1");
 

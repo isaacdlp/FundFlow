@@ -25,7 +25,7 @@ tests/
     entity-owners.test.ts # owner add/remove + payload validation
     entity-managers.test.ts # manager add/remove
     password-reset.test.ts # forgot/reset + change-password
-    api-tokens.test.ts    # generator/hash/parser primitives + token CRUD + bearer auth on protected routes
+    api-tokens.test.ts    # generator/hash/parser primitives + admin-only token CRUD (non-admin → 403, bearer → 401) + bearer auth on protected routes
   client/                 # Frontend tests (Vitest + jsdom + RTL)
     setup.ts              # jest-dom matchers + cleanup
     use-org-permissions.test.tsx

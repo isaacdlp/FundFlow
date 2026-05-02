@@ -82,10 +82,12 @@ shared/
 - `POST /api/auth/change-password` - Change password (requires current password)
 - `POST /api/auth/forgot-password` / `POST /api/auth/reset-password` - Reset flow
 
-### API Tokens (programmatic access)
+### API Tokens (programmatic access) — admin-only
+All token CRUD requires admin role + a real session cookie (no bearer auth, even from an admin token).
 - `GET /api/auth/tokens` - List the caller's tokens (no plaintext, no hashes)
-- `POST /api/auth/tokens` - Create a new token (body: `{name, expiresInDays?}`). Returns the plaintext token **once** as `token` in the response — never retrievable again. Session-only (a token cannot mint more tokens).
-- `DELETE /api/auth/tokens/:id` - Revoke a token. Session-only. Scoped to caller's `accountId` so you cannot revoke other users' tokens.
+- `POST /api/auth/tokens` - Create a new token (body: `{name, expiresInDays?}`). Returns the plaintext token **once** as `token` in the response — never retrievable again.
+- `DELETE /api/auth/tokens/:id` - Revoke a token. Scoped to caller's `accountId`. Non-admins receive 403; bearer-authenticated callers receive 401.
+- UI: `/settings/api-tokens` (sidebar link visible only to admins).
 - Tokens are formatted as `ff_<48 hex chars>`. Only the SHA-256 hash is stored. Send via `Authorization: Bearer ff_...` on any `/api/*` request to authenticate. Bearer-authenticated requests inherit the token owner's account roles and permissions exactly (admin tokens hit admin routes; member tokens hit member routes). Revoked or expired tokens fall through to 401.
 
 ### Organizations
@@ -152,7 +154,8 @@ shared/
 
 ## Authentication & Authorization
 - Session-based auth using express-session with connect-pg-simple store
-- **Bearer token auth** for programmatic API clients — see "API Tokens" above. The `bearerAuth` middleware runs before all routes; if a valid `Authorization: Bearer ff_...` header is present, the request is treated as the token-owning account for the rest of the pipeline (including `requireAuth` and `requireAdmin`). Session cookies always win if both are present. Token CRUD itself (`POST/DELETE /api/auth/tokens`) requires session auth so a leaked token cannot create more tokens or revoke siblings.
+- **Bearer token auth** for programmatic API clients — see "API Tokens" above. The `bearerAuth` middleware runs before all routes; if a valid `Authorization: Bearer ff_...` header is present, the request is treated as the token-owning account for the rest of the pipeline (including `requireAuth` and `requireAdmin`). Session cookies always win if both are present. Token CRUD (`GET/POST/DELETE /api/auth/tokens`) and `POST /api/auth/change-password` require a real session cookie — bearer tokens are rejected with 401, and token CRUD additionally requires the admin role (`requireSessionAdmin`).
+- **OpenAPI spec** lives at `docs/openapi.yaml` and documents every REST endpoint, both auth methods, all schemas, and the admin/permission rules.
 - Login page at root when unauthenticated; session stored in PostgreSQL
 - Auth endpoints: POST /api/auth/login, POST /api/auth/logout, GET /api/auth/me
 - Public routes (no auth required): /api/auth/login, /api/auth/me, /api/organizations/by-slug/:slug, /api/invites/:token, /api/invites/:token/accept, /api/organizations/:id/members/request, POST /api/accounts

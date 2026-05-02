@@ -1,0 +1,967 @@
+openapi: 3.1.0
+info:
+  title: FundFlow REST API
+  version: "1.0.0"
+  description: |
+    Multi-tenant VC/PE fund management platform. Covers accounts, organizations,
+    SPVs, entities, members, invites, portfolio data, and authentication.
+
+    ## Authentication
+    Two methods are accepted on every `/api/*` endpoint:
+
+    1. **Session cookie** — set by `POST /api/auth/login`. Used by the web UI.
+    2. **Bearer token** — `Authorization: Bearer ff_<48 hex chars>`. Generated
+       via `POST /api/auth/tokens` (admin-only). Tokens inherit the owner's
+       account roles, so an admin token can hit admin-only routes; a non-admin
+       token only sees what its owner is allowed to see.
+
+    Token CRUD itself (`/api/auth/tokens` routes) and `/api/auth/change-password`
+    require a real session cookie — never a bearer token — so a leaked token
+    cannot mint more tokens or lock the user out of their account.
+
+    ## Permissions model
+    - **admin** role: full access. Can create/delete organizations, delete any
+      account/SPV/entity, and manage API tokens.
+    - **non-admin**: scoped to data they participate in (org member/organizer,
+      SPV member, entity manager/owner).
+    - Permission checks happen identically for cookie- and token-authenticated
+      requests.
+
+  contact:
+    name: FundFlow
+
+servers:
+  - url: /
+    description: Same-origin (web app and API share a host)
+
+tags:
+  - name: Auth
+    description: Login, logout, password management, and the current account
+  - name: API Tokens
+    description: Personal access tokens (admin-only)
+  - name: Accounts
+    description: User accounts and roles
+  - name: Organizations
+    description: Tenant organizations and their public landing pages
+  - name: Organization Members
+    description: Membership requests and approvals
+  - name: Organization Invites
+    description: Single-use invite tokens
+  - name: SPVs
+    description: Special Purpose Vehicles (investment funds) and their investors
+  - name: Entities
+    description: Legal entities (LLCs, Corps, Trusts) with owners and managers
+  - name: Portfolio
+    description: Investment positions held by accounts and entities
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Reusable security
+# ──────────────────────────────────────────────────────────────────────────────
+security:
+  - sessionCookie: []
+  - bearerAuth: []
+
+paths:
+  # ──── Auth ────────────────────────────────────────────────────────────────
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      summary: Sign in with email + password
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+      responses:
+        '200':
+          description: Authenticated. Sets a session cookie.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Account' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/auth/logout:
+    post:
+      tags: [Auth]
+      summary: Destroy the current session cookie
+      security: []
+      responses:
+        '200': { description: Logged out (always 200 even if no session existed) }
+
+  /api/auth/me:
+    get:
+      tags: [Auth]
+      summary: Get the currently-authenticated account
+      description: Works with both session cookies and bearer tokens.
+      responses:
+        '200':
+          description: Authenticated account
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Account' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/auth/change-password:
+    post:
+      tags: [Auth]
+      summary: Change the current account's password
+      description: Session-only — cannot be called with a bearer token.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [currentPassword, newPassword]
+              properties:
+                currentPassword: { type: string }
+                newPassword: { type: string, minLength: 6 }
+      responses:
+        '200': { description: Password updated }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/auth/forgot-password:
+    post:
+      tags: [Auth]
+      summary: Request a password reset email
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+      responses:
+        '200': { description: Always returns 200 (does not leak account existence) }
+
+  /api/auth/reset-password:
+    post:
+      tags: [Auth]
+      summary: Consume a password reset token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, password]
+              properties:
+                token: { type: string }
+                password: { type: string, minLength: 6 }
+      responses:
+        '200': { description: Password updated }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  # ──── API Tokens (admin-only) ─────────────────────────────────────────────
+  /api/auth/tokens:
+    get:
+      tags: [API Tokens]
+      summary: List the caller's API tokens
+      description: Admin-only. Session-only (bearer tokens cannot list tokens).
+      security:
+        - sessionCookie: []
+      responses:
+        '200':
+          description: List of tokens (no plaintext, no hashes)
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/PublicApiToken' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [API Tokens]
+      summary: Create a new API token
+      description: |
+        Admin-only. Session-only. The plaintext token is returned in the
+        response under `token` and is **never retrievable again** — store it
+        immediately.
+      security:
+        - sessionCookie: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, minLength: 1, maxLength: 100, example: "CI pipeline" }
+                expiresInDays:
+                  type: integer
+                  minimum: 1
+                  description: If omitted, the token never expires.
+      responses:
+        '201':
+          description: Token created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PublicApiToken'
+                  - type: object
+                    required: [token]
+                    properties:
+                      token:
+                        type: string
+                        pattern: '^ff_[0-9a-f]{48}$'
+                        description: Full plaintext token. Shown only once.
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/auth/tokens/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    delete:
+      tags: [API Tokens]
+      summary: Revoke a token
+      description: |
+        Admin-only. Session-only. Scoped to caller's accountId — you cannot
+        revoke another admin's tokens.
+      security:
+        - sessionCookie: []
+      responses:
+        '200': { description: Token revoked }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Token not found or already revoked }
+
+  # ──── Accounts ────────────────────────────────────────────────────────────
+  /api/accounts:
+    get:
+      tags: [Accounts]
+      summary: List accounts
+      description: |
+        Admins see all accounts (with optional `?search=` and `?role=` filters).
+        Non-admins receive a single-element array containing their own account.
+      parameters:
+        - { name: search, in: query, schema: { type: string } }
+        - { name: role, in: query, schema: { type: string } }
+      responses:
+        '200':
+          description: Accounts (passwordHash always stripped)
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Account' }
+    post:
+      tags: [Accounts]
+      summary: Create a new account (public)
+      description: Public — used by the signup flow. No authentication required.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AccountCreate' }
+      responses:
+        '201':
+          description: Account created
+          content: { application/json: { schema: { $ref: '#/components/schemas/Account' } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409': { description: Email already registered }
+
+  /api/accounts/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    get:
+      tags: [Accounts]
+      summary: Get a single account
+      responses:
+        '200': { content: { application/json: { schema: { $ref: '#/components/schemas/Account' } } }, description: Account }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Accounts]
+      summary: Update account fields and/or roles
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AccountUpdate' }
+      responses:
+        '200': { content: { application/json: { schema: { $ref: '#/components/schemas/Account' } } }, description: Updated }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Accounts]
+      summary: Delete an account (admin-only)
+      description: Cascades to account_roles and api_tokens.
+      responses:
+        '200': { description: Deleted }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/roles:
+    get:
+      tags: [Accounts]
+      summary: List role definitions
+      security: []
+      responses:
+        '200':
+          description: All roles
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Role' }
+
+  # ──── Organizations ───────────────────────────────────────────────────────
+  /api/organizations:
+    get:
+      tags: [Organizations]
+      summary: List organizations visible to the caller
+      responses:
+        '200':
+          description: Organizations
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/Organization' } }
+    post:
+      tags: [Organizations]
+      summary: Create an organization (admin-only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OrganizationCreate' }
+      responses:
+        '201': { content: { application/json: { schema: { $ref: '#/components/schemas/Organization' } } }, description: Created }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/organizations/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    get:
+      tags: [Organizations]
+      summary: Get a single organization
+      responses:
+        '200': { content: { application/json: { schema: { $ref: '#/components/schemas/Organization' } } }, description: Organization }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Organizations]
+      summary: Update organization settings (admin or organizer)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OrganizationCreate' }
+      responses:
+        '200': { content: { application/json: { schema: { $ref: '#/components/schemas/Organization' } } }, description: Updated }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    delete:
+      tags: [Organizations]
+      summary: Delete an organization (admin-only)
+      responses:
+        '200': { description: Deleted }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/organizations/by-slug/{slug}:
+    parameters:
+      - { name: slug, in: path, required: true, schema: { type: string } }
+    get:
+      tags: [Organizations]
+      summary: Public organization data by slug (no auth)
+      security: []
+      responses:
+        '200':
+          description: Public org info (no organizers list)
+          content: { application/json: { schema: { $ref: '#/components/schemas/Organization' } } }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/organizations/{id}/organizers:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    post:
+      tags: [Organizations]
+      summary: Add an organizer to an organization
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [accountId]
+              properties: { accountId: { type: integer } }
+      responses:
+        '201': { description: Added }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/organizations/{id}/organizers/{accountId}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+      - { name: accountId, in: path, required: true, schema: { type: integer } }
+    delete:
+      tags: [Organizations]
+      summary: Remove an organizer
+      responses:
+        '200': { description: Removed }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ──── Organization Members ────────────────────────────────────────────────
+  /api/organizations/{id}/members:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    get:
+      tags: [Organization Members]
+      summary: List organization members
+      responses:
+        '200':
+          description: Members with account info
+          content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Member' } } } }
+
+  /api/organizations/{id}/members/request:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    post:
+      tags: [Organization Members]
+      summary: Request access to an organization (public)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [accountId]
+              properties: { accountId: { type: integer } }
+      responses:
+        '201': { description: Pending membership created }
+
+  /api/organizations/{id}/members/{accountId}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+      - { name: accountId, in: path, required: true, schema: { type: integer } }
+    patch:
+      tags: [Organization Members]
+      summary: Approve / reject a pending membership
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [approved, rejected], description: "Server only accepts approved or rejected (pending is the initial state set by the request endpoint)." }
+      responses:
+        '200': { description: Updated }
+        '400': { description: Invalid status value }
+    delete:
+      tags: [Organization Members]
+      summary: Remove a member from an organization
+      responses:
+        '200': { description: Removed }
+
+  # ──── Organization Invites ────────────────────────────────────────────────
+  /api/organizations/{id}/invites:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    get:
+      tags: [Organization Invites]
+      summary: List invites (with used-by info)
+      responses:
+        '200':
+          description: Invites
+          content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Invite' } } } }
+    post:
+      tags: [Organization Invites]
+      summary: Generate a new single-use invite link
+      responses:
+        '201': { content: { application/json: { schema: { $ref: '#/components/schemas/Invite' } } }, description: Created }
+
+  /api/invites/{token}:
+    parameters:
+      - { name: token, in: path, required: true, schema: { type: string } }
+    get:
+      tags: [Organization Invites]
+      summary: Validate an invite token (public)
+      security: []
+      responses:
+        '200': { description: Returns the org info for the invite }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '410': { description: Invite already used }
+
+  /api/invites/{token}/accept:
+    parameters:
+      - { name: token, in: path, required: true, schema: { type: string } }
+    post:
+      tags: [Organization Invites]
+      summary: Accept an invite (public, auto-approves membership)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - type: object
+                  required: [accountId]
+                  properties: { accountId: { type: integer } }
+                - type: object
+                  required: [email, password, firstName, lastName]
+                  properties:
+                    email: { type: string, format: email }
+                    password: { type: string }
+                    firstName: { type: string }
+                    lastName: { type: string }
+      responses:
+        '200': { description: Accepted }
+        '410': { description: Invite already used }
+
+  # ──── SPVs ────────────────────────────────────────────────────────────────
+  /api/spvs:
+    get:
+      tags: [SPVs]
+      summary: List all SPVs visible to the caller
+      responses:
+        '200':
+          description: SPVs (with org info)
+          content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Spv' } } } }
+
+  /api/organizations/{id}/spvs:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    get:
+      tags: [SPVs]
+      summary: List SPVs for an organization
+      responses:
+        '200': { content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Spv' } } } }, description: SPVs }
+    post:
+      tags: [SPVs]
+      summary: Create an SPV under an organization
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/SpvCreate' } } }
+      responses:
+        '201': { content: { application/json: { schema: { $ref: '#/components/schemas/Spv' } } }, description: Created }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/spvs/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    get:
+      tags: [SPVs]
+      responses: { '200': { description: SPV, content: { application/json: { schema: { $ref: '#/components/schemas/Spv' } } } } }
+      summary: Get a single SPV
+    patch:
+      tags: [SPVs]
+      summary: Update an SPV
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/SpvCreate' } } }
+      responses: { '200': { description: Updated, content: { application/json: { schema: { $ref: '#/components/schemas/Spv' } } } } }
+    delete:
+      tags: [SPVs]
+      summary: Delete an SPV (admin-only)
+      responses:
+        '200': { description: Deleted }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/spvs/{id}/members:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    get:
+      tags: [SPVs]
+      summary: List SPV members (investors)
+      responses:
+        '200':
+          description: Each row has investorType + either an account or entity block
+          content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/SpvMember' } } } }
+    post:
+      tags: [SPVs]
+      summary: Add an investor (account OR entity, never both)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                accountId: { type: integer, nullable: true }
+                entityId: { type: integer, nullable: true }
+                initialValue: { type: string }
+                currentValue: { type: string }
+                distributions: { type: string }
+                purchaseDate: { type: string, format: date }
+      responses:
+        '201': { description: Added }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  /api/spvs/{id}/members/{memberId}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+      - { name: memberId, in: path, required: true, schema: { type: integer } }
+    patch:
+      tags: [SPVs]
+      summary: Update investment fields for a member
+      responses: { '200': { description: Updated } }
+    delete:
+      tags: [SPVs]
+      summary: Remove an investor from an SPV
+      responses: { '200': { description: Removed } }
+
+  # ──── Entities ────────────────────────────────────────────────────────────
+  /api/entities:
+    get:
+      tags: [Entities]
+      summary: List entities visible to the caller
+      parameters:
+        - { name: search, in: query, schema: { type: string } }
+      responses:
+        '200': { content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Entity' } } } }, description: Entities }
+    post:
+      tags: [Entities]
+      summary: Create an entity
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/EntityCreate' } } }
+      responses:
+        '201': { content: { application/json: { schema: { $ref: '#/components/schemas/Entity' } } }, description: Created }
+
+  /api/entities/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    get:
+      tags: [Entities]
+      responses: { '200': { description: Entity, content: { application/json: { schema: { $ref: '#/components/schemas/Entity' } } } } }
+      summary: Get a single entity
+    patch:
+      tags: [Entities]
+      summary: Update an entity
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/EntityCreate' } } }
+      responses: { '200': { description: Updated, content: { application/json: { schema: { $ref: '#/components/schemas/Entity' } } } } }
+    delete:
+      tags: [Entities]
+      summary: Delete an entity (admin-only) — cascades owners/managers
+      responses:
+        '200': { description: Deleted }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/entities/{id}/owners:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    get:
+      tags: [Entities]
+      summary: List entity owners (accounts and/or other entities)
+      responses: { '200': { description: Owners } }
+    post:
+      tags: [Entities]
+      summary: Add an owner (account or another entity)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ownerType, ownershipPercent]
+              properties:
+                ownerType: { type: string, enum: [account, entity] }
+                ownerAccountId: { type: integer, nullable: true }
+                ownerEntityId: { type: integer, nullable: true }
+                ownershipPercent: { type: string }
+                date: { type: string, format: date }
+      responses: { '201': { description: Added } }
+
+  /api/entities/{id}/owners/{ownerId}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+      - { name: ownerId, in: path, required: true, schema: { type: integer } }
+    delete:
+      tags: [Entities]
+      summary: Remove an owner
+      responses: { '200': { description: Removed } }
+
+  /api/entities/{id}/managers:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    get:
+      tags: [Entities]
+      summary: List entity managers
+      responses: { '200': { description: Managers } }
+    post:
+      tags: [Entities]
+      summary: Add an account as a manager
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [accountId]
+              properties: { accountId: { type: integer } }
+      responses: { '201': { description: Added } }
+
+  /api/entities/{id}/managers/{accountId}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+      - { name: accountId, in: path, required: true, schema: { type: integer } }
+    delete:
+      tags: [Entities]
+      summary: Remove a manager
+      responses: { '200': { description: Removed } }
+
+  # ──── Portfolio ───────────────────────────────────────────────────────────
+  /api/portfolio:
+    get:
+      tags: [Portfolio]
+      summary: Investment positions (admin sees all; non-admin sees own)
+      description: |
+        Optional filters:
+        - `?accountId=<id>` — investments owned directly by the account *plus*
+          investments held by entities the account owns (recursively, via
+          `entity_owners`). Non-admins may only request their own accountId.
+        - `?entityId=<id>` — investments held directly by that entity.
+          Non-admins must own or manage the entity.
+      parameters:
+        - { name: accountId, in: query, schema: { type: integer } }
+        - { name: entityId, in: query, schema: { type: integer } }
+      responses:
+        '200': { description: Portfolio positions }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Reusable components
+# ──────────────────────────────────────────────────────────────────────────────
+components:
+  securitySchemes:
+    sessionCookie:
+      type: apiKey
+      in: cookie
+      name: connect.sid
+      description: Set automatically by `POST /api/auth/login`.
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: ff_<48 hex chars>
+      description: |
+        Personal API token created via `POST /api/auth/tokens` (admin-only).
+        Tokens inherit the owner's roles.
+
+  responses:
+    BadRequest:
+      description: Validation error
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    Unauthorized:
+      description: Authentication required or rejected
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    Forbidden:
+      description: Authenticated but lacks permission
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+    NotFound:
+      description: Resource not found
+      content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        message: { type: string }
+      required: [message]
+
+    Role:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string, example: admin }
+        description: { type: string, nullable: true }
+
+    Account:
+      type: object
+      description: User account. `passwordHash` is NEVER included in API responses.
+      properties:
+        id: { type: integer }
+        email: { type: string, format: email }
+        firstName: { type: string }
+        lastName: { type: string }
+        profileComplete: { type: boolean }
+        roles:
+          type: array
+          items: { $ref: '#/components/schemas/Role' }
+
+    AccountCreate:
+      type: object
+      required: [email, password, firstName, lastName]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, minLength: 6 }
+        firstName: { type: string }
+        lastName: { type: string }
+
+    AccountUpdate:
+      type: object
+      properties:
+        email: { type: string, format: email }
+        firstName: { type: string }
+        lastName: { type: string }
+        roleIds:
+          type: array
+          items: { type: integer }
+          description: Replace the account's role assignments wholesale (admin-only).
+
+    Organization:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        slug: { type: string, description: URL-friendly slug for the public landing page }
+        description: { type: string, nullable: true }
+        website: { type: string, nullable: true }
+        logoUrl: { type: string, nullable: true }
+        country: { type: string, nullable: true }
+        city: { type: string, nullable: true }
+        stateProvince: { type: string, nullable: true }
+        organizers:
+          type: array
+          items: { $ref: '#/components/schemas/Account' }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    OrganizationCreate:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        description: { type: string }
+        website: { type: string }
+        country: { type: string }
+        city: { type: string }
+        stateProvince: { type: string }
+
+    Member:
+      type: object
+      properties:
+        id: { type: integer }
+        organizationId: { type: integer }
+        accountId: { type: integer }
+        status: { type: string, enum: [pending, approved, rejected] }
+        inviteId: { type: integer, nullable: true }
+        account: { $ref: '#/components/schemas/Account' }
+
+    Invite:
+      type: object
+      properties:
+        id: { type: integer }
+        organizationId: { type: integer }
+        token: { type: string, description: Use in /org/:slug?invite=TOKEN }
+        used: { type: boolean }
+        usedByAccountId: { type: integer, nullable: true }
+        createdAt: { type: string, format: date-time }
+
+    Spv:
+      type: object
+      properties:
+        id: { type: integer }
+        organizationId: { type: integer }
+        organizationName: { type: string }
+        legalName: { type: string }
+        displayName: { type: string }
+        entityType: { type: string }
+        currency: { type: string }
+        allocationMethod: { type: string }
+        managementFeePercent: { type: string }
+        carriedInterestPercent: { type: string }
+        preferredReturnPercent: { type: string }
+        totalBeingRaised: { type: string }
+        minimumInvestment: { type: string }
+        members:
+          type: array
+          items: { $ref: '#/components/schemas/SpvMember' }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    SpvCreate:
+      type: object
+      required: [legalName, displayName, entityType]
+      properties:
+        legalName: { type: string }
+        displayName: { type: string }
+        entityType: { type: string, example: LLC }
+        currency: { type: string, example: "USD ($)" }
+        allocationMethod: { type: string, example: "By capital invested" }
+        managementFeePercent: { type: string }
+        carriedInterestPercent: { type: string }
+        preferredReturnPercent: { type: string }
+        totalBeingRaised: { type: string }
+        minimumInvestment: { type: string }
+
+    SpvMember:
+      type: object
+      description: One investor in an SPV — exactly one of account/entity is non-null.
+      properties:
+        id: { type: integer }
+        spvId: { type: integer }
+        investorType: { type: string, enum: [account, entity] }
+        initialValue: { type: string }
+        currentValue: { type: string }
+        distributions: { type: string }
+        purchaseDate: { type: string, format: date, nullable: true }
+        account: { $ref: '#/components/schemas/Account', nullable: true }
+        entity: { $ref: '#/components/schemas/Entity', nullable: true }
+
+    Entity:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        entityType: { type: string, example: LLC }
+        currency: { type: string }
+        ownershipAllocation: { type: string, enum: [percent, shares] }
+        disbursementMethod: { type: string }
+        owners: { type: array, items: { type: object } }
+        managers: { type: array, items: { $ref: '#/components/schemas/Account' } }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    EntityCreate:
+      type: object
+      required: [name, entityType]
+      properties:
+        name: { type: string }
+        entityType: { type: string }
+        currency: { type: string }
+        ownershipAllocation: { type: string, enum: [percent, shares] }
+        disbursementMethod: { type: string }
+
+    PublicApiToken:
+      type: object
+      description: API token metadata (the secret hash is NEVER included).
+      properties:
+        id: { type: integer }
+        accountId: { type: integer }
+        name: { type: string }
+        prefix:
+          type: string
+          description: First 8 hex chars after `ff_` — safe to log for debugging.
+          example: "a1b2c3d4"
+        lastUsedAt: { type: string, format: date-time, nullable: true }
+        expiresAt: { type: string, format: date-time, nullable: true }
+        revokedAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }

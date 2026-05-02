@@ -81,6 +81,22 @@ function requireSession(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
+/**
+ * Strictest gate: requires session-cookie auth AND the admin role. Used by
+ * the API token management routes — only admins can mint, list, or revoke
+ * tokens, and they must do so from a real browser session (not via a token).
+ */
+async function requireSessionAdmin(req: Request, res: Response, next: NextFunction) {
+  if (!req.session.accountId) {
+    return res.status(401).json({ message: "Session authentication required for this operation" });
+  }
+  const account = await storage.getAccount(req.session.accountId);
+  if (!account || !isAdmin(account)) {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  next();
+}
+
 function isAdmin(account: AccountWithRoles): boolean {
   return account.roles.some(r => r.name === "admin");
 }
@@ -278,13 +294,13 @@ export async function registerRoutes(
   // The plaintext token is returned ONLY in the POST response and never again.
   // ─────────────────────────────────────────────────────────────────────────
 
-  app.get("/api/auth/tokens", async (req, res) => {
-    const id = getAuthAccountId(req)!;
+  app.get("/api/auth/tokens", requireSessionAdmin, async (req, res) => {
+    const id = req.session.accountId!;
     const tokens = await storage.listApiTokensForAccount(id);
     res.json(tokens);
   });
 
-  app.post("/api/auth/tokens", requireSession, async (req: Request, res: Response) => {
+  app.post("/api/auth/tokens", requireSessionAdmin, async (req: Request, res: Response) => {
     try {
       const data = createApiTokenSchema.parse(req.body);
       const id = req.session.accountId!;
@@ -303,7 +319,7 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/auth/tokens/:id", requireSession, async (req: Request, res: Response) => {
+  app.delete("/api/auth/tokens/:id", requireSessionAdmin, async (req: Request, res: Response) => {
     const tokenId = parseInt(req.params.id);
     if (isNaN(tokenId)) return res.status(400).json({ message: "Invalid ID" });
     const accountId = req.session.accountId!;
