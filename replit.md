@@ -8,6 +8,7 @@ Multi-tenant fund management platform for VC and PE investments. Users can parti
 - **Backend**: Express.js + Drizzle ORM (TypeScript)
 - **Database**: PostgreSQL (Replit-managed)
 - **Workflow**: `npm run dev` starts both Express API and Vite dev server
+- **Tests**: Vitest (server + client projects) + Playwright (E2E). See `tests/README.md`. Run via `scripts/test.sh` or `npx vitest run` / `npx playwright test`. Configs: `vitest.config.ts`, `playwright.config.ts`, `tests/tsconfig.json`.
 
 ## User Roles
 - **Admin**: Platform administrator with full access — can create/destroy organizations
