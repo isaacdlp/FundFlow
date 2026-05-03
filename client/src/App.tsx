@@ -25,7 +25,7 @@ import CreateEntity from "@/pages/create-entity";
 import EntityDetail from "@/pages/entity-detail";
 import ForgotPassword from "@/pages/forgot-password";
 import ResetPassword from "@/pages/reset-password";
-import ApiTokens from "@/pages/api-tokens";
+import Settings from "@/pages/settings";
 import { Button } from "@/components/ui/button";
 import { LogOut } from "lucide-react";
 
@@ -45,7 +45,9 @@ function AdminRouter() {
       <Route path="/entities" component={Entities} />
       <Route path="/entities/new" component={CreateEntity} />
       <Route path="/entities/:id" component={EntityDetail} />
-      <Route path="/settings/api-tokens" component={ApiTokens} />
+      <Route path="/settings" component={Settings} />
+      <Route path="/settings/management" component={Settings} />
+      <Route path="/settings/api-tokens" component={Settings} />
       <Route component={NotFound} />
     </Switch>
   );

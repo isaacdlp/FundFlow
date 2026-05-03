@@ -4,11 +4,9 @@ import {
   Building2,
   Building,
   Users,
-  FolderKanban,
   Settings,
   FileText,
   TrendingUp,
-  Key,
 } from "lucide-react";
 import {
   Sidebar,
@@ -40,9 +38,7 @@ const mainNav: NavItem[] = [
 ];
 
 const managementNav: NavItem[] = [
-  { title: "Management", url: "/management", icon: FolderKanban },
   { title: "Settings", url: "/settings", icon: Settings },
-  { title: "API Tokens", url: "/settings/api-tokens", icon: Key, adminOnly: true },
 ];
 
 export function AppSidebar() {

@@ -50,7 +50,7 @@ function tokenStatus(t: PublicApiToken): { label: string; variant: "default" | "
   return { label: "Active", variant: "default" };
 }
 
-export default function ApiTokensPage() {
+export function ApiTokensSection() {
   const { toast } = useToast();
   const [createOpen, setCreateOpen] = useState(false);
   const [name, setName] = useState("");
@@ -105,12 +105,12 @@ export default function ApiTokensPage() {
   };
 
   return (
-    <div className="container mx-auto p-6 space-y-6 max-w-5xl">
-      <div className="flex items-center justify-between">
+    <div className="space-y-6">
+      <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold flex items-center gap-2" data-testid="text-page-title">
-            <Key className="h-6 w-6" /> API Tokens
-          </h1>
+          <h2 className="text-xl font-semibold flex items-center gap-2" data-testid="text-section-title-tokens">
+            <Key className="h-5 w-5" /> API Tokens
+          </h2>
           <p className="text-sm text-muted-foreground mt-1">
             Personal access tokens for programmatic access to the FundFlow API. Tokens inherit your account's permissions.
           </p>
