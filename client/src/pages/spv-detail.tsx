@@ -252,8 +252,8 @@ function SpvMembersTab({ spvId, orgId, canEdit, allocationMethod }: { spvId: str
               <Input type="number" step="0.01" placeholder="0.00" value={newOtherFee} onChange={e => setNewOtherFee(e.target.value)} data-testid="input-new-other-fee" />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">Carry (Success Fee)</Label>
-              <Input type="number" step="0.01" placeholder="0.00" value={newCarry} onChange={e => setNewCarry(e.target.value)} data-testid="input-new-carry" />
+              <Label className="text-xs">Carry % (Success Fee)</Label>
+              <Input type="number" step="0.01" min="0" max="100" placeholder="0.00" value={newCarry} onChange={e => setNewCarry(e.target.value)} data-testid="input-new-carry" />
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Total Called</Label>
@@ -393,8 +393,8 @@ function SpvMembersTab({ spvId, orgId, canEdit, allocationMethod }: { spvId: str
                           <Input type="number" step="0.01" value={editValues.otherFee} onChange={e => setEditValues(v => ({ ...v, otherFee: e.target.value }))} data-testid={`input-edit-other-fee-${member.id}`} />
                         </div>
                         <div className="space-y-1">
-                          <Label className="text-xs">Carry (Success Fee)</Label>
-                          <Input type="number" step="0.01" value={editValues.carry} onChange={e => setEditValues(v => ({ ...v, carry: e.target.value }))} data-testid={`input-edit-carry-${member.id}`} />
+                          <Label className="text-xs">Carry % (Success Fee)</Label>
+                          <Input type="number" step="0.01" min="0" max="100" value={editValues.carry} onChange={e => setEditValues(v => ({ ...v, carry: e.target.value }))} data-testid={`input-edit-carry-${member.id}`} />
                         </div>
                         <div className="space-y-1">
                           <Label className="text-xs">Total Called</Label>
@@ -449,8 +449,8 @@ function SpvMembersTab({ spvId, orgId, canEdit, allocationMethod }: { spvId: str
                         <p className="font-medium" data-testid={`text-other-fee-${member.id}`}>${formatCurrency(member.otherFee)}</p>
                       </div>
                       <div>
-                        <p className="text-muted-foreground">Carry</p>
-                        <p className="font-medium" data-testid={`text-carry-${member.id}`}>${formatCurrency(member.carry)}</p>
+                        <p className="text-muted-foreground">Carry %</p>
+                        <p className="font-medium" data-testid={`text-carry-${member.id}`}>{parseFloat(member.carry || "0").toFixed(2)}%</p>
                       </div>
                       <div>
                         <p className="text-muted-foreground">Capital</p>

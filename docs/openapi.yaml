@@ -651,7 +651,7 @@ paths:
                 committed: { type: string, description: "Total commitment (gross)." }
                 managementFee: { type: string, description: "Management fee charged on this position." }
                 otherFee: { type: string, description: "Any other fee charged on this position." }
-                carry: { type: string, description: "Carry / Success Fee charged on this position. Stored per tranche; not subtracted from capital." }
+                carry: { type: string, description: "Carry / Success Fee percentage (0-100) for this position. Stored per tranche; informational only — not subtracted from capital." }
                 totalCalled: { type: string, description: "Capital actually called from the investor so far." }
                 distributed: { type: string, description: "Distributions paid back to the investor." }
                 ownershipPercent: { type: string, nullable: true, description: "Explicit ownership % (0–100). Only meaningful when the SPV's allocationMethod is 'Custom'." }
@@ -1083,7 +1083,7 @@ components:
         committed: { type: string, description: "Total commitment (gross)." }
         managementFee: { type: string }
         otherFee: { type: string }
-        carry: { type: string, description: "Carry / Success Fee for this tranche. Stored per row; not subtracted from capital." }
+        carry: { type: string, description: "Carry / Success Fee percentage (0-100) for this tranche. Informational only; not subtracted from capital." }
         totalCalled: { type: string, description: "Capital called from the investor so far." }
         distributed: { type: string, description: "Distributions paid back to the investor." }
         ownershipPercent: { type: string, nullable: true, description: "Explicit ownership % (0–100) used only when the SPV's allocationMethod is 'Custom'." }

@@ -175,7 +175,7 @@ export const spvMembers = pgTable("spv_members", {
   committed: numeric("committed", { precision: 15, scale: 2 }).default("0"),
   managementFee: numeric("management_fee", { precision: 15, scale: 2 }).default("0"),
   otherFee: numeric("other_fee", { precision: 15, scale: 2 }).default("0"),
-  carry: numeric("carry", { precision: 15, scale: 2 }).default("0"),
+  carry: numeric("carry", { precision: 5, scale: 2 }).default("0"),
   totalCalled: numeric("total_called", { precision: 15, scale: 2 }).default("0"),
   distributed: numeric("distributed", { precision: 15, scale: 2 }).default("0"),
   ownershipPercent: numeric("ownership_percent", { precision: 7, scale: 4 }),

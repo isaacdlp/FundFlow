@@ -816,13 +816,20 @@ export async function registerRoutes(
 
   function validateInvestmentFields(body: any): { ok: true; data: { committed?: string; managementFee?: string; otherFee?: string; carry?: string; totalCalled?: string; distributed?: string; ownershipPercent?: string | null; date?: string | null } } | { ok: false; error: string } {
     const out: any = {};
-    for (const f of ["committed", "managementFee", "otherFee", "carry", "totalCalled", "distributed"] as const) {
+    for (const f of ["committed", "managementFee", "otherFee", "totalCalled", "distributed"] as const) {
       if (body[f] === undefined || body[f] === null || body[f] === "") continue;
       const n = parseFloat(String(body[f]));
       if (!isFinite(n) || n < 0) {
         return { ok: false, error: `${f} must be a non-negative number` };
       }
       out[f] = n.toFixed(2);
+    }
+    if (body.carry !== undefined && body.carry !== null && body.carry !== "") {
+      const n = parseFloat(String(body.carry));
+      if (!isFinite(n) || n < 0 || n > 100) {
+        return { ok: false, error: "carry must be a percentage between 0 and 100" };
+      }
+      out.carry = n.toFixed(2);
     }
     if (body.ownershipPercent !== undefined) {
       if (body.ownershipPercent === null || body.ownershipPercent === "") {
