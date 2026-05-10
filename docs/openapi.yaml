@@ -682,7 +682,7 @@ paths:
         '200': { description: Assets, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/SpvAsset' } } } } }
     post:
       tags: [SPVs]
-      summary: Add an asset to the SPV. Requires admin or organization organizer. Rejects with 400 if `cost` exceeds `spv.cash`.
+      summary: Add an asset to the SPV. Requires admin or organization organizer. Cost may exceed current `spv.cash` (cash will simply go negative).
       requestBody:
         required: true
         content:
@@ -694,7 +694,7 @@ paths:
                 companyName: { type: string }
                 instrumentType: { type: string, example: "Equity" }
                 purchaseDate: { type: string, format: date, nullable: true }
-                cost: { type: string, description: "Initial cost. Must not exceed current SPV cash." }
+                cost: { type: string, description: "Initial cost. May exceed current SPV cash (cash will go negative)." }
                 notes: { type: string }
       responses:
         '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/SpvAsset' } } } }

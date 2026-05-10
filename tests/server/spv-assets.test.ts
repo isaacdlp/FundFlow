@@ -57,14 +57,17 @@ describe("SPV assets", () => {
       expect(res.status).toBe(400);
     });
 
-    it("returns 400 when cost exceeds SPV cash", async () => {
+    it("allows cost greater than SPV cash (negative cash permitted)", async () => {
       const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
       mockStorage.getSpv.mockResolvedValue({ ...spvWithCash, cash: "100.00" });
+      mockStorage.createSpvAsset.mockResolvedValue({
+        id: 99, spvId: spv.id, companyName: "Acme", instrumentType: "Equity",
+        cost: "5000.00", currentValue: "5000.00",
+      });
       const res = await agent
         .post(`/api/spvs/${spv.id}/assets`)
         .send({ companyName: "Acme", cost: 5000 });
-      expect(res.status).toBe(400);
-      expect(res.body.message).toMatch(/exceeds SPV cash/);
+      expect(res.status).toBe(201);
     });
 
     it("admin successfully creates asset", async () => {

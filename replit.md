@@ -133,7 +133,7 @@ All token CRUD requires admin role + a real session cookie (no bearer auth, even
 
 ### SPV Assets (Portfolio)
 - `GET /api/spvs/:id/assets` - List assets in the SPV. Each row includes derived `currentValue`. Read access mirrors SPV read access.
-- `POST /api/spvs/:id/assets` - Create asset (body: `{companyName, instrumentType?, purchaseDate?, cost?, notes?}`). Rejects with 400 if `cost > spv.cash`. Requires admin or organizer.
+- `POST /api/spvs/:id/assets` - Create asset (body: `{companyName, instrumentType?, purchaseDate?, cost?, notes?}`). Cost may exceed `spv.cash` — cash is allowed to go negative (represents capital still to be called). Requires admin or organizer.
 - `PATCH /api/spvs/:id/assets/:assetId` - Update asset fields. Admin/organizer only.
 - `DELETE /api/spvs/:id/assets/:assetId` - Remove asset (cascades valuations). Admin/organizer only.
 - `GET /api/spvs/:id/assets/:assetId/valuations` - List valuation history (newest first).

@@ -971,9 +971,6 @@ export async function registerRoutes(
     if (!spv) return res.status(404).json({ message: "SPV not found" });
     const v = validateAssetFields(req.body, true);
     if (!v.ok) return res.status(400).json({ message: v.error });
-    if (parseFloat(v.data.cost ?? "0") > parseFloat(spv.cash) + 0.005) {
-      return res.status(400).json({ message: `Asset cost ($${v.data.cost ?? "0"}) exceeds SPV cash ($${spv.cash}). Call more capital from members first.` });
-    }
     const asset = await storage.createSpvAsset(id, v.data);
     res.status(201).json(asset);
   });
@@ -989,18 +986,6 @@ export async function registerRoutes(
     }
     const v = validateAssetFields(req.body, false);
     if (!v.ok) return res.status(400).json({ message: v.error });
-    if (v.data.cost !== undefined) {
-      const spv = await storage.getSpv(id);
-      if (!spv) return res.status(404).json({ message: "SPV not found" });
-      const existing = await storage.getSpvAsset(id, assetId);
-      if (!existing) return res.status(404).json({ message: "Asset not found" });
-      const newCost = parseFloat(v.data.cost ?? "0");
-      const oldCost = parseFloat(existing.cost ?? "0");
-      const availableCash = parseFloat(spv.cash) + oldCost;
-      if (newCost > availableCash + 0.005) {
-        return res.status(400).json({ message: `New asset cost ($${v.data.cost}) exceeds available SPV cash ($${availableCash.toFixed(2)}). Call more capital from members first.` });
-      }
-    }
     const asset = await storage.updateSpvAsset(id, assetId, v.data);
     if (!asset) return res.status(404).json({ message: "Asset not found" });
     res.json(asset);
