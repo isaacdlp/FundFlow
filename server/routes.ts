@@ -128,7 +128,7 @@ export async function registerRoutes(
   // and SDK generators can discover the API before authenticating).
   // Source of truth is docs/openapi.yaml; we parse it once at boot.
   // ─────────────────────────────────────────────────────────────────────────
-  const openapiYamlPath = path.resolve(import.meta.dirname, "..", "docs", "openapi.yaml");
+  const openapiYamlPath = path.resolve(process.cwd(), "docs", "openapi.yaml");
   let openapiYamlText = "";
   let openapiJson: unknown = {};
   try {
