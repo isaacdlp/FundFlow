@@ -814,9 +814,9 @@ export async function registerRoutes(
     res.json(members);
   });
 
-  function validateInvestmentFields(body: any): { ok: true; data: { committed?: string; managementFee?: string; otherFee?: string; totalCalled?: string; distributed?: string; ownershipPercent?: string | null; date?: string | null } } | { ok: false; error: string } {
+  function validateInvestmentFields(body: any): { ok: true; data: { committed?: string; managementFee?: string; otherFee?: string; carry?: string; totalCalled?: string; distributed?: string; ownershipPercent?: string | null; date?: string | null } } | { ok: false; error: string } {
     const out: any = {};
-    for (const f of ["committed", "managementFee", "otherFee", "totalCalled", "distributed"] as const) {
+    for (const f of ["committed", "managementFee", "otherFee", "carry", "totalCalled", "distributed"] as const) {
       if (body[f] === undefined || body[f] === null || body[f] === "") continue;
       const n = parseFloat(String(body[f]));
       if (!isFinite(n) || n < 0) {

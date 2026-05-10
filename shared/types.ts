@@ -154,6 +154,7 @@ export interface SpvMemberInfo {
   committed: string | null;
   managementFee: string | null;
   otherFee: string | null;
+  carry: string | null;
   totalCalled: string | null;
   distributed: string | null;
   ownershipPercent: string | null;
@@ -190,6 +191,7 @@ export interface PortfolioInvestment {
   committed: string;
   managementFee: string;
   otherFee: string;
+  carry: string;
   totalCalled: string;
   distributed: string;
   currentValue: string;

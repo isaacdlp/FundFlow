@@ -23,6 +23,7 @@ type InvestmentFields = {
   committed?: string;
   managementFee?: string;
   otherFee?: string;
+  carry?: string;
   totalCalled?: string;
   distributed?: string;
   ownershipPercent?: string | null;
@@ -106,6 +107,7 @@ export interface PortfolioInvestment {
   committed: string;
   managementFee: string;
   otherFee: string;
+  carry: string;
   totalCalled: string;
   distributed: string;
   currentValue: string;
@@ -832,6 +834,7 @@ export class DatabaseStorage implements IStorage {
         committed: spvMembers.committed,
         managementFee: spvMembers.managementFee,
         otherFee: spvMembers.otherFee,
+        carry: spvMembers.carry,
         totalCalled: spvMembers.totalCalled,
         distributed: spvMembers.distributed,
         ownershipPercent: spvMembers.ownershipPercent,
@@ -879,6 +882,7 @@ export class DatabaseStorage implements IStorage {
         committed: r.committed ?? "0",
         managementFee: r.managementFee ?? "0",
         otherFee: r.otherFee ?? "0",
+        carry: r.carry ?? "0",
         totalCalled: r.totalCalled ?? "0",
         distributed: r.distributed ?? "0",
         currentValue,

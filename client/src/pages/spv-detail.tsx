@@ -75,11 +75,12 @@ function SpvMembersTab({ spvId, orgId, canEdit, allocationMethod }: { spvId: str
   const [newCommitted, setNewCommitted] = useState("");
   const [newManagementFee, setNewManagementFee] = useState("");
   const [newOtherFee, setNewOtherFee] = useState("");
+  const [newCarry, setNewCarry] = useState("");
   const [newTotalCalled, setNewTotalCalled] = useState("");
   const [newDistributed, setNewDistributed] = useState("");
   const [newOwnershipPercent, setNewOwnershipPercent] = useState("");
   const [editingMemberId, setEditingMemberId] = useState<number | null>(null);
-  const [editValues, setEditValues] = useState<{ date: string; committed: string; managementFee: string; otherFee: string; totalCalled: string; distributed: string; ownershipPercent: string }>({ date: "", committed: "", managementFee: "", otherFee: "", totalCalled: "", distributed: "", ownershipPercent: "" });
+  const [editValues, setEditValues] = useState<{ date: string; committed: string; managementFee: string; otherFee: string; carry: string; totalCalled: string; distributed: string; ownershipPercent: string }>({ date: "", committed: "", managementFee: "", otherFee: "", carry: "", totalCalled: "", distributed: "", ownershipPercent: "" });
   const showOwnership = allocationMethod === "Custom";
 
   const { data: spvMembers, isLoading: membersLoading } = useQuery<SpvMemberInfo[]>({
@@ -100,7 +101,7 @@ function SpvMembersTab({ spvId, orgId, canEdit, allocationMethod }: { spvId: str
   const availableEntities = entitiesList || [];
 
   const addMutation = useMutation({
-    mutationFn: async (payload: { accountId?: number; entityId?: number; date: string | null; committed: string; managementFee: string; otherFee: string; totalCalled: string; distributed: string; ownershipPercent: string | null }) => {
+    mutationFn: async (payload: { accountId?: number; entityId?: number; date: string | null; committed: string; managementFee: string; otherFee: string; carry: string; totalCalled: string; distributed: string; ownershipPercent: string | null }) => {
       const res = await apiRequest("POST", `/api/spvs/${spvId}/members`, payload);
       return res.json();
     },
@@ -109,7 +110,7 @@ function SpvMembersTab({ spvId, orgId, canEdit, allocationMethod }: { spvId: str
       queryClient.invalidateQueries({ queryKey: ["/api/spvs", spvId] });
       queryClient.invalidateQueries({ predicate: q => typeof q.queryKey[0] === "string" && (q.queryKey[0] as string).startsWith("/api/portfolio") });
       setSelectedAccountId(""); setSelectedEntityId("");
-      setNewDate(""); setNewCommitted(""); setNewManagementFee(""); setNewOtherFee(""); setNewTotalCalled(""); setNewDistributed(""); setNewOwnershipPercent("");
+      setNewDate(""); setNewCommitted(""); setNewManagementFee(""); setNewOtherFee(""); setNewCarry(""); setNewTotalCalled(""); setNewDistributed(""); setNewOwnershipPercent("");
       toast({ title: "Investment added to SPV" });
     },
     onError: (error: Error) => {
@@ -118,7 +119,7 @@ function SpvMembersTab({ spvId, orgId, canEdit, allocationMethod }: { spvId: str
   });
 
   const updateMutation = useMutation({
-    mutationFn: async (payload: { memberId: number; date: string | null; committed: string; managementFee: string; otherFee: string; totalCalled: string; distributed: string; ownershipPercent: string | null }) => {
+    mutationFn: async (payload: { memberId: number; date: string | null; committed: string; managementFee: string; otherFee: string; carry: string; totalCalled: string; distributed: string; ownershipPercent: string | null }) => {
       const { memberId, ...rest } = payload;
       const res = await apiRequest("PATCH", `/api/spvs/${spvId}/members/${memberId}`, rest);
       return res.json();
@@ -157,6 +158,7 @@ function SpvMembersTab({ spvId, orgId, canEdit, allocationMethod }: { spvId: str
       committed: m.committed || "0",
       managementFee: m.managementFee || "0",
       otherFee: m.otherFee || "0",
+      carry: m.carry || "0",
       totalCalled: m.totalCalled || "0",
       distributed: m.distributed || "0",
       ownershipPercent: m.ownershipPercent != null ? String(parseFloat(m.ownershipPercent)) : "",
@@ -250,6 +252,10 @@ function SpvMembersTab({ spvId, orgId, canEdit, allocationMethod }: { spvId: str
               <Input type="number" step="0.01" placeholder="0.00" value={newOtherFee} onChange={e => setNewOtherFee(e.target.value)} data-testid="input-new-other-fee" />
             </div>
             <div className="space-y-1">
+              <Label className="text-xs">Carry (Success Fee)</Label>
+              <Input type="number" step="0.01" placeholder="0.00" value={newCarry} onChange={e => setNewCarry(e.target.value)} data-testid="input-new-carry" />
+            </div>
+            <div className="space-y-1">
               <Label className="text-xs">Total Called</Label>
               <Input type="number" step="0.01" placeholder="0.00" value={newTotalCalled} onChange={e => setNewTotalCalled(e.target.value)} data-testid="input-new-total-called" />
             </div>
@@ -276,6 +282,7 @@ function SpvMembersTab({ spvId, orgId, canEdit, allocationMethod }: { spvId: str
                   committed: newCommitted || "0",
                   managementFee: newManagementFee || "0",
                   otherFee: newOtherFee || "0",
+                  carry: newCarry || "0",
                   totalCalled: newTotalCalled || "0",
                   distributed: newDistributed || "0",
                   ownershipPercent: showOwnership && newOwnershipPercent !== "" ? newOwnershipPercent : null,
@@ -386,6 +393,10 @@ function SpvMembersTab({ spvId, orgId, canEdit, allocationMethod }: { spvId: str
                           <Input type="number" step="0.01" value={editValues.otherFee} onChange={e => setEditValues(v => ({ ...v, otherFee: e.target.value }))} data-testid={`input-edit-other-fee-${member.id}`} />
                         </div>
                         <div className="space-y-1">
+                          <Label className="text-xs">Carry (Success Fee)</Label>
+                          <Input type="number" step="0.01" value={editValues.carry} onChange={e => setEditValues(v => ({ ...v, carry: e.target.value }))} data-testid={`input-edit-carry-${member.id}`} />
+                        </div>
+                        <div className="space-y-1">
                           <Label className="text-xs">Total Called</Label>
                           <Input type="number" step="0.01" value={editValues.totalCalled} onChange={e => setEditValues(v => ({ ...v, totalCalled: e.target.value }))} data-testid={`input-edit-total-called-${member.id}`} />
                         </div>
@@ -410,6 +421,7 @@ function SpvMembersTab({ spvId, orgId, canEdit, allocationMethod }: { spvId: str
                           committed: editValues.committed,
                           managementFee: editValues.managementFee,
                           otherFee: editValues.otherFee,
+                          carry: editValues.carry,
                           totalCalled: editValues.totalCalled,
                           distributed: editValues.distributed,
                           ownershipPercent: showOwnership ? (editValues.ownershipPercent === "" ? null : editValues.ownershipPercent) : null,
@@ -435,6 +447,10 @@ function SpvMembersTab({ spvId, orgId, canEdit, allocationMethod }: { spvId: str
                       <div>
                         <p className="text-muted-foreground">Other Fee</p>
                         <p className="font-medium" data-testid={`text-other-fee-${member.id}`}>${formatCurrency(member.otherFee)}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Carry</p>
+                        <p className="font-medium" data-testid={`text-carry-${member.id}`}>${formatCurrency(member.carry)}</p>
                       </div>
                       <div>
                         <p className="text-muted-foreground">Capital</p>
