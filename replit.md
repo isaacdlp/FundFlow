@@ -61,7 +61,10 @@ shared/
 - `organization_members` - Membership requests with status (pending/approved/rejected), optional inviteId
 - `organization_invites` - Single-use invite tokens with used/usedByAccountId tracking
 - `spvs` - Special Purpose Vehicles with full entity details (legal, address, bank, investment)
-- `spv_members` - Polymorphic SPV investor associations with per-member investment data. Stored columns: `date` (investment date, drives Portfolio Summary), `committed` (gross commitment), `managementFee`, `otherFee`, `totalCalled` (capital actually called so far), `distributed`, `currentValue` (mark / NAV), `ownershipPercent` (explicit per-investor share, used only by the "Custom" allocation method). **Derived (NOT stored, computed by UI/clients)**: `capital = committed − (managementFee + otherFee)`, `commitmentRemaining = capital − totalCalled`. Investor is either an Account (`account_id`) **or** an Entity (`entity_id`) — exactly one is non-null (enforced by `spv_member_investor_xor` CHECK constraint). **Tranches**: the same investor can have multiple rows in the same SPV — each row is an independent position (tranche) with its own values, fees, and date. Allocation math (commitment / capital invested / custom) is per-row, so an investor's total ownership in an SPV equals the sum of their tranche ownerships.
+- `spv_members` - Polymorphic SPV investor associations with per-member investment data. Stored columns: `date` (investment date, drives Portfolio Summary), `committed` (gross commitment), `managementFee`, `otherFee`, `totalCalled` (capital actually called so far), `distributed`, `ownershipPercent` (explicit per-investor share, used only by the "Custom" allocation method). **Derived (NOT stored, computed server-side)**: `capital = committed − (managementFee + otherFee)`, `commitmentRemaining = capital − totalCalled`, **`currentValue = ownership% × spv.currentValue`** (returned on member responses). Investor is either an Account (`account_id`) **or** an Entity (`entity_id`) — exactly one is non-null (enforced by `spv_member_investor_xor` CHECK constraint). **Tranches**: the same investor can have multiple rows in the same SPV — each row is an independent position (tranche) with its own values, fees, and date. Allocation math (commitment / capital invested / custom) is per-row, so an investor's total ownership in an SPV equals the sum of their tranche ownerships.
+- `spv_assets` - Financial instruments owned by an SPV (`id`, `spv_id`, `companyName`, `instrumentType` — Equity / Convertible Note / SAFE / Preferred / Common / Warrant / Debt / Other, `purchaseDate`, `cost`, `notes`). Asset `currentValue` is derived = latest valuation by date, falling back to `cost` when none exist.
+- `spv_asset_valuations` - Time-series of asset marks (`id`, `asset_id`, `date`, `value`, `note`). The most-recent row drives the asset's `currentValue`.
+- **SPV-level derived fields** (returned on every SPV response, never stored): `cash = sum(member.totalCalled) − sum(asset.cost)`; `assetValue = sum(asset.currentValue)`; `currentValue = cash + assetValue`.
 - `entities` - Entity records (LLC, Corp, Trust, etc.) with address and bank info
 - `entity_owners` - Owners of entities (can be Accounts or other Entities, with ownership %)
 - `entity_managers` - Managers of entities (always Accounts, unique per entity+account)
@@ -121,12 +124,21 @@ All token CRUD requires admin role + a real session cookie (no bearer auth, even
 - `DELETE /api/spvs/:id` - Delete SPV
 - `GET /api/spvs/:id/members` - List SPV members (one row per tranche); each row includes `investorType` plus either an `account` or `entity` block
 - `POST /api/spvs/:id/members` - Add an investor position to SPV (body: exactly one of `{accountId}` or `{entityId}`, plus optional investment fields). Accounts must be approved members of the SPV's organization. Calling this multiple times for the same investor creates additional tranches (independent positions); duplicates are intentional and allowed.
-- `PATCH /api/spvs/:id/members/:memberId` - Update investment fields for a specific tranche (date, committed, managementFee, otherFee, totalCalled, distributed, currentValue, ownershipPercent)
+- `PATCH /api/spvs/:id/members/:memberId` - Update investment fields for a specific tranche (date, committed, managementFee, otherFee, totalCalled, distributed, ownershipPercent). `currentValue` is derived and cannot be set.
 - **SPV allocation methods** (stored on `spvs.allocation_method`, drives the per-member "Ownership %" computed in the SPV Members tab):
   - `"By Commitment"` (default) — ownership = member's `committed` ÷ sum of all members' `committed`. Fees do not affect ownership.
   - `"By Capital Invested"` — ownership = `capital` ÷ sum of `capital`, where `capital = committed − managementFee − otherFee`. Fees vary per investor, so equal commitments can yield different ownership.
   - `"Custom"` — ownership = each member's explicit `ownershipPercent` (0–100, set per row).
 - `DELETE /api/spvs/:id/members/:memberId` - Remove a specific tranche from SPV
+
+### SPV Assets (Portfolio)
+- `GET /api/spvs/:id/assets` - List assets in the SPV. Each row includes derived `currentValue`. Read access mirrors SPV read access.
+- `POST /api/spvs/:id/assets` - Create asset (body: `{companyName, instrumentType?, purchaseDate?, cost?, notes?}`). Rejects with 400 if `cost > spv.cash`. Requires admin or organizer.
+- `PATCH /api/spvs/:id/assets/:assetId` - Update asset fields. Admin/organizer only.
+- `DELETE /api/spvs/:id/assets/:assetId` - Remove asset (cascades valuations). Admin/organizer only.
+- `GET /api/spvs/:id/assets/:assetId/valuations` - List valuation history (newest first).
+- `POST /api/spvs/:id/assets/:assetId/valuations` - Add a mark (body: `{date, value, note?}`). Admin/organizer only.
+- `DELETE /api/spvs/:id/assets/:assetId/valuations/:valuationId` - Remove a valuation. Admin/organizer only.
 - `GET /api/portfolio` - Portfolio investments. Optional query params:
   - `?accountId=<id>` — investments owned directly by that account **plus** investments held by entities the account owns (via `entity_owners`, recursively). Non-admins may only request their own accountId
   - `?entityId=<id>` — investments held directly by that entity. Non-admins must own or manage the entity

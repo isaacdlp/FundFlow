@@ -176,13 +176,32 @@ export const spvMembers = pgTable("spv_members", {
   otherFee: numeric("other_fee", { precision: 15, scale: 2 }).default("0"),
   totalCalled: numeric("total_called", { precision: 15, scale: 2 }).default("0"),
   distributed: numeric("distributed", { precision: 15, scale: 2 }).default("0"),
-  currentValue: numeric("current_value", { precision: 15, scale: 2 }).default("0"),
   ownershipPercent: numeric("ownership_percent", { precision: 7, scale: 4 }),
   date: date("date"),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
   check("spv_member_investor_xor", sql`(account_id IS NOT NULL)::int + (entity_id IS NOT NULL)::int = 1`),
 ]);
+
+export const spvAssets = pgTable("spv_assets", {
+  id: serial("id").primaryKey(),
+  spvId: integer("spv_id").notNull().references(() => spvs.id, { onDelete: "cascade" }),
+  companyName: varchar("company_name", { length: 255 }).notNull(),
+  instrumentType: varchar("instrument_type", { length: 100 }).notNull().default("Equity"),
+  purchaseDate: date("purchase_date"),
+  cost: numeric("cost", { precision: 15, scale: 2 }).notNull().default("0"),
+  notes: text("notes").default(""),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const spvAssetValuations = pgTable("spv_asset_valuations", {
+  id: serial("id").primaryKey(),
+  assetId: integer("asset_id").notNull().references(() => spvAssets.id, { onDelete: "cascade" }),
+  date: date("date").notNull(),
+  value: numeric("value", { precision: 15, scale: 2 }).notNull().default("0"),
+  note: text("note").default(""),
+  createdAt: timestamp("created_at").defaultNow(),
+});
 
 export const passwordResetTokens = pgTable("password_reset_tokens", {
   id: serial("id").primaryKey(),
@@ -277,6 +296,8 @@ export type OrganizationMember = typeof organizationMembers.$inferSelect;
 export type OrganizationInvite = typeof organizationInvites.$inferSelect;
 export type Spv = typeof spvs.$inferSelect;
 export type SpvMember = typeof spvMembers.$inferSelect;
+export type SpvAsset = typeof spvAssets.$inferSelect;
+export type SpvAssetValuation = typeof spvAssetValuations.$inferSelect;
 export type InsertAccount = z.infer<typeof insertAccountSchema>;
 export type UpdateAccount = z.infer<typeof updateAccountSchema>;
 export type InsertOrganization = z.infer<typeof insertOrganizationSchema>;

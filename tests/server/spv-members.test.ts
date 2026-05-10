@@ -171,7 +171,7 @@ describe("SPV members", () => {
       mockStorage.updateSpvMemberById.mockResolvedValue(undefined);
       const res = await agent
         .patch(`/api/spvs/${spvA.id}/members/9999`)
-        .send({ currentValue: 100 });
+        .send({ totalCalled: 100 });
       expect(res.status).toBe(404);
     });
 
@@ -182,16 +182,16 @@ describe("SPV members", () => {
         spvId: spvA.id,
         accountId: 2,
         entityId: null,
-        currentValue: "200.00",
+        totalCalled: "200.00",
       });
       const res = await agent
         .patch(`/api/spvs/${spvA.id}/members/1`)
-        .send({ currentValue: 200 });
+        .send({ totalCalled: 200 });
       expect(res.status).toBe(200);
       expect(mockStorage.updateSpvMemberById).toHaveBeenCalledWith(
         spvA.id,
         1,
-        { currentValue: "200.00" },
+        { totalCalled: "200.00" },
       );
     });
 

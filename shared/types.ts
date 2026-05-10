@@ -117,6 +117,30 @@ export interface SpvInfo {
   signatory?: { id: number; email: string; firstName: string; lastName: string } | null;
   memberCount: number;
   organization?: { id: number; name: string; slug: string } | null;
+  cash: string;
+  assetValue: string;
+  currentValue: string;
+}
+
+export interface SpvAssetInfo {
+  id: number;
+  spvId: number;
+  companyName: string;
+  instrumentType: string;
+  purchaseDate: string | null;
+  cost: string;
+  notes: string | null;
+  createdAt: string;
+  currentValue: string;
+}
+
+export interface SpvAssetValuationInfo {
+  id: number;
+  assetId: number;
+  date: string;
+  value: string;
+  note: string | null;
+  createdAt: string;
 }
 
 export interface SpvMemberInfo {
@@ -130,8 +154,8 @@ export interface SpvMemberInfo {
   otherFee: string | null;
   totalCalled: string | null;
   distributed: string | null;
-  currentValue: string | null;
   ownershipPercent: string | null;
+  currentValue: string;
   date: string | null;
   createdAt: string;
   account: {

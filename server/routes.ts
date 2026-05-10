@@ -814,9 +814,9 @@ export async function registerRoutes(
     res.json(members);
   });
 
-  function validateInvestmentFields(body: any): { ok: true; data: { committed?: string; managementFee?: string; otherFee?: string; totalCalled?: string; distributed?: string; currentValue?: string; ownershipPercent?: string | null; date?: string | null } } | { ok: false; error: string } {
+  function validateInvestmentFields(body: any): { ok: true; data: { committed?: string; managementFee?: string; otherFee?: string; totalCalled?: string; distributed?: string; ownershipPercent?: string | null; date?: string | null } } | { ok: false; error: string } {
     const out: any = {};
-    for (const f of ["committed", "managementFee", "otherFee", "totalCalled", "distributed", "currentValue"] as const) {
+    for (const f of ["committed", "managementFee", "otherFee", "totalCalled", "distributed"] as const) {
       if (body[f] === undefined || body[f] === null || body[f] === "") continue;
       const n = parseFloat(String(body[f]));
       if (!isFinite(n) || n < 0) {
@@ -912,6 +912,165 @@ export async function registerRoutes(
     const member = await storage.updateSpvMemberById(id, memberId, validation.data);
     if (!member) return res.status(404).json({ message: "SPV member not found" });
     res.json(member);
+  });
+
+  // === SPV Assets ===
+  app.get("/api/spvs/:id/assets", async (req, res) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    const me = await storage.getAccount(getAuthAccountId(req)!);
+    if (!me) return res.status(401).json({ message: "Account not found" });
+    if (!isAdmin(me)) {
+      const spvIds = await storage.getSpvIdsForAccount(me.id);
+      if (!spvIds.includes(id)) return res.status(403).json({ message: "Access denied" });
+    }
+    const assets = await storage.getSpvAssets(id);
+    res.json(assets);
+  });
+
+  function validateAssetFields(body: any, requireCompany: boolean): { ok: true; data: any } | { ok: false; error: string } {
+    const out: any = {};
+    if (body.companyName !== undefined) {
+      const s = String(body.companyName).trim();
+      if (s === "") return { ok: false, error: "companyName is required" };
+      out.companyName = s;
+    } else if (requireCompany) {
+      return { ok: false, error: "companyName is required" };
+    }
+    if (body.instrumentType !== undefined) {
+      const s = String(body.instrumentType).trim();
+      if (s === "") return { ok: false, error: "instrumentType cannot be empty" };
+      out.instrumentType = s;
+    }
+    if (body.cost !== undefined && body.cost !== null && body.cost !== "") {
+      const n = parseFloat(String(body.cost));
+      if (!isFinite(n) || n < 0) return { ok: false, error: "cost must be a non-negative number" };
+      out.cost = n.toFixed(2);
+    }
+    if (body.purchaseDate !== undefined) {
+      if (body.purchaseDate === null || body.purchaseDate === "") out.purchaseDate = null;
+      else {
+        const d = new Date(String(body.purchaseDate));
+        if (isNaN(d.getTime())) return { ok: false, error: "purchaseDate must be a valid date (YYYY-MM-DD)" };
+        out.purchaseDate = String(body.purchaseDate);
+      }
+    }
+    if (body.notes !== undefined) out.notes = String(body.notes ?? "");
+    return { ok: true, data: out };
+  }
+
+  app.post("/api/spvs/:id/assets", async (req, res) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    const me = await storage.getAccount(getAuthAccountId(req)!);
+    if (!me) return res.status(401).json({ message: "Account not found" });
+    if (!(await canManageSpv(me, id))) {
+      return res.status(403).json({ message: "Only admins or organization organizers can add SPV assets" });
+    }
+    const spv = await storage.getSpv(id);
+    if (!spv) return res.status(404).json({ message: "SPV not found" });
+    const v = validateAssetFields(req.body, true);
+    if (!v.ok) return res.status(400).json({ message: v.error });
+    if (parseFloat(v.data.cost ?? "0") > parseFloat(spv.cash) + 0.005) {
+      return res.status(400).json({ message: `Asset cost ($${v.data.cost ?? "0"}) exceeds SPV cash ($${spv.cash}). Call more capital from members first.` });
+    }
+    const asset = await storage.createSpvAsset(id, v.data);
+    res.status(201).json(asset);
+  });
+
+  app.patch("/api/spvs/:id/assets/:assetId", async (req, res) => {
+    const id = parseInt(req.params.id);
+    const assetId = parseInt(req.params.assetId);
+    if (isNaN(id) || isNaN(assetId)) return res.status(400).json({ message: "Invalid ID" });
+    const me = await storage.getAccount(getAuthAccountId(req)!);
+    if (!me) return res.status(401).json({ message: "Account not found" });
+    if (!(await canManageSpv(me, id))) {
+      return res.status(403).json({ message: "Only admins or organization organizers can edit SPV assets" });
+    }
+    const v = validateAssetFields(req.body, false);
+    if (!v.ok) return res.status(400).json({ message: v.error });
+    if (v.data.cost !== undefined) {
+      const spv = await storage.getSpv(id);
+      if (!spv) return res.status(404).json({ message: "SPV not found" });
+      const existing = await storage.getSpvAsset(id, assetId);
+      if (!existing) return res.status(404).json({ message: "Asset not found" });
+      const newCost = parseFloat(v.data.cost ?? "0");
+      const oldCost = parseFloat(existing.cost ?? "0");
+      const availableCash = parseFloat(spv.cash) + oldCost;
+      if (newCost > availableCash + 0.005) {
+        return res.status(400).json({ message: `New asset cost ($${v.data.cost}) exceeds available SPV cash ($${availableCash.toFixed(2)}). Call more capital from members first.` });
+      }
+    }
+    const asset = await storage.updateSpvAsset(id, assetId, v.data);
+    if (!asset) return res.status(404).json({ message: "Asset not found" });
+    res.json(asset);
+  });
+
+  app.delete("/api/spvs/:id/assets/:assetId", async (req, res) => {
+    const id = parseInt(req.params.id);
+    const assetId = parseInt(req.params.assetId);
+    if (isNaN(id) || isNaN(assetId)) return res.status(400).json({ message: "Invalid ID" });
+    const me = await storage.getAccount(getAuthAccountId(req)!);
+    if (!me) return res.status(401).json({ message: "Account not found" });
+    if (!(await canManageSpv(me, id))) {
+      return res.status(403).json({ message: "Only admins or organization organizers can remove SPV assets" });
+    }
+    const removed = await storage.deleteSpvAsset(id, assetId);
+    if (!removed) return res.status(404).json({ message: "Asset not found" });
+    res.json({ message: "Asset removed" });
+  });
+
+  app.get("/api/spvs/:id/assets/:assetId/valuations", async (req, res) => {
+    const id = parseInt(req.params.id);
+    const assetId = parseInt(req.params.assetId);
+    if (isNaN(id) || isNaN(assetId)) return res.status(400).json({ message: "Invalid ID" });
+    const me = await storage.getAccount(getAuthAccountId(req)!);
+    if (!me) return res.status(401).json({ message: "Account not found" });
+    if (!isAdmin(me)) {
+      const spvIds = await storage.getSpvIdsForAccount(me.id);
+      if (!spvIds.includes(id)) return res.status(403).json({ message: "Access denied" });
+    }
+    const asset = await storage.getSpvAsset(id, assetId);
+    if (!asset) return res.status(404).json({ message: "Asset not found" });
+    const vals = await storage.getAssetValuations(assetId);
+    res.json(vals);
+  });
+
+  app.post("/api/spvs/:id/assets/:assetId/valuations", async (req, res) => {
+    const id = parseInt(req.params.id);
+    const assetId = parseInt(req.params.assetId);
+    if (isNaN(id) || isNaN(assetId)) return res.status(400).json({ message: "Invalid ID" });
+    const me = await storage.getAccount(getAuthAccountId(req)!);
+    if (!me) return res.status(401).json({ message: "Account not found" });
+    if (!(await canManageSpv(me, id))) {
+      return res.status(403).json({ message: "Only admins or organization organizers can add valuations" });
+    }
+    const asset = await storage.getSpvAsset(id, assetId);
+    if (!asset) return res.status(404).json({ message: "Asset not found" });
+    const { date, value, note } = req.body || {};
+    if (!date) return res.status(400).json({ message: "date is required" });
+    const d = new Date(String(date));
+    if (isNaN(d.getTime())) return res.status(400).json({ message: "date must be a valid date (YYYY-MM-DD)" });
+    if (value === undefined || value === null || value === "") return res.status(400).json({ message: "value is required" });
+    const n = parseFloat(String(value));
+    if (!isFinite(n) || n < 0) return res.status(400).json({ message: "value must be a non-negative number" });
+    const v = await storage.addAssetValuation(assetId, { date: String(date), value: n.toFixed(2), note: note != null ? String(note) : "" });
+    res.status(201).json(v);
+  });
+
+  app.delete("/api/spvs/:id/assets/:assetId/valuations/:valuationId", async (req, res) => {
+    const id = parseInt(req.params.id);
+    const assetId = parseInt(req.params.assetId);
+    const valuationId = parseInt(req.params.valuationId);
+    if (isNaN(id) || isNaN(assetId) || isNaN(valuationId)) return res.status(400).json({ message: "Invalid ID" });
+    const me = await storage.getAccount(getAuthAccountId(req)!);
+    if (!me) return res.status(401).json({ message: "Account not found" });
+    if (!(await canManageSpv(me, id))) {
+      return res.status(403).json({ message: "Only admins or organization organizers can remove valuations" });
+    }
+    const removed = await storage.removeAssetValuation(assetId, valuationId);
+    if (!removed) return res.status(404).json({ message: "Valuation not found" });
+    res.json({ message: "Valuation removed" });
   });
 
   app.delete("/api/spvs/:id/members/:memberId", async (req, res) => {

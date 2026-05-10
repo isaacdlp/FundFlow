@@ -653,7 +653,6 @@ paths:
                 otherFee: { type: string, description: "Any other fee charged on this position." }
                 totalCalled: { type: string, description: "Capital actually called from the investor so far." }
                 distributed: { type: string, description: "Distributions paid back to the investor." }
-                currentValue: { type: string, description: "Current mark / NAV." }
                 ownershipPercent: { type: string, nullable: true, description: "Explicit ownership % (0–100). Only meaningful when the SPV's allocationMethod is 'Custom'." }
       responses:
         '201': { description: Added }
@@ -673,6 +672,84 @@ paths:
       responses: { '200': { description: Removed } }
 
   # ──── Entities ────────────────────────────────────────────────────────────
+  /api/spvs/{id}/assets:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    get:
+      tags: [SPVs]
+      summary: List the SPV's assets (financial instruments). Read access mirrors SPV read access.
+      responses:
+        '200': { description: Assets, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/SpvAsset' } } } } }
+    post:
+      tags: [SPVs]
+      summary: Add an asset to the SPV. Requires admin or organization organizer. Rejects with 400 if `cost` exceeds `spv.cash`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [companyName]
+              properties:
+                companyName: { type: string }
+                instrumentType: { type: string, example: "Equity" }
+                purchaseDate: { type: string, format: date, nullable: true }
+                cost: { type: string, description: "Initial cost. Must not exceed current SPV cash." }
+                notes: { type: string }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/SpvAsset' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/spvs/{id}/assets/{assetId}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+      - { name: assetId, in: path, required: true, schema: { type: integer } }
+    patch:
+      tags: [SPVs]
+      summary: Update an asset's fields. Admin or organizer only.
+      responses: { '200': { description: Updated, content: { application/json: { schema: { $ref: '#/components/schemas/SpvAsset' } } } } }
+    delete:
+      tags: [SPVs]
+      summary: Delete an asset (cascades valuations). Admin or organizer only.
+      responses: { '200': { description: Deleted } }
+
+  /api/spvs/{id}/assets/{assetId}/valuations:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+      - { name: assetId, in: path, required: true, schema: { type: integer } }
+    get:
+      tags: [SPVs]
+      summary: List the asset's valuation history (newest first).
+      responses:
+        '200': { description: Valuations, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/SpvAssetValuation' } } } } }
+    post:
+      tags: [SPVs]
+      summary: Add a new valuation (mark) for the asset. Admin or organizer only.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [date, value]
+              properties:
+                date: { type: string, format: date }
+                value: { type: string }
+                note: { type: string }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/SpvAssetValuation' } } } }
+
+  /api/spvs/{id}/assets/{assetId}/valuations/{valuationId}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+      - { name: assetId, in: path, required: true, schema: { type: integer } }
+      - { name: valuationId, in: path, required: true, schema: { type: integer } }
+    delete:
+      tags: [SPVs]
+      summary: Delete a valuation. Admin or organizer only.
+      responses: { '200': { description: Deleted } }
+
   /api/entities:
     get:
       tags: [Entities]
@@ -937,11 +1014,36 @@ components:
         preferredReturnPercent: { type: string }
         totalBeingRaised: { type: string }
         minimumInvestment: { type: string }
+        cash: { type: string, description: "DERIVED. = sum(member.totalCalled) − sum(asset.cost). Returned, never stored." }
+        assetValue: { type: string, description: "DERIVED. = sum(asset.currentValue) where asset.currentValue is its latest valuation (or cost if none)." }
+        currentValue: { type: string, description: "DERIVED. = cash + assetValue." }
         members:
           type: array
           items: { $ref: '#/components/schemas/SpvMember' }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
+
+    SpvAsset:
+      type: object
+      description: A financial instrument owned by an SPV.
+      properties:
+        id: { type: integer }
+        spvId: { type: integer }
+        companyName: { type: string }
+        instrumentType: { type: string, example: "Equity", description: "Equity, Convertible Note, SAFE, Preferred Stock, Common Stock, Warrant, Debt, Other." }
+        purchaseDate: { type: string, format: date, nullable: true }
+        cost: { type: string, description: "Initial cost paid from SPV cash." }
+        notes: { type: string }
+        currentValue: { type: string, description: "DERIVED. = latest SpvAssetValuation.value (by date), or cost when no valuations exist." }
+
+    SpvAssetValuation:
+      type: object
+      properties:
+        id: { type: integer }
+        assetId: { type: integer }
+        date: { type: string, format: date }
+        value: { type: string }
+        note: { type: string }
 
     SpvCreate:
       type: object
@@ -979,11 +1081,12 @@ components:
         otherFee: { type: string }
         totalCalled: { type: string, description: "Capital called from the investor so far." }
         distributed: { type: string, description: "Distributions paid back to the investor." }
-        currentValue: { type: string, description: "Current mark / NAV." }
         ownershipPercent: { type: string, nullable: true, description: "Explicit ownership % (0–100) used only when the SPV's allocationMethod is 'Custom'." }
-        # Derived (NOT stored, computed by clients):
+        currentValue: { type: string, description: "DERIVED. = ownership share × spv.currentValue. Returned on responses; cannot be set." }
+        # Derived (NOT stored, computed server-side):
         #   capital              = committed − (managementFee + otherFee)
         #   commitmentRemaining  = capital − totalCalled
+        #   currentValue         = ownership% × spv.currentValue
         account: { $ref: '#/components/schemas/Account', nullable: true }
         entity: { $ref: '#/components/schemas/Entity', nullable: true }
 

@@ -3,12 +3,14 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import {
   accounts, roles, accountRoles, organizations, organizationOrganizers,
   organizationMembers, organizationInvites, spvs, spvMembers,
+  spvAssets, spvAssetValuations,
   entities, entityOwners, entityManagers, passwordResetTokens,
   apiTokens,
   type Account, type Role, type InsertAccount, type UpdateAccount,
   type Organization, type InsertOrganization, type UpdateOrganization,
   type OrganizationMember, type OrganizationInvite,
   type Spv, type SpvMember, type InsertSpv, type UpdateSpv,
+  type SpvAsset, type SpvAssetValuation,
   type Entity, type EntityOwner, type EntityManager,
   type InsertEntity, type UpdateEntity,
   type PasswordResetToken,
@@ -23,10 +25,21 @@ type InvestmentFields = {
   otherFee?: string;
   totalCalled?: string;
   distributed?: string;
-  currentValue?: string;
   ownershipPercent?: string | null;
   date?: string | null;
 };
+
+export type AssetFields = {
+  companyName?: string;
+  instrumentType?: string;
+  purchaseDate?: string | null;
+  cost?: string;
+  notes?: string;
+};
+
+export interface SpvAssetWithCurrent extends SpvAsset {
+  currentValue: string;
+}
 
 if (!process.env.DATABASE_URL) {
   throw new Error("DATABASE_URL must be set");
@@ -63,12 +76,16 @@ export interface SpvWithDetails extends Spv {
   signatory?: { id: number; email: string; firstName: string; lastName: string } | null;
   memberCount: number;
   organization?: { id: number; name: string; slug: string } | null;
+  cash: string;
+  assetValue: string;
+  currentValue: string;
 }
 
 export interface SpvMemberWithAccount extends SpvMember {
   investorType: "account" | "entity";
   account: { id: number; email: string; firstName: string; lastName: string } | null;
   entity: { id: number; name: string; entityType: string } | null;
+  currentValue: string;
 }
 
 export interface PortfolioInvestment {
@@ -148,6 +165,14 @@ export interface IStorage {
   addSpvMember(spvId: number, investor: { accountId: number } | { entityId: number }, investment?: InvestmentFields): Promise<SpvMemberWithAccount>;
   updateSpvMemberById(spvId: number, memberId: number, investment: InvestmentFields): Promise<SpvMemberWithAccount | undefined>;
   removeSpvMemberById(spvId: number, memberId: number): Promise<boolean>;
+  getSpvAssets(spvId: number): Promise<SpvAssetWithCurrent[]>;
+  getSpvAsset(spvId: number, assetId: number): Promise<SpvAssetWithCurrent | undefined>;
+  createSpvAsset(spvId: number, data: AssetFields & { companyName: string }): Promise<SpvAssetWithCurrent>;
+  updateSpvAsset(spvId: number, assetId: number, data: AssetFields): Promise<SpvAssetWithCurrent | undefined>;
+  deleteSpvAsset(spvId: number, assetId: number): Promise<boolean>;
+  getAssetValuations(assetId: number): Promise<SpvAssetValuation[]>;
+  addAssetValuation(assetId: number, data: { date: string; value: string; note?: string }): Promise<SpvAssetValuation>;
+  removeAssetValuation(assetId: number, valuationId: number): Promise<boolean>;
   getPortfolio(filter?: { accountIds?: number[]; entityIds?: number[] }): Promise<PortfolioInvestment[]>;
   getEntityIdsOwnedByAccount(accountId: number): Promise<number[]>;
 
@@ -545,11 +570,58 @@ export class DatabaseStorage implements IStorage {
       .where(eq(organizationInvites.token, token));
   }
 
+  private async computeSpvFinancials(spvId: number): Promise<{ cash: string; assetValue: string; currentValue: string; totalCalled: number }> {
+    const memberRows = await db.select({ totalCalled: spvMembers.totalCalled }).from(spvMembers).where(eq(spvMembers.spvId, spvId));
+    const totalCalled = memberRows.reduce((s, r) => s + parseFloat(r.totalCalled || "0"), 0);
+
+    const assetList = await db.select().from(spvAssets).where(eq(spvAssets.spvId, spvId));
+    let assetCost = 0;
+    let assetValue = 0;
+    for (const a of assetList) {
+      assetCost += parseFloat(a.cost || "0");
+      const [latest] = await db.select().from(spvAssetValuations)
+        .where(eq(spvAssetValuations.assetId, a.id))
+        .orderBy(sql`${spvAssetValuations.date} DESC, ${spvAssetValuations.id} DESC`)
+        .limit(1);
+      assetValue += latest ? parseFloat(latest.value || "0") : parseFloat(a.cost || "0");
+    }
+    const cash = totalCalled - assetCost;
+    return {
+      cash: cash.toFixed(2),
+      assetValue: assetValue.toFixed(2),
+      currentValue: (cash + assetValue).toFixed(2),
+      totalCalled,
+    };
+  }
+
+  private computeMemberShares(members: SpvMember[], allocationMethod: string | null | undefined): Record<number, number> {
+    const method = allocationMethod || "By Commitment";
+    const out: Record<number, number> = {};
+    if (method === "Custom") {
+      for (const m of members) {
+        const p = m.ownershipPercent != null ? parseFloat(m.ownershipPercent) : 0;
+        out[m.id] = isFinite(p) ? p / 100 : 0;
+      }
+      return out;
+    }
+    if (method === "By Capital Invested") {
+      const nets = members.map(m => Math.max(0, parseFloat(m.committed || "0") - parseFloat(m.managementFee || "0") - parseFloat(m.otherFee || "0")));
+      const total = nets.reduce((a, b) => a + b, 0);
+      members.forEach((m, i) => { out[m.id] = total > 0 ? nets[i] / total : 0; });
+      return out;
+    }
+    const committeds = members.map(m => Math.max(0, parseFloat(m.committed || "0")));
+    const total = committeds.reduce((a, b) => a + b, 0);
+    members.forEach((m, i) => { out[m.id] = total > 0 ? committeds[i] / total : 0; });
+    return out;
+  }
+
   private async enrichSpv(spv: Spv): Promise<SpvWithDetails> {
     const manager = spv.managerId ? await getAccountSummary(spv.managerId) : null;
     const signatory = spv.signatoryId ? await getAccountSummary(spv.signatoryId) : null;
     const members = await db.select().from(spvMembers).where(eq(spvMembers.spvId, spv.id));
-    return { ...spv, manager, signatory, memberCount: members.length };
+    const fin = await this.computeSpvFinancials(spv.id);
+    return { ...spv, manager, signatory, memberCount: members.length, cash: fin.cash, assetValue: fin.assetValue, currentValue: fin.currentValue };
   }
 
   async getAllSpvs(): Promise<SpvWithDetails[]> {
@@ -614,17 +686,23 @@ export class DatabaseStorage implements IStorage {
       .where(eq(spvMembers.spvId, spvId))
       .orderBy(sql`${spvMembers.createdAt} DESC`);
 
+    const [spvRow] = await db.select().from(spvs).where(eq(spvs.id, spvId));
+    const fin = await this.computeSpvFinancials(spvId);
+    const spvCurrent = parseFloat(fin.currentValue);
+    const shares = this.computeMemberShares(members, spvRow?.allocationMethod);
+
     const result: SpvMemberWithAccount[] = [];
     for (const m of members) {
+      const currentValue = (shares[m.id] * spvCurrent).toFixed(2);
       if (m.accountId !== null) {
         const acct = await getAccountSummary(m.accountId);
         if (acct) {
-          result.push({ ...m, investorType: "account", account: acct, entity: null });
+          result.push({ ...m, investorType: "account", account: acct, entity: null, currentValue });
         }
       } else if (m.entityId !== null) {
         const ent = await getEntitySummary(m.entityId);
         if (ent) {
-          result.push({ ...m, investorType: "entity", account: null, entity: ent });
+          result.push({ ...m, investorType: "entity", account: null, entity: ent, currentValue });
         }
       }
     }
@@ -642,12 +720,19 @@ export class DatabaseStorage implements IStorage {
     if (investment) Object.assign(values, investment);
     const [member] = await db.insert(spvMembers).values(values).returning();
 
+    // Recompute share/currentValue with the new member included
+    const all = await db.select().from(spvMembers).where(eq(spvMembers.spvId, spvId));
+    const [spvRow] = await db.select().from(spvs).where(eq(spvs.id, spvId));
+    const fin = await this.computeSpvFinancials(spvId);
+    const shares = this.computeMemberShares(all, spvRow?.allocationMethod);
+    const currentValue = ((shares[member.id] || 0) * parseFloat(fin.currentValue)).toFixed(2);
+
     if ("accountId" in investor) {
       const acct = await getAccountSummary(investor.accountId);
-      return { ...member, investorType: "account", account: acct!, entity: null };
+      return { ...member, investorType: "account", account: acct!, entity: null, currentValue };
     } else {
       const ent = await getEntitySummary(investor.entityId);
-      return { ...member, investorType: "entity", account: null, entity: ent! };
+      return { ...member, investorType: "entity", account: null, entity: ent!, currentValue };
     }
   }
 
@@ -666,12 +751,18 @@ export class DatabaseStorage implements IStorage {
     }
     if (!row) return undefined;
 
+    const all = await db.select().from(spvMembers).where(eq(spvMembers.spvId, spvId));
+    const [spvRow] = await db.select().from(spvs).where(eq(spvs.id, spvId));
+    const fin = await this.computeSpvFinancials(spvId);
+    const shares = this.computeMemberShares(all, spvRow?.allocationMethod);
+    const currentValue = ((shares[row.id] || 0) * parseFloat(fin.currentValue)).toFixed(2);
+
     if (row.accountId !== null) {
       const acct = await getAccountSummary(row.accountId);
-      return { ...row, investorType: "account", account: acct!, entity: null };
+      return { ...row, investorType: "account", account: acct!, entity: null, currentValue };
     } else {
       const ent = await getEntitySummary(row.entityId!);
-      return { ...row, investorType: "entity", account: null, entity: ent! };
+      return { ...row, investorType: "entity", account: null, entity: ent!, currentValue };
     }
   }
 
@@ -720,8 +811,9 @@ export class DatabaseStorage implements IStorage {
         otherFee: spvMembers.otherFee,
         totalCalled: spvMembers.totalCalled,
         distributed: spvMembers.distributed,
-        currentValue: spvMembers.currentValue,
+        ownershipPercent: spvMembers.ownershipPercent,
         date: spvMembers.date,
+        allocationMethod: spvs.allocationMethod,
       })
       .from(spvMembers)
       .innerJoin(spvs, eq(spvs.id, spvMembers.spvId))
@@ -731,9 +823,21 @@ export class DatabaseStorage implements IStorage {
       .where(where)
       .orderBy(sql`${spvs.displayName} ASC`);
 
-    return rows.map(r => {
+    // Group rows by spv so we can compute member share against full SPV roster
+    const spvCache = new Map<number, { fin: { currentValue: string }; allMembers: SpvMember[]; allocationMethod: string | null }>();
+    const out: PortfolioInvestment[] = [];
+    for (const r of rows) {
+      let cached = spvCache.get(r.spvId);
+      if (!cached) {
+        const allMembers = await db.select().from(spvMembers).where(eq(spvMembers.spvId, r.spvId));
+        const fin = await this.computeSpvFinancials(r.spvId);
+        cached = { fin: { currentValue: fin.currentValue }, allMembers, allocationMethod: r.allocationMethod };
+        spvCache.set(r.spvId, cached);
+      }
+      const shares = this.computeMemberShares(cached.allMembers, cached.allocationMethod);
+      const currentValue = ((shares[r.memberId] || 0) * parseFloat(cached.fin.currentValue)).toFixed(2);
       const isAccount = r.accountId !== null;
-      return {
+      out.push({
         memberId: r.memberId,
         spvId: r.spvId,
         spvName: r.spvName,
@@ -754,10 +858,91 @@ export class DatabaseStorage implements IStorage {
         otherFee: r.otherFee ?? "0",
         totalCalled: r.totalCalled ?? "0",
         distributed: r.distributed ?? "0",
-        currentValue: r.currentValue ?? "0",
+        currentValue,
         date: r.date ?? null,
-      };
-    });
+      });
+    }
+    return out;
+  }
+
+  async getSpvAssets(spvId: number): Promise<SpvAssetWithCurrent[]> {
+    const list = await db.select().from(spvAssets)
+      .where(eq(spvAssets.spvId, spvId))
+      .orderBy(sql`${spvAssets.purchaseDate} DESC NULLS LAST, ${spvAssets.id} DESC`);
+    const out: SpvAssetWithCurrent[] = [];
+    for (const a of list) {
+      const [latest] = await db.select().from(spvAssetValuations)
+        .where(eq(spvAssetValuations.assetId, a.id))
+        .orderBy(sql`${spvAssetValuations.date} DESC, ${spvAssetValuations.id} DESC`)
+        .limit(1);
+      const currentValue = latest ? (latest.value || "0") : (a.cost || "0");
+      out.push({ ...a, currentValue: parseFloat(currentValue).toFixed(2) });
+    }
+    return out;
+  }
+
+  async getSpvAsset(spvId: number, assetId: number): Promise<SpvAssetWithCurrent | undefined> {
+    const [a] = await db.select().from(spvAssets)
+      .where(and(eq(spvAssets.spvId, spvId), eq(spvAssets.id, assetId)));
+    if (!a) return undefined;
+    const [latest] = await db.select().from(spvAssetValuations)
+      .where(eq(spvAssetValuations.assetId, a.id))
+      .orderBy(sql`${spvAssetValuations.date} DESC, ${spvAssetValuations.id} DESC`)
+      .limit(1);
+    const currentValue = latest ? (latest.value || "0") : (a.cost || "0");
+    return { ...a, currentValue: parseFloat(currentValue).toFixed(2) };
+  }
+
+  async createSpvAsset(spvId: number, data: AssetFields & { companyName: string }): Promise<SpvAssetWithCurrent> {
+    const [created] = await db.insert(spvAssets).values({
+      spvId,
+      companyName: data.companyName,
+      instrumentType: data.instrumentType ?? "Equity",
+      purchaseDate: data.purchaseDate ?? null,
+      cost: data.cost ?? "0",
+      notes: data.notes ?? "",
+    }).returning();
+    return { ...created, currentValue: parseFloat(created.cost || "0").toFixed(2) };
+  }
+
+  async updateSpvAsset(spvId: number, assetId: number, data: AssetFields): Promise<SpvAssetWithCurrent | undefined> {
+    const updates: any = {};
+    for (const [k, v] of Object.entries(data)) if (v !== undefined) updates[k] = v;
+    if (Object.keys(updates).length === 0) return this.getSpvAsset(spvId, assetId);
+    const [updated] = await db.update(spvAssets).set(updates)
+      .where(and(eq(spvAssets.spvId, spvId), eq(spvAssets.id, assetId)))
+      .returning();
+    if (!updated) return undefined;
+    return this.getSpvAsset(spvId, assetId);
+  }
+
+  async deleteSpvAsset(spvId: number, assetId: number): Promise<boolean> {
+    const res = await db.delete(spvAssets)
+      .where(and(eq(spvAssets.spvId, spvId), eq(spvAssets.id, assetId))).returning();
+    return res.length > 0;
+  }
+
+  async getAssetValuations(assetId: number): Promise<SpvAssetValuation[]> {
+    return await db.select().from(spvAssetValuations)
+      .where(eq(spvAssetValuations.assetId, assetId))
+      .orderBy(sql`${spvAssetValuations.date} DESC, ${spvAssetValuations.id} DESC`);
+  }
+
+  async addAssetValuation(assetId: number, data: { date: string; value: string; note?: string }): Promise<SpvAssetValuation> {
+    const [v] = await db.insert(spvAssetValuations).values({
+      assetId,
+      date: data.date,
+      value: data.value,
+      note: data.note ?? "",
+    }).returning();
+    return v;
+  }
+
+  async removeAssetValuation(assetId: number, valuationId: number): Promise<boolean> {
+    const res = await db.delete(spvAssetValuations)
+      .where(and(eq(spvAssetValuations.assetId, assetId), eq(spvAssetValuations.id, valuationId)))
+      .returning();
+    return res.length > 0;
   }
 
   async getEntityIdsOwnedByAccount(accountId: number): Promise<number[]> {
