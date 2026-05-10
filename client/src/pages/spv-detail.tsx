@@ -449,7 +449,7 @@ function SpvMembersTab({ spvId, orgId, canEdit, allocationMethod }: { spvId: str
                         <p className="font-medium" data-testid={`text-other-fee-${member.id}`}>${formatCurrency(member.otherFee)}</p>
                       </div>
                       <div>
-                        <p className="text-muted-foreground">Capital <span className="text-[10px]">(derived)</span></p>
+                        <p className="text-muted-foreground">Capital</p>
                         <p className="font-medium" data-testid={`text-capital-${member.id}`}>${capital.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                       </div>
                       <div>
@@ -457,7 +457,7 @@ function SpvMembersTab({ spvId, orgId, canEdit, allocationMethod }: { spvId: str
                         <p className="font-medium" data-testid={`text-total-called-${member.id}`}>${formatCurrency(member.totalCalled)}</p>
                       </div>
                       <div>
-                        <p className="text-muted-foreground">Commitment Remaining <span className="text-[10px]">(derived)</span></p>
+                        <p className="text-muted-foreground">Commitment Remaining</p>
                         <p className="font-medium" data-testid={`text-commitment-remaining-${member.id}`}>${commitmentRemaining.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                       </div>
                       <div>
