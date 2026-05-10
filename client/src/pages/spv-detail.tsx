@@ -18,7 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ArrowLeft, Pencil, Save, X, UserPlus, Trash2, FileText, Users, Plus, TrendingUp, Wallet, Briefcase } from "lucide-react";
+import { ArrowLeft, Pencil, Save, X, UserPlus, Trash2, FileText, Users, Plus, TrendingUp, Wallet, Briefcase, Star } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useOrgPermissions } from "@/hooks/use-org-permissions";
@@ -646,15 +646,26 @@ function SpvAssetsTab({ spvId, canEdit, spvCash }: { spvId: string; canEdit: boo
               const c = parseFloat(a.cost || "0");
               const change = c > 0 ? ((cv - c) / c) * 100 : 0;
               return (
-                <div key={a.id} className="p-3 rounded-md border" data-testid={`asset-${a.id}`}>
+                <div
+                  key={a.id}
+                  className={`p-3 rounded-md border ${a.isDefault ? "border-amber-400 ring-2 ring-amber-300/60 bg-amber-50/40 dark:bg-amber-500/5" : ""}`}
+                  data-testid={`asset-${a.id}`}
+                >
                   <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-md bg-primary/10 text-primary flex items-center justify-center flex-shrink-0">
-                      <Briefcase className="h-5 w-5" />
+                    <div className={`h-10 w-10 rounded-md flex items-center justify-center flex-shrink-0 ${a.isDefault ? "bg-amber-100 text-amber-600 dark:bg-amber-500/20 dark:text-amber-400" : "bg-primary/10 text-primary"}`}>
+                      {a.isDefault ? <Star className="h-5 w-5 fill-current" /> : <Briefcase className="h-5 w-5" />}
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium truncate flex items-center gap-2" data-testid={`text-asset-name-${a.id}`}>
                         {a.companyName}
-                        {a.isDefault && <Badge variant="default" className="text-[10px]" data-testid={`badge-default-${a.id}`}>Default</Badge>}
+                        {a.isDefault && (
+                          <Badge
+                            className="text-[10px] gap-1 bg-amber-500 hover:bg-amber-500 text-white border-transparent"
+                            data-testid={`badge-default-${a.id}`}
+                          >
+                            <Star className="h-3 w-3 fill-current" /> Default
+                          </Badge>
+                        )}
                       </p>
                       <p className="text-xs text-muted-foreground">
                         <Badge variant="secondary" className="mr-2 text-[10px]">{a.instrumentType}</Badge>
