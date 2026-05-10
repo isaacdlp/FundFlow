@@ -906,16 +906,10 @@ export async function registerRoutes(
       return res.status(403).json({ message: "Only admins or organization organizers can edit SPV investments" });
     }
 
-    const existing = (await storage.getSpvMembers(id)).find(m => m.id === memberId);
-    if (!existing) return res.status(404).json({ message: "SPV member not found" });
-
     const validation = validateInvestmentFields(req.body);
     if (!validation.ok) return res.status(400).json({ message: validation.error });
 
-    const investor: { accountId: number } | { entityId: number } = existing.accountId !== null
-      ? { accountId: existing.accountId }
-      : { entityId: existing.entityId! };
-    const member = await storage.updateSpvMember(id, investor, validation.data);
+    const member = await storage.updateSpvMemberById(id, memberId, validation.data);
     if (!member) return res.status(404).json({ message: "SPV member not found" });
     res.json(member);
   });
@@ -931,13 +925,7 @@ export async function registerRoutes(
       return res.status(403).json({ message: "Only admins or organization organizers can remove SPV investments" });
     }
 
-    const existing = (await storage.getSpvMembers(id)).find(m => m.id === memberId);
-    if (!existing) return res.status(404).json({ message: "SPV member not found" });
-
-    const investor: { accountId: number } | { entityId: number } = existing.accountId !== null
-      ? { accountId: existing.accountId }
-      : { entityId: existing.entityId! };
-    const removed = await storage.removeSpvMember(id, investor);
+    const removed = await storage.removeSpvMemberById(id, memberId);
     if (!removed) return res.status(404).json({ message: "SPV member not found" });
     res.json({ message: "Member removed from SPV" });
   });

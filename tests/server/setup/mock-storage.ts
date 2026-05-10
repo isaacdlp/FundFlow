@@ -71,8 +71,8 @@ export function makeMockStorage(overrides: Partial<Record<string, any>> = {}) {
     deleteSpv: vi.fn().mockResolvedValue(true),
     getSpvMembers: vi.fn().mockResolvedValue([]),
     addSpvMember: vi.fn(),
-    updateSpvMember: vi.fn(),
-    removeSpvMember: vi.fn().mockResolvedValue(true),
+    updateSpvMemberById: vi.fn(),
+    removeSpvMemberById: vi.fn().mockResolvedValue(true),
     getSpvIdsForAccount: vi.fn().mockResolvedValue([]),
 
     // Entities

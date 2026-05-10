@@ -91,12 +91,9 @@ function SpvMembersTab({ spvId, orgId, canEdit, allocationMethod }: { spvId: str
   });
 
   const approvedOrgMembers = orgMembers?.filter(m => m.status === "approved") || [];
-  const availableAccounts = approvedOrgMembers.filter(
-    om => !spvMembers?.some(sm => sm.accountId === om.accountId)
-  );
-  const availableEntities = (entitiesList || []).filter(
-    e => !spvMembers?.some(sm => sm.entityId === e.id)
-  );
+  // Investors can hold multiple positions ("tranches") in the same SPV — do not filter out existing members.
+  const availableAccounts = approvedOrgMembers;
+  const availableEntities = entitiesList || [];
 
   const addMutation = useMutation({
     mutationFn: async (payload: { accountId?: number; entityId?: number; initialValue: string; currentValue: string; distributions: string; feesPaid: string; ownershipPercent: string | null; purchaseDate: string | null }) => {

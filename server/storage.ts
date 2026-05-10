@@ -132,8 +132,8 @@ export interface IStorage {
   deleteSpv(id: number): Promise<boolean>;
   getSpvMembers(spvId: number): Promise<SpvMemberWithAccount[]>;
   addSpvMember(spvId: number, investor: { accountId: number } | { entityId: number }, investment?: { initialValue?: string; currentValue?: string; distributions?: string; feesPaid?: string; ownershipPercent?: string | null; purchaseDate?: string | null }): Promise<SpvMemberWithAccount>;
-  updateSpvMember(spvId: number, investor: { accountId: number } | { entityId: number }, investment: { initialValue?: string; currentValue?: string; distributions?: string; feesPaid?: string; ownershipPercent?: string | null; purchaseDate?: string | null }): Promise<SpvMemberWithAccount | undefined>;
-  removeSpvMember(spvId: number, investor: { accountId: number } | { entityId: number }): Promise<boolean>;
+  updateSpvMemberById(spvId: number, memberId: number, investment: { initialValue?: string; currentValue?: string; distributions?: string; feesPaid?: string; ownershipPercent?: string | null; purchaseDate?: string | null }): Promise<SpvMemberWithAccount | undefined>;
+  removeSpvMemberById(spvId: number, memberId: number): Promise<boolean>;
   getPortfolio(filter?: { accountIds?: number[]; entityIds?: number[] }): Promise<PortfolioInvestment[]>;
   getEntityIdsOwnedByAccount(accountId: number): Promise<number[]>;
 
@@ -633,31 +633,23 @@ export class DatabaseStorage implements IStorage {
       if (investment.ownershipPercent !== undefined) values.ownershipPercent = investment.ownershipPercent;
       if (investment.purchaseDate !== undefined) values.purchaseDate = investment.purchaseDate;
     }
-    const [member] = await db.insert(spvMembers).values(values)
-      .onConflictDoNothing().returning();
-
-    const finalMember = member ?? (await db.select().from(spvMembers)
-      .where("accountId" in investor
-        ? and(eq(spvMembers.spvId, spvId), eq(spvMembers.accountId, investor.accountId))
-        : and(eq(spvMembers.spvId, spvId), eq(spvMembers.entityId, investor.entityId))))[0];
+    const [member] = await db.insert(spvMembers).values(values).returning();
 
     if ("accountId" in investor) {
       const acct = await getAccountSummary(investor.accountId);
-      return { ...finalMember, investorType: "account", account: acct!, entity: null };
+      return { ...member, investorType: "account", account: acct!, entity: null };
     } else {
       const ent = await getEntitySummary(investor.entityId);
-      return { ...finalMember, investorType: "entity", account: null, entity: ent! };
+      return { ...member, investorType: "entity", account: null, entity: ent! };
     }
   }
 
-  async updateSpvMember(
+  async updateSpvMemberById(
     spvId: number,
-    investor: { accountId: number } | { entityId: number },
+    memberId: number,
     investment: { initialValue?: string; currentValue?: string; distributions?: string; feesPaid?: string; ownershipPercent?: string | null; purchaseDate?: string | null }
   ): Promise<SpvMemberWithAccount | undefined> {
-    const investorWhere = "accountId" in investor
-      ? and(eq(spvMembers.spvId, spvId), eq(spvMembers.accountId, investor.accountId))
-      : and(eq(spvMembers.spvId, spvId), eq(spvMembers.entityId, investor.entityId));
+    const memberWhere = and(eq(spvMembers.spvId, spvId), eq(spvMembers.id, memberId));
 
     const updates: any = {};
     if (investment.initialValue !== undefined) updates.initialValue = investment.initialValue;
@@ -669,26 +661,25 @@ export class DatabaseStorage implements IStorage {
 
     let row;
     if (Object.keys(updates).length === 0) {
-      [row] = await db.select().from(spvMembers).where(investorWhere);
+      [row] = await db.select().from(spvMembers).where(memberWhere);
     } else {
-      [row] = await db.update(spvMembers).set(updates).where(investorWhere).returning();
+      [row] = await db.update(spvMembers).set(updates).where(memberWhere).returning();
     }
     if (!row) return undefined;
 
-    if ("accountId" in investor) {
-      const acct = await getAccountSummary(investor.accountId);
+    if (row.accountId !== null) {
+      const acct = await getAccountSummary(row.accountId);
       return { ...row, investorType: "account", account: acct!, entity: null };
     } else {
-      const ent = await getEntitySummary(investor.entityId);
+      const ent = await getEntitySummary(row.entityId!);
       return { ...row, investorType: "entity", account: null, entity: ent! };
     }
   }
 
-  async removeSpvMember(spvId: number, investor: { accountId: number } | { entityId: number }): Promise<boolean> {
-    const investorWhere = "accountId" in investor
-      ? and(eq(spvMembers.spvId, spvId), eq(spvMembers.accountId, investor.accountId))
-      : and(eq(spvMembers.spvId, spvId), eq(spvMembers.entityId, investor.entityId));
-    const result = await db.delete(spvMembers).where(investorWhere).returning();
+  async removeSpvMemberById(spvId: number, memberId: number): Promise<boolean> {
+    const result = await db.delete(spvMembers)
+      .where(and(eq(spvMembers.spvId, spvId), eq(spvMembers.id, memberId)))
+      .returning();
     return result.length > 0;
   }
 

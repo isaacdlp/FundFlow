@@ -179,8 +179,6 @@ export const spvMembers = pgTable("spv_members", {
   purchaseDate: date("purchase_date"),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
-  uniqueIndex("spv_member_account_unique").on(table.spvId, table.accountId).where(sql`account_id IS NOT NULL`),
-  uniqueIndex("spv_member_entity_unique").on(table.spvId, table.entityId).where(sql`entity_id IS NOT NULL`),
   check("spv_member_investor_xor", sql`(account_id IS NOT NULL)::int + (entity_id IS NOT NULL)::int = 1`),
 ]);
 

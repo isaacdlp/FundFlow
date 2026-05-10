@@ -168,7 +168,7 @@ describe("SPV members", () => {
   describe("PATCH /api/spvs/:id/members/:memberId", () => {
     it("returns 404 when member not on the SPV", async () => {
       const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
-      mockStorage.getSpvMembers.mockResolvedValue([]);
+      mockStorage.updateSpvMemberById.mockResolvedValue(undefined);
       const res = await agent
         .patch(`/api/spvs/${spvA.id}/members/9999`)
         .send({ currentValue: 100 });
@@ -177,10 +177,7 @@ describe("SPV members", () => {
 
     it("admin can update an account-investor's values", async () => {
       const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
-      mockStorage.getSpvMembers.mockResolvedValue([
-        { id: 1, spvId: spvA.id, accountId: 2, entityId: null },
-      ]);
-      mockStorage.updateSpvMember.mockResolvedValue({
+      mockStorage.updateSpvMemberById.mockResolvedValue({
         id: 1,
         spvId: spvA.id,
         accountId: 2,
@@ -191,19 +188,16 @@ describe("SPV members", () => {
         .patch(`/api/spvs/${spvA.id}/members/1`)
         .send({ currentValue: 200 });
       expect(res.status).toBe(200);
-      expect(mockStorage.updateSpvMember).toHaveBeenCalledWith(
+      expect(mockStorage.updateSpvMemberById).toHaveBeenCalledWith(
         spvA.id,
-        { accountId: 2 },
+        1,
         { currentValue: "200.00" },
       );
     });
 
     it("admin can update an entity-investor's values", async () => {
       const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
-      mockStorage.getSpvMembers.mockResolvedValue([
-        { id: 2, spvId: spvA.id, accountId: null, entityId: 200 },
-      ]);
-      mockStorage.updateSpvMember.mockResolvedValue({
+      mockStorage.updateSpvMemberById.mockResolvedValue({
         id: 2,
         spvId: spvA.id,
         accountId: null,
@@ -213,9 +207,9 @@ describe("SPV members", () => {
         .patch(`/api/spvs/${spvA.id}/members/2`)
         .send({ distributions: 50 });
       expect(res.status).toBe(200);
-      expect(mockStorage.updateSpvMember).toHaveBeenCalledWith(
+      expect(mockStorage.updateSpvMemberById).toHaveBeenCalledWith(
         spvA.id,
-        { entityId: 200 },
+        2,
         { distributions: "50.00" },
       );
     });
@@ -224,20 +218,17 @@ describe("SPV members", () => {
   describe("DELETE /api/spvs/:id/members/:memberId", () => {
     it("returns 404 when member not on the SPV", async () => {
       const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
-      mockStorage.getSpvMembers.mockResolvedValue([]);
+      mockStorage.removeSpvMemberById.mockResolvedValue(false);
       const res = await agent.delete(`/api/spvs/${spvA.id}/members/9999`);
       expect(res.status).toBe(404);
     });
 
     it("admin can remove an account-investor", async () => {
       const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
-      mockStorage.getSpvMembers.mockResolvedValue([
-        { id: 1, spvId: spvA.id, accountId: 2, entityId: null },
-      ]);
-      mockStorage.removeSpvMember.mockResolvedValue(true);
+      mockStorage.removeSpvMemberById.mockResolvedValue(true);
       const res = await agent.delete(`/api/spvs/${spvA.id}/members/1`);
       expect(res.status).toBe(200);
-      expect(mockStorage.removeSpvMember).toHaveBeenCalledWith(spvA.id, { accountId: 2 });
+      expect(mockStorage.removeSpvMemberById).toHaveBeenCalledWith(spvA.id, 1);
     });
   });
 });

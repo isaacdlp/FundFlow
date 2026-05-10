@@ -630,14 +630,14 @@ paths:
       - { name: id, in: path, required: true, schema: { type: integer } }
     get:
       tags: [SPVs]
-      summary: List SPV members (investors)
+      summary: List SPV members (investors), one row per tranche
       responses:
         '200':
-          description: Each row has investorType + either an account or entity block
+          description: Each row has investorType + either an account or entity block. The same investor may appear in multiple rows (tranches), each with its own values.
           content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/SpvMember' } } } }
     post:
       tags: [SPVs]
-      summary: Add an investor (account OR entity, never both)
+      summary: Add an investor position / tranche (account OR entity, never both). Calling multiple times for the same investor creates additional tranches.
       requestBody:
         required: true
         content:
@@ -663,11 +663,11 @@ paths:
       - { name: memberId, in: path, required: true, schema: { type: integer } }
     patch:
       tags: [SPVs]
-      summary: Update investment fields for a member
+      summary: Update investment fields for a specific tranche
       responses: { '200': { description: Updated } }
     delete:
       tags: [SPVs]
-      summary: Remove an investor from an SPV
+      summary: Remove a specific tranche from an SPV
       responses: { '200': { description: Removed } }
 
   # ──── Entities ────────────────────────────────────────────────────────────
