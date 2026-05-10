@@ -21,7 +21,12 @@ import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 
 const ENTITY_TYPES = ["LLC", "LP", "Corporation", "Trust", "Other"];
-const ALLOCATION_METHODS = ["By capital invested", "Pro rata", "Custom"];
+const ALLOCATION_METHODS = ["By Commitment", "By Capital Invested", "Custom"] as const;
+const ALLOCATION_HELP: Record<string, string> = {
+  "By Commitment": "Each investor's ownership equals their share of total capital called (commitments). Fees do not affect ownership.",
+  "By Capital Invested": "Each investor's ownership equals their share of capital called minus fees paid. Fees can differ per investor, so two investors with the same commitment may end up with different ownership.",
+  "Custom": "Ownership is set explicitly per investor. You assign each investor an exact ownership percentage on their row in the Members tab.",
+};
 const CURRENCIES = ["USD ($)", "EUR (\u20ac)", "GBP (\u00a3)", "CHF", "JPY (\u00a5)", "CAD ($)", "AUD ($)"];
 const US_STATES = [
   "Alabama", "Alaska", "Arizona", "Arkansas", "California", "Colorado", "Connecticut",
@@ -53,7 +58,7 @@ export default function CreateSpv() {
     ein: "",
     dateEstablished: "",
     dateEnded: "",
-    allocationMethod: "By capital invested",
+    allocationMethod: "By Commitment",
     currency: "USD ($)",
     managementFeePercent: "0",
     carriedInterestPercent: "0",
@@ -247,8 +252,8 @@ export default function CreateSpv() {
                 ))}
               </SelectContent>
             </Select>
-            <p className="text-xs text-muted-foreground">
-              Ownership in the SPV and its assets is calculated by the capital called. This takes into account the fees paid, which might be different for each investor.
+            <p className="text-xs text-muted-foreground" data-testid="text-allocation-help">
+              {ALLOCATION_HELP[form.allocationMethod]}
             </p>
           </div>
 

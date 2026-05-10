@@ -131,8 +131,8 @@ export interface IStorage {
   updateSpv(id: number, data: UpdateSpv): Promise<SpvWithDetails | undefined>;
   deleteSpv(id: number): Promise<boolean>;
   getSpvMembers(spvId: number): Promise<SpvMemberWithAccount[]>;
-  addSpvMember(spvId: number, investor: { accountId: number } | { entityId: number }, investment?: { initialValue?: string; currentValue?: string; distributions?: string; purchaseDate?: string | null }): Promise<SpvMemberWithAccount>;
-  updateSpvMember(spvId: number, investor: { accountId: number } | { entityId: number }, investment: { initialValue?: string; currentValue?: string; distributions?: string; purchaseDate?: string | null }): Promise<SpvMemberWithAccount | undefined>;
+  addSpvMember(spvId: number, investor: { accountId: number } | { entityId: number }, investment?: { initialValue?: string; currentValue?: string; distributions?: string; feesPaid?: string; ownershipPercent?: string | null; purchaseDate?: string | null }): Promise<SpvMemberWithAccount>;
+  updateSpvMember(spvId: number, investor: { accountId: number } | { entityId: number }, investment: { initialValue?: string; currentValue?: string; distributions?: string; feesPaid?: string; ownershipPercent?: string | null; purchaseDate?: string | null }): Promise<SpvMemberWithAccount | undefined>;
   removeSpvMember(spvId: number, investor: { accountId: number } | { entityId: number }): Promise<boolean>;
   getPortfolio(filter?: { accountIds?: number[]; entityIds?: number[] }): Promise<PortfolioInvestment[]>;
   getEntityIdsOwnedByAccount(accountId: number): Promise<number[]>;
@@ -620,7 +620,7 @@ export class DatabaseStorage implements IStorage {
   async addSpvMember(
     spvId: number,
     investor: { accountId: number } | { entityId: number },
-    investment?: { initialValue?: string; currentValue?: string; distributions?: string; purchaseDate?: string | null }
+    investment?: { initialValue?: string; currentValue?: string; distributions?: string; feesPaid?: string; ownershipPercent?: string | null; purchaseDate?: string | null }
   ): Promise<SpvMemberWithAccount> {
     const values: any = { spvId };
     if ("accountId" in investor) values.accountId = investor.accountId;
@@ -629,6 +629,8 @@ export class DatabaseStorage implements IStorage {
       if (investment.initialValue !== undefined) values.initialValue = investment.initialValue;
       if (investment.currentValue !== undefined) values.currentValue = investment.currentValue;
       if (investment.distributions !== undefined) values.distributions = investment.distributions;
+      if (investment.feesPaid !== undefined) values.feesPaid = investment.feesPaid;
+      if (investment.ownershipPercent !== undefined) values.ownershipPercent = investment.ownershipPercent;
       if (investment.purchaseDate !== undefined) values.purchaseDate = investment.purchaseDate;
     }
     const [member] = await db.insert(spvMembers).values(values)
@@ -651,7 +653,7 @@ export class DatabaseStorage implements IStorage {
   async updateSpvMember(
     spvId: number,
     investor: { accountId: number } | { entityId: number },
-    investment: { initialValue?: string; currentValue?: string; distributions?: string; purchaseDate?: string | null }
+    investment: { initialValue?: string; currentValue?: string; distributions?: string; feesPaid?: string; ownershipPercent?: string | null; purchaseDate?: string | null }
   ): Promise<SpvMemberWithAccount | undefined> {
     const investorWhere = "accountId" in investor
       ? and(eq(spvMembers.spvId, spvId), eq(spvMembers.accountId, investor.accountId))
@@ -661,6 +663,8 @@ export class DatabaseStorage implements IStorage {
     if (investment.initialValue !== undefined) updates.initialValue = investment.initialValue;
     if (investment.currentValue !== undefined) updates.currentValue = investment.currentValue;
     if (investment.distributions !== undefined) updates.distributions = investment.distributions;
+    if (investment.feesPaid !== undefined) updates.feesPaid = investment.feesPaid;
+    if (investment.ownershipPercent !== undefined) updates.ownershipPercent = investment.ownershipPercent;
     if (investment.purchaseDate !== undefined) updates.purchaseDate = investment.purchaseDate;
 
     let row;

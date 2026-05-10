@@ -170,7 +170,7 @@ export const fixtures = {
     displayName: "Test SPV",
     entityType: "LLC",
     currency: "USD ($)",
-    allocationMethod: "By capital invested",
+    allocationMethod: "By Commitment",
     managementFeePercent: "0",
     carriedInterestPercent: "0",
     preferredReturnPercent: "0",

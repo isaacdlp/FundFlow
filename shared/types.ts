@@ -128,6 +128,8 @@ export interface SpvMemberInfo {
   initialValue: string | null;
   currentValue: string | null;
   distributions: string | null;
+  feesPaid: string | null;
+  ownershipPercent: string | null;
   purchaseDate: string | null;
   createdAt: string;
   account: {

@@ -810,15 +810,26 @@ export async function registerRoutes(
     res.json(members);
   });
 
-  function validateInvestmentFields(body: any): { ok: true; data: { initialValue?: string; currentValue?: string; distributions?: string; purchaseDate?: string | null } } | { ok: false; error: string } {
+  function validateInvestmentFields(body: any): { ok: true; data: { initialValue?: string; currentValue?: string; distributions?: string; feesPaid?: string; ownershipPercent?: string | null; purchaseDate?: string | null } } | { ok: false; error: string } {
     const out: any = {};
-    for (const f of ["initialValue", "currentValue", "distributions"] as const) {
+    for (const f of ["initialValue", "currentValue", "distributions", "feesPaid"] as const) {
       if (body[f] === undefined || body[f] === null || body[f] === "") continue;
       const n = parseFloat(String(body[f]));
       if (!isFinite(n) || n < 0) {
         return { ok: false, error: `${f} must be a non-negative number` };
       }
       out[f] = n.toFixed(2);
+    }
+    if (body.ownershipPercent !== undefined) {
+      if (body.ownershipPercent === null || body.ownershipPercent === "") {
+        out.ownershipPercent = null;
+      } else {
+        const n = parseFloat(String(body.ownershipPercent));
+        if (!isFinite(n) || n < 0 || n > 100) {
+          return { ok: false, error: "ownershipPercent must be between 0 and 100" };
+        }
+        out.ownershipPercent = n.toFixed(4);
+      }
     }
     if (body.purchaseDate !== undefined) {
       if (body.purchaseDate === null || body.purchaseDate === "") {

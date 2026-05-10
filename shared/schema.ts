@@ -90,7 +90,7 @@ export const spvs = pgTable("spvs", {
   ein: varchar("ein", { length: 20 }).default(""),
   dateEstablished: date("date_established"),
   dateEnded: date("date_ended"),
-  allocationMethod: varchar("allocation_method", { length: 100 }).default("By capital invested"),
+  allocationMethod: varchar("allocation_method", { length: 100 }).default("By Commitment"),
   currency: varchar("currency", { length: 10 }).default("USD ($)"),
   managementFeePercent: numeric("management_fee_percent", { precision: 5, scale: 2 }).default("0"),
   carriedInterestPercent: numeric("carried_interest_percent", { precision: 5, scale: 2 }).default("0"),
@@ -175,6 +175,8 @@ export const spvMembers = pgTable("spv_members", {
   initialValue: numeric("initial_value", { precision: 15, scale: 2 }).default("0"),
   currentValue: numeric("current_value", { precision: 15, scale: 2 }).default("0"),
   distributions: numeric("distributions", { precision: 15, scale: 2 }).default("0"),
+  feesPaid: numeric("fees_paid", { precision: 15, scale: 2 }).default("0"),
+  ownershipPercent: numeric("ownership_percent", { precision: 7, scale: 4 }),
   purchaseDate: date("purchase_date"),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [

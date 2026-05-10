@@ -647,9 +647,11 @@ paths:
               properties:
                 accountId: { type: integer, nullable: true }
                 entityId: { type: integer, nullable: true }
-                initialValue: { type: string }
+                initialValue: { type: string, description: "Committed / capital-called amount." }
                 currentValue: { type: string }
                 distributions: { type: string }
+                feesPaid: { type: string, description: "Per-investor fees, used by the 'By Capital Invested' allocation method." }
+                ownershipPercent: { type: string, nullable: true, description: "Explicit ownership % (0–100). Only meaningful when the SPV's allocationMethod is 'Custom'." }
                 purchaseDate: { type: string, format: date }
       responses:
         '201': { description: Added }
@@ -948,7 +950,15 @@ components:
         displayName: { type: string }
         entityType: { type: string, example: LLC }
         currency: { type: string, example: "USD ($)" }
-        allocationMethod: { type: string, example: "By capital invested" }
+        allocationMethod:
+          type: string
+          enum: ["By Commitment", "By Capital Invested", "Custom"]
+          example: "By Commitment"
+          description: |
+            How ownership % in the SPV is calculated:
+            - **By Commitment**: each investor's share = their committed capital (`initialValue`) divided by the SPV's total commitments.
+            - **By Capital Invested**: each investor's share = (`initialValue` − `feesPaid`) divided by the total net invested capital (fees may differ per investor).
+            - **Custom**: ownership is set explicitly per investor via `ownershipPercent`.
         managementFeePercent: { type: string }
         carriedInterestPercent: { type: string }
         preferredReturnPercent: { type: string }
@@ -962,9 +972,11 @@ components:
         id: { type: integer }
         spvId: { type: integer }
         investorType: { type: string, enum: [account, entity] }
-        initialValue: { type: string }
+        initialValue: { type: string, description: "Committed / capital-called amount." }
         currentValue: { type: string }
         distributions: { type: string }
+        feesPaid: { type: string, description: "Per-investor fees, subtracted from initialValue under the 'By Capital Invested' allocation method." }
+        ownershipPercent: { type: string, nullable: true, description: "Explicit ownership % (0–100) used only when the SPV's allocationMethod is 'Custom'." }
         purchaseDate: { type: string, format: date, nullable: true }
         account: { $ref: '#/components/schemas/Account', nullable: true }
         entity: { $ref: '#/components/schemas/Entity', nullable: true }
