@@ -54,7 +54,6 @@ function OwnersTab({ entityId }: { entityId: string }) {
   const [ownerType, setOwnerType] = useState("account");
   const [selectedOwnerId, setSelectedOwnerId] = useState("");
   const [ownershipPercent, setOwnershipPercent] = useState("0");
-  const [ownerDate, setOwnerDate] = useState(new Date().toISOString().split("T")[0]);
 
   const { data: owners, isLoading } = useQuery<EntityOwnerInfo[]>({
     queryKey: ["/api/entities", entityId, "owners"],
@@ -73,7 +72,6 @@ function OwnersTab({ entityId }: { entityId: string }) {
       const payload: Record<string, unknown> = {
         ownerType,
         ownershipPercent,
-        date: ownerDate || null,
       };
       if (ownerType === "account") {
         payload.ownerAccountId = parseInt(selectedOwnerId);
@@ -136,17 +134,6 @@ function OwnersTab({ entityId }: { entityId: string }) {
               <DialogTitle>Add Owner</DialogTitle>
             </DialogHeader>
             <div className="space-y-4 pt-4">
-              <div className="space-y-2">
-                <Label htmlFor="ownerDate">Date</Label>
-                <Input
-                  id="ownerDate"
-                  type="date"
-                  value={ownerDate}
-                  onChange={e => setOwnerDate(e.target.value)}
-                  data-testid="input-owner-date"
-                />
-              </div>
-
               <div className="space-y-2">
                 <Label>Owner Type</Label>
                 <RadioGroup value={ownerType} onValueChange={v => { setOwnerType(v); setSelectedOwnerId(""); }} className="flex gap-4">

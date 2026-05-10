@@ -143,7 +143,7 @@ export interface IStorage {
   updateEntity(id: number, data: UpdateEntity): Promise<EntityWithDetails | undefined>;
   deleteEntity(id: number): Promise<boolean>;
   getEntityOwners(entityId: number): Promise<EntityOwnerWithDetails[]>;
-  addEntityOwner(entityId: number, ownerType: string, ownerAccountId: number | null, ownerEntityId: number | null, ownershipPercent: string, date: string | null): Promise<EntityOwnerWithDetails>;
+  addEntityOwner(entityId: number, ownerType: string, ownerAccountId: number | null, ownerEntityId: number | null, ownershipPercent: string): Promise<EntityOwnerWithDetails>;
   removeEntityOwner(ownerId: number): Promise<boolean>;
   getEntityManagers(entityId: number): Promise<EntityManagerWithAccount[]>;
   addEntityManager(entityId: number, accountId: number): Promise<EntityManagerWithAccount>;
@@ -862,14 +862,13 @@ export class DatabaseStorage implements IStorage {
     return result;
   }
 
-  async addEntityOwner(entityId: number, ownerType: string, ownerAccountId: number | null, ownerEntityId: number | null, ownershipPercent: string, date: string | null): Promise<EntityOwnerWithDetails> {
+  async addEntityOwner(entityId: number, ownerType: string, ownerAccountId: number | null, ownerEntityId: number | null, ownershipPercent: string): Promise<EntityOwnerWithDetails> {
     const [owner] = await db.insert(entityOwners).values({
       entityId,
       ownerType,
       ownerAccountId,
       ownerEntityId,
       ownershipPercent,
-      date,
     }).returning();
     let ownerAccount = null;
     let ownerEntity = null;

@@ -204,7 +204,6 @@ export interface EntityOwnerInfo {
   ownerAccountId: number | null;
   ownerEntityId: number | null;
   ownershipPercent: string | null;
-  date: string | null;
   createdAt: string;
   ownerAccount?: { id: number; email: string; firstName: string; lastName: string } | null;
   ownerEntity?: { id: number; name: string; entityType: string } | null;

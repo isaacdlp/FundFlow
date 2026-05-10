@@ -731,7 +731,6 @@ paths:
                 ownerAccountId: { type: integer, nullable: true }
                 ownerEntityId: { type: integer, nullable: true }
                 ownershipPercent: { type: string }
-                date: { type: string, format: date }
       responses: { '201': { description: Added } }
 
   /api/entities/{id}/owners/{ownerId}:

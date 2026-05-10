@@ -90,7 +90,6 @@ describe("Entity owners", () => {
           ownerType: "account",
           ownerAccountId: 2,
           ownershipPercent: "50",
-          date: "2024-01-01",
         });
       expect(res.status).toBe(201);
       expect(mockStorage.addEntityOwner).toHaveBeenCalledWith(
@@ -99,7 +98,6 @@ describe("Entity owners", () => {
         2,
         null,
         "50",
-        "2024-01-01",
       );
     });
 

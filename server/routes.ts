@@ -1095,7 +1095,7 @@ export async function registerRoutes(
       }
     }
 
-    const { ownerType, ownerAccountId, ownerEntityId, ownershipPercent, date } = req.body;
+    const { ownerType, ownerAccountId, ownerEntityId, ownershipPercent } = req.body;
     if (!ownerType || !["account", "entity"].includes(ownerType)) {
       return res.status(400).json({ message: "ownerType must be 'account' or 'entity'" });
     }
@@ -1114,8 +1114,7 @@ export async function registerRoutes(
       ownerType,
       ownerType === "account" ? ownerAccountId : null,
       ownerType === "entity" ? ownerEntityId : null,
-      String(pct),
-      date || null
+      String(pct)
     );
     res.status(201).json(owner);
   });

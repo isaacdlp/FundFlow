@@ -154,7 +154,6 @@ export const entityOwners = pgTable("entity_owners", {
   ownerAccountId: integer("owner_account_id").references(() => accounts.id, { onDelete: "cascade" }),
   ownerEntityId: integer("owner_entity_id").references(() => entities.id, { onDelete: "cascade" }),
   ownershipPercent: numeric("ownership_percent", { precision: 7, scale: 4 }).default("0"),
-  date: date("date"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
