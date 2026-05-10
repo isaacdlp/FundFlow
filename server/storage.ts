@@ -1268,15 +1268,31 @@ export class DatabaseStorage implements IStorage {
     const existingAccounts = await db.select().from(accounts);
     if (existingAccounts.length === 0) {
       const bcrypt = await import("bcrypt");
-      const hash = await bcrypt.hash("password123", 10);
       const adminHash = await bcrypt.hash("ioYOU&*HjEE", 10);
+      const isProduction = process.env.NODE_ENV === "production";
 
+      const adminAccount = {
+        email: "isaac@conexo.vc", passwordHash: adminHash,
+        firstName: "Isaac", lastName: "Admin",
+        profileComplete: false,
+      };
+
+      // Production gets only the admin account on a clean database.
+      // Development gets demo accounts for manual testing.
+      if (isProduction) {
+        const inserted = await db.insert(accounts).values([adminAccount]).returning();
+        const [adminRole] = await db.select().from(roles).where(eq(roles.name, "admin"));
+        if (adminRole && inserted[0]) {
+          await db.insert(accountRoles).values({
+            accountId: inserted[0].id, roleId: adminRole.id,
+          }).onConflictDoNothing();
+        }
+        return;
+      }
+
+      const hash = await bcrypt.hash("password123", 10);
       const seedAccounts = [
-        {
-          email: "isaac@conexo.vc", passwordHash: adminHash,
-          firstName: "Isaac", lastName: "Admin",
-          profileComplete: false,
-        },
+        adminAccount,
         {
           email: "adrian.montoya@gmail.com", passwordHash: hash,
           firstName: "Adrian", lastName: "Montoya Garcia",
