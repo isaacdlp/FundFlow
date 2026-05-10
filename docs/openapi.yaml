@@ -1019,7 +1019,7 @@ components:
         cash: { type: string, description: "DERIVED. = sum(member.totalCalled) − sum(asset.cost). Returned, never stored." }
         assetValue: { type: string, description: "DERIVED. = sum(asset.currentValue) where asset.currentValue is its latest valuation (or cost if none)." }
         currentValue: { type: string, description: "DERIVED. = cash + assetValue." }
-        autoDeploy: { type: boolean, description: "When true, every new investment added to the SPV is auto-called (totalCalled = committed) and the capital is added to the default asset's cost (at original cost, not current value). Requires a default asset; otherwise POST /members returns 400." }
+        autoDeploy: { type: boolean, description: "When true, every new investment added to the SPV is auto-called for its NET capital (totalCalled = committed − managementFee − otherFee) and that net amount is added to the default asset's cost (at original cost, not current value). Fees stay on the member as fees and are not deployed. Requires a default asset; otherwise POST /members returns 400." }
         members:
           type: array
           items: { $ref: '#/components/schemas/SpvMember' }

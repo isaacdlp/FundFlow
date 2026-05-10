@@ -724,18 +724,22 @@ export class DatabaseStorage implements IStorage {
 
     const member = await db.transaction(async (tx) => {
       const [spvRow] = await tx.select().from(spvs).where(eq(spvs.id, spvId));
-      // AutoDeploy: auto-call the full commitment and deploy into the default asset
+      // AutoDeploy: auto-call the net capital (committed − fees) and deploy it into the default asset
       if (spvRow?.autoDeploy) {
         const committed = parseFloat(values.committed ?? "0");
-        if (committed > 0) {
+        const mgmtFee = parseFloat(values.managementFee ?? "0");
+        const otherFee = parseFloat(values.otherFee ?? "0");
+        const capital = Math.max(0, committed - mgmtFee - otherFee);
+        // AutoDeploy always overrides totalCalled to match the net capital, even when zero.
+        values.totalCalled = capital.toFixed(2);
+        if (capital > 0) {
           const [defaultAsset] = await tx.select().from(spvAssets)
             .where(and(eq(spvAssets.spvId, spvId), eq(spvAssets.isDefault, true)));
           if (!defaultAsset) {
             throw new Error("AutoDeploy is enabled but the SPV has no default asset.");
           }
-          values.totalCalled = committed.toFixed(2);
           const [inserted] = await tx.insert(spvMembers).values(values).returning();
-          const newCost = (parseFloat(defaultAsset.cost || "0") + committed).toFixed(2);
+          const newCost = (parseFloat(defaultAsset.cost || "0") + capital).toFixed(2);
           await tx.update(spvAssets).set({ cost: newCost })
             .where(eq(spvAssets.id, defaultAsset.id));
           return inserted;
