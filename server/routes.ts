@@ -814,9 +814,9 @@ export async function registerRoutes(
     res.json(members);
   });
 
-  function validateInvestmentFields(body: any): { ok: true; data: { initialValue?: string; currentValue?: string; distributions?: string; feesPaid?: string; ownershipPercent?: string | null; purchaseDate?: string | null } } | { ok: false; error: string } {
+  function validateInvestmentFields(body: any): { ok: true; data: { committed?: string; managementFee?: string; otherFee?: string; totalCalled?: string; distributed?: string; currentValue?: string; ownershipPercent?: string | null; date?: string | null } } | { ok: false; error: string } {
     const out: any = {};
-    for (const f of ["initialValue", "currentValue", "distributions", "feesPaid"] as const) {
+    for (const f of ["committed", "managementFee", "otherFee", "totalCalled", "distributed", "currentValue"] as const) {
       if (body[f] === undefined || body[f] === null || body[f] === "") continue;
       const n = parseFloat(String(body[f]));
       if (!isFinite(n) || n < 0) {
@@ -835,15 +835,15 @@ export async function registerRoutes(
         out.ownershipPercent = n.toFixed(4);
       }
     }
-    if (body.purchaseDate !== undefined) {
-      if (body.purchaseDate === null || body.purchaseDate === "") {
-        out.purchaseDate = null;
+    if (body.date !== undefined) {
+      if (body.date === null || body.date === "") {
+        out.date = null;
       } else {
-        const d = new Date(String(body.purchaseDate));
+        const d = new Date(String(body.date));
         if (isNaN(d.getTime())) {
-          return { ok: false, error: "purchaseDate must be a valid date (YYYY-MM-DD)" };
+          return { ok: false, error: "date must be a valid date (YYYY-MM-DD)" };
         }
-        out.purchaseDate = String(body.purchaseDate);
+        out.date = String(body.date);
       }
     }
     return { ok: true, data: out };

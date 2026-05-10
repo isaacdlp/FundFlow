@@ -55,7 +55,7 @@ describe("SPV members", () => {
       mockStorage.getOrganization.mockResolvedValue(asOrganizerOf(spvA.organizationId));
       const res = await agent
         .post(`/api/spvs/${spvA.id}/members`)
-        .send({ accountId: 2, initialValue: 1000 });
+        .send({ accountId: 2, committed: 1000 });
       expect(res.status).toBe(403);
     });
 
@@ -71,23 +71,23 @@ describe("SPV members", () => {
       const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
       const res = await agent
         .post(`/api/spvs/${spvA.id}/members`)
-        .send({ initialValue: 100 });
+        .send({ committed: 100 });
       expect(res.status).toBe(400);
     });
 
-    it("returns 400 on negative initialValue", async () => {
+    it("returns 400 on negative committed", async () => {
       const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
       const res = await agent
         .post(`/api/spvs/${spvA.id}/members`)
-        .send({ accountId: 2, initialValue: -1 });
+        .send({ accountId: 2, committed: -1 });
       expect(res.status).toBe(400);
     });
 
-    it("returns 400 on invalid purchaseDate", async () => {
+    it("returns 400 on invalid date", async () => {
       const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
       const res = await agent
         .post(`/api/spvs/${spvA.id}/members`)
-        .send({ accountId: 2, purchaseDate: "not-a-date" });
+        .send({ accountId: 2, date: "not-a-date" });
       expect(res.status).toBe(400);
     });
 
@@ -133,7 +133,7 @@ describe("SPV members", () => {
       });
       const res = await agent
         .post(`/api/spvs/${spvA.id}/members`)
-        .send({ accountId: fixtures.memberAccount.id, initialValue: 5000 });
+        .send({ accountId: fixtures.memberAccount.id, committed: 5000 });
       expect(res.status).toBe(201);
       expect(mockStorage.addSpvMember).toHaveBeenCalled();
     });
@@ -150,7 +150,7 @@ describe("SPV members", () => {
       });
       const res = await agent
         .post(`/api/spvs/${spvA.id}/members`)
-        .send({ entityId: 200, initialValue: 2500 });
+        .send({ entityId: 200, committed: 2500 });
       expect(res.status).toBe(201);
     });
 
@@ -205,12 +205,12 @@ describe("SPV members", () => {
       });
       const res = await agent
         .patch(`/api/spvs/${spvA.id}/members/2`)
-        .send({ distributions: 50 });
+        .send({ distributed: 50 });
       expect(res.status).toBe(200);
       expect(mockStorage.updateSpvMemberById).toHaveBeenCalledWith(
         spvA.id,
         2,
-        { distributions: "50.00" },
+        { distributed: "50.00" },
       );
     });
   });

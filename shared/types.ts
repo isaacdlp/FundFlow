@@ -125,12 +125,14 @@ export interface SpvMemberInfo {
   accountId: number | null;
   entityId: number | null;
   investorType: "account" | "entity";
-  initialValue: string | null;
+  committed: string | null;
+  managementFee: string | null;
+  otherFee: string | null;
+  totalCalled: string | null;
+  distributed: string | null;
   currentValue: string | null;
-  distributions: string | null;
-  feesPaid: string | null;
   ownershipPercent: string | null;
-  purchaseDate: string | null;
+  date: string | null;
   createdAt: string;
   account: {
     id: number;
@@ -159,10 +161,13 @@ export interface PortfolioInvestment {
   investorName: string;
   investorEmail: string | null;
   investorEntityType: string | null;
-  initialValue: string;
+  committed: string;
+  managementFee: string;
+  otherFee: string;
+  totalCalled: string;
+  distributed: string;
   currentValue: string;
-  distributions: string;
-  purchaseDate: string | null;
+  date: string | null;
 }
 
 export interface EntityInfo {

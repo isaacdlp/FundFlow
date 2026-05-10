@@ -84,9 +84,9 @@ export default function Dashboard() {
   }, [investments, search]);
 
   const summary = useMemo(() => {
-    const initial = filtered.reduce((s, i) => s + parseFloat(i.initialValue || "0"), 0);
+    const initial = filtered.reduce((s, i) => s + parseFloat(i.totalCalled || "0"), 0);
     const current = filtered.reduce((s, i) => s + parseFloat(i.currentValue || "0"), 0);
-    const distributions = filtered.reduce((s, i) => s + parseFloat(i.distributions || "0"), 0);
+    const distributions = filtered.reduce((s, i) => s + parseFloat(i.distributed || "0"), 0);
     const roi = initial > 0 ? ((current + distributions - initial) / initial) * 100 : 0;
     const moic = initial > 0 ? (current + distributions) / initial : 0;
     return { initial, current, distributions, roi, moic, count: filtered.length };
@@ -110,9 +110,9 @@ export default function Dashboard() {
         });
       }
       const g = map.get(key)!;
-      g.initial += parseFloat(inv.initialValue || "0");
+      g.initial += parseFloat(inv.totalCalled || "0");
       g.current += parseFloat(inv.currentValue || "0");
-      g.distributions += parseFloat(inv.distributions || "0");
+      g.distributions += parseFloat(inv.distributed || "0");
       g.investments.push(inv);
     }
     const arr = Array.from(map.values()).map(g => ({
@@ -161,7 +161,7 @@ export default function Dashboard() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             <div className="md:col-span-2 flex items-center gap-4">
               <div className="flex-1">
-                <p className="text-xs text-muted-foreground uppercase tracking-wider">Initial value</p>
+                <p className="text-xs text-muted-foreground uppercase tracking-wider">Total called</p>
                 {isLoading ? (
                   <Skeleton className="h-8 w-32 mt-1" />
                 ) : (
@@ -272,11 +272,11 @@ export default function Dashboard() {
                     <th className="py-2 pr-3 font-medium w-8"></th>
                     <th className="py-2 pr-3 font-medium">Name</th>
                     {isAdmin && <th className="py-2 pr-3 font-medium">Investor</th>}
-                    <th className="py-2 pr-3 font-medium text-right">Initial Value</th>
+                    <th className="py-2 pr-3 font-medium text-right">Total Called</th>
                     <th className="py-2 pr-3 font-medium text-right">Current Value</th>
-                    <th className="py-2 pr-3 font-medium text-right">Distribution</th>
+                    <th className="py-2 pr-3 font-medium text-right">Distributed</th>
                     <th className="py-2 pr-3 font-medium text-right">ROI</th>
-                    <th className="py-2 pr-3 font-medium text-right">Purchase Date</th>
+                    <th className="py-2 pr-3 font-medium text-right">Date</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -320,9 +320,9 @@ export default function Dashboard() {
                     );
                     if (isOpen) {
                       group.investments.forEach(inv => {
-                        const initial = parseFloat(inv.initialValue || "0");
+                        const initial = parseFloat(inv.totalCalled || "0");
                         const current = parseFloat(inv.currentValue || "0");
-                        const distributions = parseFloat(inv.distributions || "0");
+                        const distributions = parseFloat(inv.distributed || "0");
                         const roi = initial > 0 ? ((current + distributions - initial) / initial) * 100 : 0;
                         rows.push(
                           <tr
@@ -359,7 +359,7 @@ export default function Dashboard() {
                             <td className={`py-2 pr-3 text-right ${roi >= 0 ? "text-emerald-600" : "text-red-600"}`}>
                               {fmtPct(roi)}
                             </td>
-                            <td className="py-2 pr-3 text-right text-muted-foreground">{fmtDate(inv.purchaseDate)}</td>
+                            <td className="py-2 pr-3 text-right text-muted-foreground">{fmtDate(inv.date)}</td>
                           </tr>
                         );
                       });

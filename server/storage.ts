@@ -17,6 +17,17 @@ import {
 import crypto from "crypto";
 import bcrypt from "bcrypt";
 
+type InvestmentFields = {
+  committed?: string;
+  managementFee?: string;
+  otherFee?: string;
+  totalCalled?: string;
+  distributed?: string;
+  currentValue?: string;
+  ownershipPercent?: string | null;
+  date?: string | null;
+};
+
 if (!process.env.DATABASE_URL) {
   throw new Error("DATABASE_URL must be set");
 }
@@ -74,10 +85,13 @@ export interface PortfolioInvestment {
   investorName: string;
   investorEmail: string | null;
   investorEntityType: string | null;
-  initialValue: string;
+  committed: string;
+  managementFee: string;
+  otherFee: string;
+  totalCalled: string;
+  distributed: string;
   currentValue: string;
-  distributions: string;
-  purchaseDate: string | null;
+  date: string | null;
 }
 
 export interface EntityWithDetails extends Entity {
@@ -131,8 +145,8 @@ export interface IStorage {
   updateSpv(id: number, data: UpdateSpv): Promise<SpvWithDetails | undefined>;
   deleteSpv(id: number): Promise<boolean>;
   getSpvMembers(spvId: number): Promise<SpvMemberWithAccount[]>;
-  addSpvMember(spvId: number, investor: { accountId: number } | { entityId: number }, investment?: { initialValue?: string; currentValue?: string; distributions?: string; feesPaid?: string; ownershipPercent?: string | null; purchaseDate?: string | null }): Promise<SpvMemberWithAccount>;
-  updateSpvMemberById(spvId: number, memberId: number, investment: { initialValue?: string; currentValue?: string; distributions?: string; feesPaid?: string; ownershipPercent?: string | null; purchaseDate?: string | null }): Promise<SpvMemberWithAccount | undefined>;
+  addSpvMember(spvId: number, investor: { accountId: number } | { entityId: number }, investment?: InvestmentFields): Promise<SpvMemberWithAccount>;
+  updateSpvMemberById(spvId: number, memberId: number, investment: InvestmentFields): Promise<SpvMemberWithAccount | undefined>;
   removeSpvMemberById(spvId: number, memberId: number): Promise<boolean>;
   getPortfolio(filter?: { accountIds?: number[]; entityIds?: number[] }): Promise<PortfolioInvestment[]>;
   getEntityIdsOwnedByAccount(accountId: number): Promise<number[]>;
@@ -620,19 +634,12 @@ export class DatabaseStorage implements IStorage {
   async addSpvMember(
     spvId: number,
     investor: { accountId: number } | { entityId: number },
-    investment?: { initialValue?: string; currentValue?: string; distributions?: string; feesPaid?: string; ownershipPercent?: string | null; purchaseDate?: string | null }
+    investment?: InvestmentFields
   ): Promise<SpvMemberWithAccount> {
     const values: any = { spvId };
     if ("accountId" in investor) values.accountId = investor.accountId;
     else values.entityId = investor.entityId;
-    if (investment) {
-      if (investment.initialValue !== undefined) values.initialValue = investment.initialValue;
-      if (investment.currentValue !== undefined) values.currentValue = investment.currentValue;
-      if (investment.distributions !== undefined) values.distributions = investment.distributions;
-      if (investment.feesPaid !== undefined) values.feesPaid = investment.feesPaid;
-      if (investment.ownershipPercent !== undefined) values.ownershipPercent = investment.ownershipPercent;
-      if (investment.purchaseDate !== undefined) values.purchaseDate = investment.purchaseDate;
-    }
+    if (investment) Object.assign(values, investment);
     const [member] = await db.insert(spvMembers).values(values).returning();
 
     if ("accountId" in investor) {
@@ -647,18 +654,10 @@ export class DatabaseStorage implements IStorage {
   async updateSpvMemberById(
     spvId: number,
     memberId: number,
-    investment: { initialValue?: string; currentValue?: string; distributions?: string; feesPaid?: string; ownershipPercent?: string | null; purchaseDate?: string | null }
+    investment: InvestmentFields
   ): Promise<SpvMemberWithAccount | undefined> {
     const memberWhere = and(eq(spvMembers.spvId, spvId), eq(spvMembers.id, memberId));
-
-    const updates: any = {};
-    if (investment.initialValue !== undefined) updates.initialValue = investment.initialValue;
-    if (investment.currentValue !== undefined) updates.currentValue = investment.currentValue;
-    if (investment.distributions !== undefined) updates.distributions = investment.distributions;
-    if (investment.feesPaid !== undefined) updates.feesPaid = investment.feesPaid;
-    if (investment.ownershipPercent !== undefined) updates.ownershipPercent = investment.ownershipPercent;
-    if (investment.purchaseDate !== undefined) updates.purchaseDate = investment.purchaseDate;
-
+    const updates: any = { ...investment };
     let row;
     if (Object.keys(updates).length === 0) {
       [row] = await db.select().from(spvMembers).where(memberWhere);
@@ -716,10 +715,13 @@ export class DatabaseStorage implements IStorage {
         accountEmail: accounts.email,
         entityName: entities.name,
         entityType: entities.entityType,
-        initialValue: spvMembers.initialValue,
+        committed: spvMembers.committed,
+        managementFee: spvMembers.managementFee,
+        otherFee: spvMembers.otherFee,
+        totalCalled: spvMembers.totalCalled,
+        distributed: spvMembers.distributed,
         currentValue: spvMembers.currentValue,
-        distributions: spvMembers.distributions,
-        purchaseDate: spvMembers.purchaseDate,
+        date: spvMembers.date,
       })
       .from(spvMembers)
       .innerJoin(spvs, eq(spvs.id, spvMembers.spvId))
@@ -747,10 +749,13 @@ export class DatabaseStorage implements IStorage {
           : (r.entityName ?? ""),
         investorEmail: isAccount ? (r.accountEmail ?? null) : null,
         investorEntityType: isAccount ? null : (r.entityType ?? null),
-        initialValue: r.initialValue ?? "0",
+        committed: r.committed ?? "0",
+        managementFee: r.managementFee ?? "0",
+        otherFee: r.otherFee ?? "0",
+        totalCalled: r.totalCalled ?? "0",
+        distributed: r.distributed ?? "0",
         currentValue: r.currentValue ?? "0",
-        distributions: r.distributions ?? "0",
-        purchaseDate: r.purchaseDate ?? null,
+        date: r.date ?? null,
       };
     });
   }

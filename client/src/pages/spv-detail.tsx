@@ -31,6 +31,10 @@ const ALLOCATION_HELP: Record<string, string> = {
   "Custom": "Ownership is set explicitly per investor. Assign each investor an exact ownership percentage in the Members tab.",
 };
 
+function capitalOf(m: { committed: string | null; managementFee: string | null; otherFee: string | null }): number {
+  return Math.max(0, parseFloat(m.committed || "0") - parseFloat(m.managementFee || "0") - parseFloat(m.otherFee || "0"));
+}
+
 function computeOwnershipPercents(
   members: SpvMemberInfo[],
   method: string | null | undefined,
@@ -44,15 +48,15 @@ function computeOwnershipPercents(
     return out;
   }
   if (method === "By Capital Invested") {
-    const nets = members.map(m => Math.max(0, parseFloat(m.initialValue || "0") - parseFloat(m.feesPaid || "0")));
+    const nets = members.map(capitalOf);
     const total = nets.reduce((a, b) => a + b, 0);
     members.forEach((m, i) => { out[m.id] = total > 0 ? (nets[i] / total) * 100 : null; });
     return out;
   }
   // Default: By Commitment
-  const initials = members.map(m => Math.max(0, parseFloat(m.initialValue || "0")));
-  const total = initials.reduce((a, b) => a + b, 0);
-  members.forEach((m, i) => { out[m.id] = total > 0 ? (initials[i] / total) * 100 : null; });
+  const committeds = members.map(m => Math.max(0, parseFloat(m.committed || "0")));
+  const total = committeds.reduce((a, b) => a + b, 0);
+  members.forEach((m, i) => { out[m.id] = total > 0 ? (committeds[i] / total) * 100 : null; });
   return out;
 }
 const CURRENCIES = ["USD ($)", "EUR (\u20ac)", "GBP (\u00a3)", "CHF", "JPY (\u00a5)", "CAD ($)", "AUD ($)"];
@@ -67,15 +71,16 @@ function SpvMembersTab({ spvId, orgId, canEdit, allocationMethod }: { spvId: str
   const [investorType, setInvestorType] = useState<"account" | "entity">("account");
   const [selectedAccountId, setSelectedAccountId] = useState("");
   const [selectedEntityId, setSelectedEntityId] = useState("");
-  const [newInitialValue, setNewInitialValue] = useState("");
+  const [newDate, setNewDate] = useState("");
+  const [newCommitted, setNewCommitted] = useState("");
+  const [newManagementFee, setNewManagementFee] = useState("");
+  const [newOtherFee, setNewOtherFee] = useState("");
+  const [newTotalCalled, setNewTotalCalled] = useState("");
+  const [newDistributed, setNewDistributed] = useState("");
   const [newCurrentValue, setNewCurrentValue] = useState("");
-  const [newDistributions, setNewDistributions] = useState("");
-  const [newFeesPaid, setNewFeesPaid] = useState("");
   const [newOwnershipPercent, setNewOwnershipPercent] = useState("");
-  const [newPurchaseDate, setNewPurchaseDate] = useState("");
   const [editingMemberId, setEditingMemberId] = useState<number | null>(null);
-  const [editValues, setEditValues] = useState<{ initialValue: string; currentValue: string; distributions: string; feesPaid: string; ownershipPercent: string; purchaseDate: string }>({ initialValue: "", currentValue: "", distributions: "", feesPaid: "", ownershipPercent: "", purchaseDate: "" });
-  const showFees = allocationMethod === "By Capital Invested";
+  const [editValues, setEditValues] = useState<{ date: string; committed: string; managementFee: string; otherFee: string; totalCalled: string; distributed: string; currentValue: string; ownershipPercent: string }>({ date: "", committed: "", managementFee: "", otherFee: "", totalCalled: "", distributed: "", currentValue: "", ownershipPercent: "" });
   const showOwnership = allocationMethod === "Custom";
 
   const { data: spvMembers, isLoading: membersLoading } = useQuery<SpvMemberInfo[]>({
@@ -96,7 +101,7 @@ function SpvMembersTab({ spvId, orgId, canEdit, allocationMethod }: { spvId: str
   const availableEntities = entitiesList || [];
 
   const addMutation = useMutation({
-    mutationFn: async (payload: { accountId?: number; entityId?: number; initialValue: string; currentValue: string; distributions: string; feesPaid: string; ownershipPercent: string | null; purchaseDate: string | null }) => {
+    mutationFn: async (payload: { accountId?: number; entityId?: number; date: string | null; committed: string; managementFee: string; otherFee: string; totalCalled: string; distributed: string; currentValue: string; ownershipPercent: string | null }) => {
       const res = await apiRequest("POST", `/api/spvs/${spvId}/members`, payload);
       return res.json();
     },
@@ -105,7 +110,7 @@ function SpvMembersTab({ spvId, orgId, canEdit, allocationMethod }: { spvId: str
       queryClient.invalidateQueries({ queryKey: ["/api/spvs", spvId] });
       queryClient.invalidateQueries({ predicate: q => typeof q.queryKey[0] === "string" && (q.queryKey[0] as string).startsWith("/api/portfolio") });
       setSelectedAccountId(""); setSelectedEntityId("");
-      setNewInitialValue(""); setNewCurrentValue(""); setNewDistributions(""); setNewFeesPaid(""); setNewOwnershipPercent(""); setNewPurchaseDate("");
+      setNewDate(""); setNewCommitted(""); setNewManagementFee(""); setNewOtherFee(""); setNewTotalCalled(""); setNewDistributed(""); setNewCurrentValue(""); setNewOwnershipPercent("");
       toast({ title: "Investment added to SPV" });
     },
     onError: (error: Error) => {
@@ -114,7 +119,7 @@ function SpvMembersTab({ spvId, orgId, canEdit, allocationMethod }: { spvId: str
   });
 
   const updateMutation = useMutation({
-    mutationFn: async (payload: { memberId: number; initialValue: string; currentValue: string; distributions: string; feesPaid: string; ownershipPercent: string | null; purchaseDate: string | null }) => {
+    mutationFn: async (payload: { memberId: number; date: string | null; committed: string; managementFee: string; otherFee: string; totalCalled: string; distributed: string; currentValue: string; ownershipPercent: string | null }) => {
       const { memberId, ...rest } = payload;
       const res = await apiRequest("PATCH", `/api/spvs/${spvId}/members/${memberId}`, rest);
       return res.json();
@@ -149,12 +154,14 @@ function SpvMembersTab({ spvId, orgId, canEdit, allocationMethod }: { spvId: str
   const startEdit = (m: SpvMemberInfo) => {
     setEditingMemberId(m.id);
     setEditValues({
-      initialValue: m.initialValue || "0",
+      date: m.date || "",
+      committed: m.committed || "0",
+      managementFee: m.managementFee || "0",
+      otherFee: m.otherFee || "0",
+      totalCalled: m.totalCalled || "0",
+      distributed: m.distributed || "0",
       currentValue: m.currentValue || "0",
-      distributions: m.distributions || "0",
-      feesPaid: m.feesPaid || "0",
       ownershipPercent: m.ownershipPercent != null ? String(parseFloat(m.ownershipPercent)) : "",
-      purchaseDate: m.purchaseDate || "",
     });
   };
 
@@ -229,27 +236,33 @@ function SpvMembersTab({ spvId, orgId, canEdit, allocationMethod }: { spvId: str
           </div>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
             <div className="space-y-1">
-              <Label className="text-xs">{showOwnership ? "Capital Called" : "Commitment / Capital Called"}</Label>
-              <Input type="number" step="0.01" placeholder="0.00" value={newInitialValue} onChange={e => setNewInitialValue(e.target.value)} data-testid="input-new-initial-value" />
+              <Label className="text-xs">Date</Label>
+              <Input type="date" value={newDate} onChange={e => setNewDate(e.target.value)} data-testid="input-new-date" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Committed</Label>
+              <Input type="number" step="0.01" placeholder="0.00" value={newCommitted} onChange={e => setNewCommitted(e.target.value)} data-testid="input-new-committed" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Management Fee</Label>
+              <Input type="number" step="0.01" placeholder="0.00" value={newManagementFee} onChange={e => setNewManagementFee(e.target.value)} data-testid="input-new-management-fee" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Other Fee</Label>
+              <Input type="number" step="0.01" placeholder="0.00" value={newOtherFee} onChange={e => setNewOtherFee(e.target.value)} data-testid="input-new-other-fee" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Total Called</Label>
+              <Input type="number" step="0.01" placeholder="0.00" value={newTotalCalled} onChange={e => setNewTotalCalled(e.target.value)} data-testid="input-new-total-called" />
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs">Distributed</Label>
+              <Input type="number" step="0.01" placeholder="0.00" value={newDistributed} onChange={e => setNewDistributed(e.target.value)} data-testid="input-new-distributed" />
             </div>
             <div className="space-y-1">
               <Label className="text-xs">Current Value</Label>
               <Input type="number" step="0.01" placeholder="0.00" value={newCurrentValue} onChange={e => setNewCurrentValue(e.target.value)} data-testid="input-new-current-value" />
             </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Distributions</Label>
-              <Input type="number" step="0.01" placeholder="0.00" value={newDistributions} onChange={e => setNewDistributions(e.target.value)} data-testid="input-new-distributions" />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Purchase Date</Label>
-              <Input type="date" value={newPurchaseDate} onChange={e => setNewPurchaseDate(e.target.value)} data-testid="input-new-purchase-date" />
-            </div>
-            {showFees && (
-              <div className="space-y-1">
-                <Label className="text-xs">Fees Paid</Label>
-                <Input type="number" step="0.01" placeholder="0.00" value={newFeesPaid} onChange={e => setNewFeesPaid(e.target.value)} data-testid="input-new-fees-paid" />
-              </div>
-            )}
             {showOwnership && (
               <div className="space-y-1">
                 <Label className="text-xs">Ownership %</Label>
@@ -257,17 +270,22 @@ function SpvMembersTab({ spvId, orgId, canEdit, allocationMethod }: { spvId: str
               </div>
             )}
           </div>
+          <p className="text-xs text-muted-foreground">
+            Capital = Committed − (Management Fee + Other Fee). Commitment Remaining = Capital − Total Called. Both are derived automatically.
+          </p>
           <div className="flex justify-end">
             <Button
               onClick={() => {
                 if (!canSubmit) return;
                 const base = {
-                  initialValue: newInitialValue || "0",
-                  currentValue: newCurrentValue || newInitialValue || "0",
-                  distributions: newDistributions || "0",
-                  feesPaid: newFeesPaid || "0",
+                  date: newDate || null,
+                  committed: newCommitted || "0",
+                  managementFee: newManagementFee || "0",
+                  otherFee: newOtherFee || "0",
+                  totalCalled: newTotalCalled || "0",
+                  distributed: newDistributed || "0",
+                  currentValue: newCurrentValue || newCommitted || "0",
                   ownershipPercent: showOwnership && newOwnershipPercent !== "" ? newOwnershipPercent : null,
-                  purchaseDate: newPurchaseDate || null,
                 };
                 if (investorType === "account") {
                   addMutation.mutate({ accountId: parseInt(selectedAccountId), ...base });
@@ -291,10 +309,15 @@ function SpvMembersTab({ spvId, orgId, canEdit, allocationMethod }: { spvId: str
           <div className="space-y-3">
             {spvMembers.map(member => {
               const isEditing = editingMemberId === member.id;
-              const initial = parseFloat(member.initialValue || "0");
+              const committed = parseFloat(member.committed || "0");
+              const mgmtFee = parseFloat(member.managementFee || "0");
+              const otherFee = parseFloat(member.otherFee || "0");
+              const capital = Math.max(0, committed - mgmtFee - otherFee);
+              const totalCalled = parseFloat(member.totalCalled || "0");
+              const commitmentRemaining = capital - totalCalled;
               const current = parseFloat(member.currentValue || "0");
-              const dist = parseFloat(member.distributions || "0");
-              const roi = initial > 0 ? ((current + dist - initial) / initial) * 100 : 0;
+              const dist = parseFloat(member.distributed || "0");
+              const roi = totalCalled > 0 ? ((current + dist - totalCalled) / totalCalled) * 100 : 0;
               const ownership = ownershipPercentsMap[member.id];
               const isAccount = member.investorType === "account" && member.account;
               const isEntity = member.investorType === "entity" && member.entity;
@@ -354,27 +377,33 @@ function SpvMembersTab({ spvId, orgId, canEdit, allocationMethod }: { spvId: str
                     <div className="mt-3 space-y-3">
                       <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
                         <div className="space-y-1">
-                          <Label className="text-xs">{showOwnership ? "Capital Called" : "Commitment / Capital Called"}</Label>
-                          <Input type="number" step="0.01" value={editValues.initialValue} onChange={e => setEditValues(v => ({ ...v, initialValue: e.target.value }))} data-testid={`input-edit-initial-${member.id}`} />
+                          <Label className="text-xs">Date</Label>
+                          <Input type="date" value={editValues.date} onChange={e => setEditValues(v => ({ ...v, date: e.target.value }))} data-testid={`input-edit-date-${member.id}`} />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Committed</Label>
+                          <Input type="number" step="0.01" value={editValues.committed} onChange={e => setEditValues(v => ({ ...v, committed: e.target.value }))} data-testid={`input-edit-committed-${member.id}`} />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Management Fee</Label>
+                          <Input type="number" step="0.01" value={editValues.managementFee} onChange={e => setEditValues(v => ({ ...v, managementFee: e.target.value }))} data-testid={`input-edit-management-fee-${member.id}`} />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Other Fee</Label>
+                          <Input type="number" step="0.01" value={editValues.otherFee} onChange={e => setEditValues(v => ({ ...v, otherFee: e.target.value }))} data-testid={`input-edit-other-fee-${member.id}`} />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Total Called</Label>
+                          <Input type="number" step="0.01" value={editValues.totalCalled} onChange={e => setEditValues(v => ({ ...v, totalCalled: e.target.value }))} data-testid={`input-edit-total-called-${member.id}`} />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Distributed</Label>
+                          <Input type="number" step="0.01" value={editValues.distributed} onChange={e => setEditValues(v => ({ ...v, distributed: e.target.value }))} data-testid={`input-edit-distributed-${member.id}`} />
                         </div>
                         <div className="space-y-1">
                           <Label className="text-xs">Current Value</Label>
                           <Input type="number" step="0.01" value={editValues.currentValue} onChange={e => setEditValues(v => ({ ...v, currentValue: e.target.value }))} data-testid={`input-edit-current-${member.id}`} />
                         </div>
-                        <div className="space-y-1">
-                          <Label className="text-xs">Distributions</Label>
-                          <Input type="number" step="0.01" value={editValues.distributions} onChange={e => setEditValues(v => ({ ...v, distributions: e.target.value }))} data-testid={`input-edit-dist-${member.id}`} />
-                        </div>
-                        <div className="space-y-1">
-                          <Label className="text-xs">Purchase Date</Label>
-                          <Input type="date" value={editValues.purchaseDate} onChange={e => setEditValues(v => ({ ...v, purchaseDate: e.target.value }))} data-testid={`input-edit-date-${member.id}`} />
-                        </div>
-                        {showFees && (
-                          <div className="space-y-1">
-                            <Label className="text-xs">Fees Paid</Label>
-                            <Input type="number" step="0.01" value={editValues.feesPaid} onChange={e => setEditValues(v => ({ ...v, feesPaid: e.target.value }))} data-testid={`input-edit-fees-${member.id}`} />
-                          </div>
-                        )}
                         {showOwnership && (
                           <div className="space-y-1">
                             <Label className="text-xs">Ownership %</Label>
@@ -388,37 +417,57 @@ function SpvMembersTab({ spvId, orgId, canEdit, allocationMethod }: { spvId: str
                         </Button>
                         <Button size="sm" onClick={() => updateMutation.mutate({
                           memberId: member.id,
-                          initialValue: editValues.initialValue,
+                          date: editValues.date || null,
+                          committed: editValues.committed,
+                          managementFee: editValues.managementFee,
+                          otherFee: editValues.otherFee,
+                          totalCalled: editValues.totalCalled,
+                          distributed: editValues.distributed,
                           currentValue: editValues.currentValue,
-                          distributions: editValues.distributions,
-                          feesPaid: editValues.feesPaid,
                           ownershipPercent: showOwnership ? (editValues.ownershipPercent === "" ? null : editValues.ownershipPercent) : null,
-                          purchaseDate: editValues.purchaseDate || null,
                         })} disabled={updateMutation.isPending} data-testid={`button-save-edit-${member.id}`}>
                           <Save className="h-4 w-4 mr-1" /> {updateMutation.isPending ? "Saving..." : "Save"}
                         </Button>
                       </div>
                     </div>
                   ) : (
-                    <div className="mt-3 grid grid-cols-2 md:grid-cols-6 gap-3 text-xs">
+                    <div className="mt-3 grid grid-cols-2 md:grid-cols-5 gap-3 text-xs">
                       <div>
-                        <p className="text-muted-foreground">{showOwnership ? "Capital Called" : "Commitment"}</p>
-                        <p className="font-medium" data-testid={`text-initial-${member.id}`}>${formatCurrency(member.initialValue)}</p>
+                        <p className="text-muted-foreground">Date</p>
+                        <p className="font-medium" data-testid={`text-date-${member.id}`}>{member.date || "—"}</p>
                       </div>
                       <div>
-                        <p className="text-muted-foreground">Current</p>
+                        <p className="text-muted-foreground">Committed</p>
+                        <p className="font-medium" data-testid={`text-committed-${member.id}`}>${formatCurrency(member.committed)}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Management Fee</p>
+                        <p className="font-medium" data-testid={`text-management-fee-${member.id}`}>${formatCurrency(member.managementFee)}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Other Fee</p>
+                        <p className="font-medium" data-testid={`text-other-fee-${member.id}`}>${formatCurrency(member.otherFee)}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Capital <span className="text-[10px]">(derived)</span></p>
+                        <p className="font-medium" data-testid={`text-capital-${member.id}`}>${capital.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Total Called</p>
+                        <p className="font-medium" data-testid={`text-total-called-${member.id}`}>${formatCurrency(member.totalCalled)}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Commitment Remaining <span className="text-[10px]">(derived)</span></p>
+                        <p className="font-medium" data-testid={`text-commitment-remaining-${member.id}`}>${commitmentRemaining.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Distributed</p>
+                        <p className="font-medium" data-testid={`text-distributed-${member.id}`}>${formatCurrency(member.distributed)}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Current Value</p>
                         <p className="font-medium" data-testid={`text-current-${member.id}`}>${formatCurrency(member.currentValue)}</p>
                       </div>
-                      <div>
-                        <p className="text-muted-foreground">Distributions</p>
-                        <p className="font-medium">${formatCurrency(member.distributions)}</p>
-                      </div>
-                      {showFees && (
-                        <div>
-                          <p className="text-muted-foreground">Fees Paid</p>
-                          <p className="font-medium" data-testid={`text-fees-${member.id}`}>${formatCurrency(member.feesPaid)}</p>
-                        </div>
-                      )}
                       <div>
                         <p className="text-muted-foreground">Ownership</p>
                         <p className="font-medium" data-testid={`text-ownership-${member.id}`}>
@@ -428,10 +477,6 @@ function SpvMembersTab({ spvId, orgId, canEdit, allocationMethod }: { spvId: str
                       <div>
                         <p className="text-muted-foreground">ROI</p>
                         <p className={`font-medium ${roi >= 0 ? "text-emerald-600" : "text-red-600"}`}>{roi.toFixed(2)}%</p>
-                      </div>
-                      <div>
-                        <p className="text-muted-foreground">Purchase Date</p>
-                        <p className="font-medium">{member.purchaseDate || "—"}</p>
                       </div>
                     </div>
                   )}
