@@ -1,5 +1,8 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { type Server } from "http";
+import { readFileSync } from "fs";
+import path from "path";
+import yaml from "js-yaml";
 import { storage } from "./storage";
 import { insertAccountSchema, updateAccountSchema, insertOrganizationSchema, updateOrganizationSchema, insertSpvSchema, updateSpvSchema, insertEntitySchema, updateEntitySchema, createApiTokenSchema } from "@shared/schema";
 import { ZodError } from "zod";
@@ -119,6 +122,48 @@ export async function registerRoutes(
   // clients can hit any /api/* endpoint with `Authorization: Bearer ff_...`
   // and have all downstream permission checks see them as the token's owner.
   app.use(bearerAuth);
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // OpenAPI spec + Redoc viewer (public — no auth required so external agents
+  // and SDK generators can discover the API before authenticating).
+  // Source of truth is docs/openapi.yaml; we parse it once at boot.
+  // ─────────────────────────────────────────────────────────────────────────
+  const openapiYamlPath = path.resolve(import.meta.dirname, "..", "docs", "openapi.yaml");
+  let openapiYamlText = "";
+  let openapiJson: unknown = {};
+  try {
+    openapiYamlText = readFileSync(openapiYamlPath, "utf8");
+    openapiJson = yaml.load(openapiYamlText) ?? {};
+  } catch (e) {
+    console.error("[openapi] failed to load docs/openapi.yaml:", e);
+  }
+
+  app.get("/api/openapi.yaml", (_req, res) => {
+    res.type("application/yaml").send(openapiYamlText);
+  });
+
+  app.get("/api/openapi.json", (_req, res) => {
+    res.json(openapiJson);
+  });
+
+  // Redoc — single-page HTML viewer that renders the spec for humans.
+  // Loaded from a CDN so we don't add another npm dep.
+  app.get("/docs", (_req, res) => {
+    res.type("html").send(`<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>FundFlow API</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link href="https://fonts.googleapis.com/css?family=Montserrat:300,400,700|Roboto:300,400,700" rel="stylesheet" />
+    <style>body { margin: 0; padding: 0; }</style>
+  </head>
+  <body>
+    <redoc spec-url="/api/openapi.json"></redoc>
+    <script src="https://cdn.redoc.ly/redoc/latest/bundles/redoc.standalone.js"></script>
+  </body>
+</html>`);
+  });
 
   app.post("/api/auth/login", async (req, res) => {
     const { email, password } = req.body;

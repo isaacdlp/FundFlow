@@ -155,7 +155,11 @@ All token CRUD requires admin role + a real session cookie (no bearer auth, even
 ## Authentication & Authorization
 - Session-based auth using express-session with connect-pg-simple store
 - **Bearer token auth** for programmatic API clients — see "API Tokens" above. The `bearerAuth` middleware runs before all routes; if a valid `Authorization: Bearer ff_...` header is present, the request is treated as the token-owning account for the rest of the pipeline (including `requireAuth` and `requireAdmin`). Session cookies always win if both are present. Token CRUD (`GET/POST/DELETE /api/auth/tokens`) and `POST /api/auth/change-password` require a real session cookie — bearer tokens are rejected with 401, and token CRUD additionally requires the admin role (`requireSessionAdmin`).
-- **OpenAPI spec** lives at `docs/openapi.yaml` and documents every REST endpoint, both auth methods, all schemas, and the admin/permission rules.
+- **OpenAPI spec** lives at `docs/openapi.yaml` and documents every REST endpoint, both auth methods, all schemas, and the admin/permission rules. Served at runtime as:
+  - `GET /api/openapi.yaml` — raw YAML (source of truth)
+  - `GET /api/openapi.json` — parsed JSON (best for LLM agents, SDK generators, Postman/Insomnia imports)
+  - `GET /docs` — Redoc HTML viewer for humans
+  All three are public (no auth) so external clients can discover the API before logging in.
 - Login page at root when unauthenticated; session stored in PostgreSQL
 - Auth endpoints: POST /api/auth/login, POST /api/auth/logout, GET /api/auth/me
 - Public routes (no auth required): /api/auth/login, /api/auth/me, /api/organizations/by-slug/:slug, /api/invites/:token, /api/invites/:token/accept, /api/organizations/:id/members/request, POST /api/accounts

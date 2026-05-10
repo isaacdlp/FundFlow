@@ -35,6 +35,8 @@ servers:
     description: Same-origin (web app and API share a host)
 
 tags:
+  - name: Discovery
+    description: API discovery — fetch this OpenAPI spec or browse the docs UI
   - name: Auth
     description: Login, logout, password management, and the current account
   - name: API Tokens
@@ -62,6 +64,47 @@ security:
   - bearerAuth: []
 
 paths:
+  # ──── Discovery (public) ──────────────────────────────────────────────────
+  /api/openapi.json:
+    get:
+      tags: [Discovery]
+      summary: This OpenAPI 3.1 spec as JSON
+      description: |
+        Public — no authentication required. Use this to bootstrap an API
+        client (e.g. Postman import, openapi-generator, or an LLM agent's
+        function-calling layer).
+      security: []
+      responses:
+        '200':
+          description: OpenAPI spec
+          content:
+            application/json:
+              schema: { type: object }
+
+  /api/openapi.yaml:
+    get:
+      tags: [Discovery]
+      summary: This OpenAPI 3.1 spec as YAML (source of truth)
+      security: []
+      responses:
+        '200':
+          description: OpenAPI spec
+          content:
+            application/yaml:
+              schema: { type: string }
+
+  /docs:
+    get:
+      tags: [Discovery]
+      summary: Human-readable API documentation (Redoc UI)
+      security: []
+      responses:
+        '200':
+          description: HTML page rendering the OpenAPI spec
+          content:
+            text/html:
+              schema: { type: string }
+
   # ──── Auth ────────────────────────────────────────────────────────────────
   /api/auth/login:
     post:
