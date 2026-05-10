@@ -948,14 +948,15 @@ export class DatabaseStorage implements IStorage {
     for (const [k, v] of Object.entries(data)) if (v !== undefined) updates[k] = v;
     if (Object.keys(updates).length === 0) return this.getSpvAsset(spvId, assetId);
     const ok = await db.transaction(async (tx) => {
+      // Clear other defaults FIRST to avoid the partial unique index transiently seeing two true rows.
+      if (updates.isDefault === true) {
+        await tx.update(spvAssets).set({ isDefault: false })
+          .where(and(eq(spvAssets.spvId, spvId), sql`${spvAssets.id} <> ${assetId}`, eq(spvAssets.isDefault, true)));
+      }
       const [updated] = await tx.update(spvAssets).set(updates)
         .where(and(eq(spvAssets.spvId, spvId), eq(spvAssets.id, assetId)))
         .returning();
       if (!updated) return false;
-      if (updates.isDefault === true) {
-        await tx.update(spvAssets).set({ isDefault: false })
-          .where(and(eq(spvAssets.spvId, spvId), sql`${spvAssets.id} <> ${assetId}`));
-      }
       return true;
     });
     if (!ok) return undefined;
