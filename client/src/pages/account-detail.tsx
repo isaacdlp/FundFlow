@@ -1,7 +1,18 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useRoute, Link } from "wouter";
+import { useRoute, Link, useLocation } from "wouter";
 import type { AccountWithRoles } from "@shared/types";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -18,7 +29,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, Pencil, Save, X, Loader2, Mail, KeyRound, Briefcase } from "lucide-react";
+import { ArrowLeft, Pencil, Save, X, Loader2, Mail, KeyRound, Briefcase, Trash2 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
@@ -40,7 +51,8 @@ export default function AccountDetail() {
   const [, params] = useRoute("/accounts/:id");
   const accountId = params?.id;
   const { toast } = useToast();
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
+  const [, navigate] = useLocation();
   const [editing, setEditing] = useState(false);
   const [activeTab, setActiveTab] = useState("personal");
   const [currentPassword, setCurrentPassword] = useState("");
@@ -88,6 +100,20 @@ export default function AccountDetail() {
     },
     onError: (error: Error) => {
       toast({ title: "Failed to update profile", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const deleteAccountMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest("DELETE", `/api/accounts/${accountId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/accounts"] });
+      toast({ title: "Account deleted" });
+      navigate("/accounts");
+    },
+    onError: (error: Error) => {
+      toast({ title: "Failed to delete account", description: error.message, variant: "destructive" });
     },
   });
 
@@ -225,12 +251,41 @@ export default function AccountDetail() {
             ))}
           </div>
         </div>
-        <Link href={`/?accountId=${account.id}`}>
-          <Button variant="outline" className="gap-2" data-testid="button-view-portfolio">
-            <Briefcase className="h-4 w-4" />
-            View Portfolio
-          </Button>
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link href={`/?accountId=${account.id}`}>
+            <Button variant="outline" className="gap-2" data-testid="button-view-portfolio">
+              <Briefcase className="h-4 w-4" />
+              View Portfolio
+            </Button>
+          </Link>
+          {isAdmin && !isOwnAccount && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="outline" className="gap-2 text-destructive hover:text-destructive" data-testid="button-delete-account">
+                  <Trash2 className="h-4 w-4" />
+                  Delete Account
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete Account</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Are you sure you want to delete <strong>{account.firstName} {account.lastName}</strong> ({account.email})? This will remove their access and any role assignments. This action cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={() => deleteAccountMutation.mutate()}
+                    data-testid="button-confirm-delete-account"
+                  >
+                    Delete
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
+        </div>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>

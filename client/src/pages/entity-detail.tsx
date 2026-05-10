@@ -1,7 +1,19 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useRoute, Link } from "wouter";
+import { useRoute, Link, useLocation } from "wouter";
 import type { EntityInfo, EntityOwnerInfo, EntityManagerInfo, AccountWithRoles } from "@shared/types";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useAuth } from "@/hooks/use-auth";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -350,6 +362,8 @@ export default function EntityDetail() {
   const [, params] = useRoute("/entities/:id");
   const entityId = params?.id;
   const { toast } = useToast();
+  const { isAdmin } = useAuth();
+  const [, navigate] = useLocation();
   const [editing, setEditing] = useState(false);
   const [activeTab, setActiveTab] = useState("overview");
 
@@ -399,6 +413,20 @@ export default function EntityDetail() {
     },
     onError: (error: Error) => {
       toast({ title: "Failed to update entity", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const deleteEntityMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest("DELETE", `/api/entities/${entityId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/entities"] });
+      toast({ title: "Entity deleted" });
+      navigate("/entities");
+    },
+    onError: (error: Error) => {
+      toast({ title: "Failed to delete entity", description: error.message, variant: "destructive" });
     },
   });
 
@@ -479,12 +507,41 @@ export default function EntityDetail() {
             <Badge variant="outline">{entity.ownerCount} Owner{entity.ownerCount !== 1 ? "s" : ""}</Badge>
           </div>
         </div>
-        <Link href={`/?entityId=${entity.id}`}>
-          <Button variant="outline" className="gap-2" data-testid="button-view-portfolio">
-            <Briefcase className="h-4 w-4" />
-            View Portfolio
-          </Button>
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link href={`/?entityId=${entity.id}`}>
+            <Button variant="outline" className="gap-2" data-testid="button-view-portfolio">
+              <Briefcase className="h-4 w-4" />
+              View Portfolio
+            </Button>
+          </Link>
+          {isAdmin && (
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="outline" className="gap-2 text-destructive hover:text-destructive" data-testid="button-delete-entity">
+                  <Trash2 className="h-4 w-4" />
+                  Delete Entity
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete Entity</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Are you sure you want to delete <strong>{entity.name}</strong>? This will also remove all owner and manager records associated with it. This action cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={() => deleteEntityMutation.mutate()}
+                    data-testid="button-confirm-delete-entity"
+                  >
+                    Delete
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
+        </div>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>

@@ -458,6 +458,10 @@ export async function registerRoutes(
   app.delete("/api/accounts/:id", requireAdmin as any, async (req: Request, res: Response) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    const me = await storage.getAccount(getAuthAccountId(req)!);
+    if (me && me.id === id) {
+      return res.status(400).json({ message: "You cannot delete your own account" });
+    }
     const deleted = await storage.deleteAccount(id);
     if (!deleted) return res.status(404).json({ message: "Account not found" });
     res.json({ message: "Account deleted" });

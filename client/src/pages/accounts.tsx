@@ -1,7 +1,8 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
 import type { AccountWithRoles } from "@shared/types";
 import { useAuth } from "@/hooks/use-auth";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -15,14 +16,40 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Plus, Search, ChevronRight } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { Plus, Search, ChevronRight, Trash2 } from "lucide-react";
 import { useState } from "react";
+import { useToast } from "@/hooks/use-toast";
 
 export default function Accounts() {
   const [search, setSearch] = useState("");
-  const { isAdmin } = useAuth();
+  const { isAdmin, user } = useAuth();
+  const { toast } = useToast();
   const { data: accounts, isLoading } = useQuery<AccountWithRoles[]>({
     queryKey: ["/api/accounts"],
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: number) => {
+      await apiRequest("DELETE", `/api/accounts/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/accounts"] });
+      toast({ title: "Account deleted" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Failed to delete account", description: error.message, variant: "destructive" });
+    },
   });
 
   const filtered = accounts?.filter((account) => {
@@ -83,11 +110,13 @@ export default function Accounts() {
                     <TableHead>Email</TableHead>
                     <TableHead>Roles</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead className="w-[40px]"></TableHead>
+                    <TableHead className="w-[100px] text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filtered.map((account) => (
+                  {filtered.map((account) => {
+                    const isSelf = user?.id === account.id;
+                    return (
                     <TableRow key={account.id} data-testid={`row-account-${account.id}`}>
                       <TableCell>
                         <Link href={`/accounts/${account.id}`}>
@@ -122,14 +151,43 @@ export default function Accounts() {
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <Link href={`/accounts/${account.id}`}>
-                          <Button variant="ghost" size="icon" data-testid={`button-view-account-${account.id}`}>
-                            <ChevronRight className="h-4 w-4" />
-                          </Button>
-                        </Link>
+                        <div className="flex gap-1 items-center justify-end">
+                          {isAdmin && !isSelf && (
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button variant="ghost" size="icon" data-testid={`button-delete-account-${account.id}`}>
+                                  <Trash2 className="h-4 w-4 text-destructive" />
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>Delete Account</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    Are you sure you want to delete <strong>{account.firstName} {account.lastName}</strong> ({account.email})? This will remove their access and any role assignments. This action cannot be undone.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                  <AlertDialogAction
+                                    onClick={() => deleteMutation.mutate(account.id)}
+                                    data-testid={`button-confirm-delete-account-${account.id}`}
+                                  >
+                                    Delete
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          )}
+                          <Link href={`/accounts/${account.id}`}>
+                            <Button variant="ghost" size="icon" data-testid={`button-view-account-${account.id}`}>
+                              <ChevronRight className="h-4 w-4" />
+                            </Button>
+                          </Link>
+                        </div>
                       </TableCell>
                     </TableRow>
-                  ))}
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>
