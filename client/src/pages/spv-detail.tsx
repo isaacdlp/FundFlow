@@ -492,6 +492,7 @@ function SpvAssetsTab({ spvId, canEdit, spvCash }: { spvId: string; canEdit: boo
   const [purchaseDate, setPurchaseDate] = useState("");
   const [cost, setCost] = useState("");
   const [notes, setNotes] = useState("");
+  const [isDefault, setIsDefault] = useState(false);
   const [expandedAssetId, setExpandedAssetId] = useState<number | null>(null);
   const [valDate, setValDate] = useState("");
   const [valValue, setValValue] = useState("");
@@ -511,10 +512,22 @@ function SpvAssetsTab({ spvId, canEdit, spvCash }: { spvId: string; canEdit: boo
       queryClient.invalidateQueries({ queryKey: ["/api/spvs", spvId] });
       queryClient.invalidateQueries({ queryKey: ["/api/spvs", spvId, "members"] });
       queryClient.invalidateQueries({ predicate: q => typeof q.queryKey[0] === "string" && (q.queryKey[0] as string).startsWith("/api/portfolio") });
-      setCompanyName(""); setInstrumentType("Equity"); setPurchaseDate(""); setCost(""); setNotes("");
+      setCompanyName(""); setInstrumentType("Equity"); setPurchaseDate(""); setCost(""); setNotes(""); setIsDefault(false);
       toast({ title: "Asset added" });
     },
     onError: (e: Error) => toast({ title: "Failed to add asset", description: e.message, variant: "destructive" }),
+  });
+
+  const setDefaultMutation = useMutation({
+    mutationFn: async (assetId: number) => {
+      const res = await apiRequest("PATCH", `/api/spvs/${spvId}/assets/${assetId}`, { isDefault: true });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/spvs", spvId, "assets"] });
+      toast({ title: "Default asset updated" });
+    },
+    onError: (e: Error) => toast({ title: "Failed to set default", description: e.message, variant: "destructive" }),
   });
 
   const deleteAssetMutation = useMutation({
@@ -574,6 +587,18 @@ function SpvAssetsTab({ spvId, canEdit, spvCash }: { spvId: string; canEdit: boo
               <Label className="text-xs">Notes</Label>
               <Textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Optional notes" data-testid="input-asset-notes" />
             </div>
+            <div className="flex items-center gap-2">
+              <input
+                id="asset-is-default"
+                type="checkbox"
+                checked={isDefault}
+                onChange={e => setIsDefault(e.target.checked)}
+                data-testid="checkbox-asset-default"
+              />
+              <Label htmlFor="asset-is-default" className="text-xs cursor-pointer">
+                Set as default asset (only one per SPV; receives AutoDeploy capital)
+              </Label>
+            </div>
             <p className="text-xs text-muted-foreground">SPV cash available: ${formatCurrency(spvCash)}</p>
             <div className="flex justify-end">
               <Button
@@ -583,6 +608,7 @@ function SpvAssetsTab({ spvId, canEdit, spvCash }: { spvId: string; canEdit: boo
                   purchaseDate: purchaseDate || null,
                   cost: cost || "0",
                   notes,
+                  isDefault,
                 })}
                 disabled={!companyName.trim() || createMutation.isPending}
                 data-testid="button-add-asset"
@@ -610,7 +636,10 @@ function SpvAssetsTab({ spvId, canEdit, spvCash }: { spvId: string; canEdit: boo
                       <Briefcase className="h-5 w-5" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate" data-testid={`text-asset-name-${a.id}`}>{a.companyName}</p>
+                      <p className="text-sm font-medium truncate flex items-center gap-2" data-testid={`text-asset-name-${a.id}`}>
+                        {a.companyName}
+                        {a.isDefault && <Badge variant="default" className="text-[10px]" data-testid={`badge-default-${a.id}`}>Default</Badge>}
+                      </p>
                       <p className="text-xs text-muted-foreground">
                         <Badge variant="secondary" className="mr-2 text-[10px]">{a.instrumentType}</Badge>
                         {a.purchaseDate && <>Purchased {a.purchaseDate} · </>}
@@ -626,6 +655,11 @@ function SpvAssetsTab({ spvId, canEdit, spvCash }: { spvId: string; canEdit: boo
                       <TrendingUp className="h-4 w-4 mr-1" />
                       {isOpen ? "Hide" : "Valuations"}
                     </Button>
+                    {canEdit && !a.isDefault && (
+                      <Button variant="ghost" size="sm" onClick={() => setDefaultMutation.mutate(a.id)} disabled={setDefaultMutation.isPending} data-testid={`button-set-default-${a.id}`}>
+                        Set Default
+                      </Button>
+                    )}
                     {canEdit && (
                       <Button variant="ghost" size="icon" onClick={() => deleteAssetMutation.mutate(a.id)} disabled={deleteAssetMutation.isPending} data-testid={`button-delete-asset-${a.id}`}>
                         <Trash2 className="h-4 w-4 text-destructive" />
@@ -776,6 +810,7 @@ export default function SpvDetail() {
         dateEstablished: spv.dateEstablished || "",
         dateEnded: spv.dateEnded || "",
         allocationMethod: spv.allocationMethod || "By Commitment",
+        autoDeploy: !!spv.autoDeploy,
         currency: spv.currency || "USD ($)",
         managementFeePercent: spv.managementFeePercent || "0",
         carriedInterestPercent: spv.carriedInterestPercent || "0",
@@ -844,6 +879,7 @@ export default function SpvDetail() {
         dateEstablished: spv.dateEstablished || "",
         dateEnded: spv.dateEnded || "",
         allocationMethod: spv.allocationMethod || "By Commitment",
+        autoDeploy: !!spv.autoDeploy,
         currency: spv.currency || "USD ($)",
         managementFeePercent: spv.managementFeePercent || "0",
         carriedInterestPercent: spv.carriedInterestPercent || "0",
@@ -1043,6 +1079,23 @@ export default function SpvDetail() {
                 <p className="text-xs text-muted-foreground" data-testid="text-allocation-help">
                   {ALLOCATION_HELP[formData.allocationMethod || "By Commitment"]}
                 </p>
+              </div>
+              <div className="flex items-start gap-2 p-3 rounded-md border bg-muted/30">
+                <input
+                  id="autoDeploy"
+                  type="checkbox"
+                  className="mt-1"
+                  checked={!!formData.autoDeploy}
+                  disabled={!editing}
+                  onChange={e => updateField("autoDeploy", e.target.checked)}
+                  data-testid="checkbox-auto-deploy"
+                />
+                <div className="space-y-1">
+                  <Label htmlFor="autoDeploy" className="cursor-pointer">AutoDeploy</Label>
+                  <p className="text-xs text-muted-foreground">
+                    When enabled, every new investment is automatically called in full and the capital is deployed (at original cost) into the SPV's default asset. Requires a default asset to be set in the Assets tab.
+                  </p>
+                </div>
               </div>
               <div className="space-y-2">
                 <Label>Currency</Label>

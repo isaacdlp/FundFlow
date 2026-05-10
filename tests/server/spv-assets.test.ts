@@ -135,4 +135,74 @@ describe("SPV assets", () => {
       });
     });
   });
+
+  describe("isDefault asset flag", () => {
+    it("passes isDefault through to storage on create", async () => {
+      const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
+      mockStorage.getSpv.mockResolvedValue(spvWithCash);
+      mockStorage.createSpvAsset.mockResolvedValue({
+        id: 7, spvId: spv.id, companyName: "Acme", instrumentType: "Equity",
+        cost: "1000.00", isDefault: true, currentValue: "1000.00",
+      });
+      const res = await agent
+        .post(`/api/spvs/${spv.id}/assets`)
+        .send({ companyName: "Acme", cost: 1000, isDefault: true });
+      expect(res.status).toBe(201);
+      expect(mockStorage.createSpvAsset).toHaveBeenCalledWith(
+        spv.id,
+        expect.objectContaining({ isDefault: true }),
+      );
+    });
+
+    it("PATCH can promote an asset to default", async () => {
+      const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
+      mockStorage.updateSpvAsset.mockResolvedValue({
+        id: 7, spvId: spv.id, companyName: "Acme", instrumentType: "Equity",
+        cost: "1000.00", isDefault: true, currentValue: "1000.00",
+      });
+      const res = await agent
+        .patch(`/api/spvs/${spv.id}/assets/7`)
+        .send({ isDefault: true });
+      expect(res.status).toBe(200);
+      expect(mockStorage.updateSpvAsset).toHaveBeenCalledWith(
+        spv.id, 7,
+        expect.objectContaining({ isDefault: true }),
+      );
+    });
+  });
+
+  describe("AutoDeploy member add", () => {
+    it("rejects with 400 when SPV is autoDeploy but has no default asset", async () => {
+      const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
+      mockStorage.getSpv.mockResolvedValue({ ...spvWithCash, autoDeploy: true });
+      mockStorage.getSpvAssets.mockResolvedValue([
+        { id: 1, spvId: spv.id, companyName: "X", instrumentType: "Equity", cost: "0", isDefault: false, currentValue: "0" },
+      ]);
+      mockStorage.getMember.mockResolvedValue({ status: "approved" });
+      const res = await agent
+        .post(`/api/spvs/${spv.id}/members`)
+        .send({ accountId: fixtures.memberAccount.id, committed: 1000 });
+      expect(res.status).toBe(400);
+      expect(res.body.message).toMatch(/default asset/i);
+    });
+
+    it("allows add when autoDeploy is true and a default asset exists", async () => {
+      const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
+      mockStorage.getSpv.mockResolvedValue({ ...spvWithCash, autoDeploy: true });
+      mockStorage.getSpvAssets.mockResolvedValue([
+        { id: 1, spvId: spv.id, companyName: "X", instrumentType: "Equity", cost: "0", isDefault: true, currentValue: "0" },
+      ]);
+      mockStorage.getAccount.mockResolvedValue(fixtures.adminAccount);
+      mockStorage.getMember.mockResolvedValue({ status: "approved" });
+      mockStorage.addSpvMember.mockResolvedValue({
+        id: 50, spvId: spv.id, accountId: fixtures.memberAccount.id,
+        investorType: "account", account: fixtures.memberAccount,
+        committed: "1000.00", totalCalled: "1000.00", currentValue: "1000.00",
+      });
+      const res = await agent
+        .post(`/api/spvs/${spv.id}/members`)
+        .send({ accountId: fixtures.memberAccount.id, committed: 1000 });
+      expect(res.status).toBe(201);
+    });
+  });
 });

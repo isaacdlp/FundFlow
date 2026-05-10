@@ -35,6 +35,7 @@ export type AssetFields = {
   purchaseDate?: string | null;
   cost?: string;
   notes?: string;
+  isDefault?: boolean;
 };
 
 export interface SpvAssetWithCurrent extends SpvAsset {
@@ -718,7 +719,29 @@ export class DatabaseStorage implements IStorage {
     if ("accountId" in investor) values.accountId = investor.accountId;
     else values.entityId = investor.entityId;
     if (investment) Object.assign(values, investment);
-    const [member] = await db.insert(spvMembers).values(values).returning();
+
+    const member = await db.transaction(async (tx) => {
+      const [spvRow] = await tx.select().from(spvs).where(eq(spvs.id, spvId));
+      // AutoDeploy: auto-call the full commitment and deploy into the default asset
+      if (spvRow?.autoDeploy) {
+        const committed = parseFloat(values.committed ?? "0");
+        if (committed > 0) {
+          const [defaultAsset] = await tx.select().from(spvAssets)
+            .where(and(eq(spvAssets.spvId, spvId), eq(spvAssets.isDefault, true)));
+          if (!defaultAsset) {
+            throw new Error("AutoDeploy is enabled but the SPV has no default asset.");
+          }
+          values.totalCalled = committed.toFixed(2);
+          const [inserted] = await tx.insert(spvMembers).values(values).returning();
+          const newCost = (parseFloat(defaultAsset.cost || "0") + committed).toFixed(2);
+          await tx.update(spvAssets).set({ cost: newCost })
+            .where(eq(spvAssets.id, defaultAsset.id));
+          return inserted;
+        }
+      }
+      const [inserted] = await tx.insert(spvMembers).values(values).returning();
+      return inserted;
+    });
 
     // Recompute share/currentValue with the new member included
     const all = await db.select().from(spvMembers).where(eq(spvMembers.spvId, spvId));
@@ -894,14 +917,25 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createSpvAsset(spvId: number, data: AssetFields & { companyName: string }): Promise<SpvAssetWithCurrent> {
-    const [created] = await db.insert(spvAssets).values({
-      spvId,
-      companyName: data.companyName,
-      instrumentType: data.instrumentType ?? "Equity",
-      purchaseDate: data.purchaseDate ?? null,
-      cost: data.cost ?? "0",
-      notes: data.notes ?? "",
-    }).returning();
+    const created = await db.transaction(async (tx) => {
+      const [row] = await tx.insert(spvAssets).values({
+        spvId,
+        companyName: data.companyName,
+        instrumentType: data.instrumentType ?? "Equity",
+        purchaseDate: data.purchaseDate ?? null,
+        cost: data.cost ?? "0",
+        notes: data.notes ?? "",
+        isDefault: false,
+      }).returning();
+      if (data.isDefault) {
+        await tx.update(spvAssets).set({ isDefault: false })
+          .where(and(eq(spvAssets.spvId, spvId), sql`${spvAssets.id} <> ${row.id}`));
+        const [promoted] = await tx.update(spvAssets).set({ isDefault: true })
+          .where(eq(spvAssets.id, row.id)).returning();
+        return promoted;
+      }
+      return row;
+    });
     return { ...created, currentValue: parseFloat(created.cost || "0").toFixed(2) };
   }
 
@@ -909,10 +943,18 @@ export class DatabaseStorage implements IStorage {
     const updates: any = {};
     for (const [k, v] of Object.entries(data)) if (v !== undefined) updates[k] = v;
     if (Object.keys(updates).length === 0) return this.getSpvAsset(spvId, assetId);
-    const [updated] = await db.update(spvAssets).set(updates)
-      .where(and(eq(spvAssets.spvId, spvId), eq(spvAssets.id, assetId)))
-      .returning();
-    if (!updated) return undefined;
+    const ok = await db.transaction(async (tx) => {
+      const [updated] = await tx.update(spvAssets).set(updates)
+        .where(and(eq(spvAssets.spvId, spvId), eq(spvAssets.id, assetId)))
+        .returning();
+      if (!updated) return false;
+      if (updates.isDefault === true) {
+        await tx.update(spvAssets).set({ isDefault: false })
+          .where(and(eq(spvAssets.spvId, spvId), sql`${spvAssets.id} <> ${assetId}`));
+      }
+      return true;
+    });
+    if (!ok) return undefined;
     return this.getSpvAsset(spvId, assetId);
   }
 

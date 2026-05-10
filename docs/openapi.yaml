@@ -696,6 +696,7 @@ paths:
                 purchaseDate: { type: string, format: date, nullable: true }
                 cost: { type: string, description: "Initial cost. May exceed current SPV cash (cash will go negative)." }
                 notes: { type: string }
+                isDefault: { type: boolean, description: "Mark this asset as the SPV's default. Auto-clears the flag on any other asset in the same SPV." }
       responses:
         '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/SpvAsset' } } } }
         '400': { $ref: '#/components/responses/BadRequest' }
@@ -1017,6 +1018,7 @@ components:
         cash: { type: string, description: "DERIVED. = sum(member.totalCalled) − sum(asset.cost). Returned, never stored." }
         assetValue: { type: string, description: "DERIVED. = sum(asset.currentValue) where asset.currentValue is its latest valuation (or cost if none)." }
         currentValue: { type: string, description: "DERIVED. = cash + assetValue." }
+        autoDeploy: { type: boolean, description: "When true, every new investment added to the SPV is auto-called (totalCalled = committed) and the capital is added to the default asset's cost (at original cost, not current value). Requires a default asset; otherwise POST /members returns 400." }
         members:
           type: array
           items: { $ref: '#/components/schemas/SpvMember' }
@@ -1034,6 +1036,7 @@ components:
         purchaseDate: { type: string, format: date, nullable: true }
         cost: { type: string, description: "Initial cost paid from SPV cash." }
         notes: { type: string }
+        isDefault: { type: boolean, description: "At most one asset per SPV can be the default. The default asset receives AutoDeploy capital." }
         currentValue: { type: string, description: "DERIVED. = latest SpvAssetValuation.value (by date), or cost when no valuations exist." }
 
     SpvAssetValuation:

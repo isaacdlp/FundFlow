@@ -111,6 +111,7 @@ export interface SpvInfo {
   totalBeingRaised: string | null;
   minimumInvestment: string | null;
   expectedClosingDate: string | null;
+  autoDeploy: boolean;
   createdAt: string;
   updatedAt: string;
   manager?: { id: number; email: string; firstName: string; lastName: string } | null;
@@ -130,6 +131,7 @@ export interface SpvAssetInfo {
   purchaseDate: string | null;
   cost: string;
   notes: string | null;
+  isDefault: boolean;
   createdAt: string;
   currentValue: string;
 }

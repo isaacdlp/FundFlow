@@ -872,6 +872,14 @@ export async function registerRoutes(
     const spv = await storage.getSpv(id);
     if (!spv) return res.status(404).json({ message: "SPV not found" });
 
+    if (spv.autoDeploy) {
+      const assets = await storage.getSpvAssets(id);
+      const hasDefault = assets.some(a => a.isDefault);
+      if (!hasDefault) {
+        return res.status(400).json({ message: "AutoDeploy is enabled but the SPV has no default asset. Mark an asset as default before adding investors." });
+      }
+    }
+
     let investor: { accountId: number } | { entityId: number };
     if (hasAccount) {
       const aid = parseInt(accountId);
@@ -930,6 +938,9 @@ export async function registerRoutes(
 
   function validateAssetFields(body: any, requireCompany: boolean): { ok: true; data: any } | { ok: false; error: string } {
     const out: any = {};
+    if (body.isDefault !== undefined) {
+      out.isDefault = body.isDefault === true || body.isDefault === "true";
+    }
     if (body.companyName !== undefined) {
       const s = String(body.companyName).trim();
       if (s === "") return { ok: false, error: "companyName is required" };

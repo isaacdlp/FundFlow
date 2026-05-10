@@ -117,6 +117,7 @@ export const spvs = pgTable("spvs", {
   totalBeingRaised: numeric("total_being_raised", { precision: 15, scale: 2 }).default("0"),
   minimumInvestment: numeric("minimum_investment", { precision: 15, scale: 2 }).default("0"),
   expectedClosingDate: date("expected_closing_date"),
+  autoDeploy: boolean("auto_deploy").default(false).notNull(),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -191,8 +192,11 @@ export const spvAssets = pgTable("spv_assets", {
   purchaseDate: date("purchase_date"),
   cost: numeric("cost", { precision: 15, scale: 2 }).notNull().default("0"),
   notes: text("notes").default(""),
+  isDefault: boolean("is_default").default(false).notNull(),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  uniqueIndex("spv_default_asset_unique").on(table.spvId).where(sql`is_default = true`),
+]);
 
 export const spvAssetValuations = pgTable("spv_asset_valuations", {
   id: serial("id").primaryKey(),

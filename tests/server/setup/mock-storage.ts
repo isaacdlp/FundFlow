@@ -186,6 +186,7 @@ export const fixtures = {
     preferredReturnPercent: "0",
     totalBeingRaised: "0",
     minimumInvestment: "0",
+    autoDeploy: false,
     organizationName: "Test Org",
     members: [],
     createdAt: new Date(),
