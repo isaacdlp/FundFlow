@@ -165,7 +165,7 @@ All token CRUD requires admin role + a real session cookie (no bearer auth, even
 - `GET /api/settings/documents-path` - **Admin only**. Returns `{configured, effective, default}` paths.
 - `PATCH /api/settings/documents-path` - **Admin only**. `{value}`: filesystem path; empty = default `./uploads/documents`. Path is created on demand.
 - DB tables: `documents` (id, name, folderPath, ownerType, accountId XOR entityId, fileName, storedPath, mimeType, sizeBytes, uploadedBy) + `app_settings` (key/value).
-- On disk, files live under `<storage_path>/{accounts|entities}/<id>/<folderPath>/<original-name>-<timestamp>-<rand>.<ext>` so an entity's docs never collide with an account's.
+- On disk, files live under `<storage_path>/{account|entity}/<id>/<folderPath>/<original-name>-<timestamp>-<rand>.<ext>` so an entity's docs never collide with an account's. Every document is associated to exactly one Account or Entity, so the first level below the storage root is always `account/<id>` or `entity/<id>`.
 - UI: `/documents` (sidebar entry between SPVs and Accounts) shows a folder tree (built from `folderPath`) on the left, files on the right, with admin-only Upload + Delete. Storage path is editable at `/settings/documents`.
 
 ## Public Landing Page

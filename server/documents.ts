@@ -162,7 +162,7 @@ export function registerDocumentRoutes(app: Express) {
     }
 
     const root = await getStoragePath();
-    const ownerSubdir = ownerType === "account" ? `accounts/${accountId}` : `entities/${entityId}`;
+    const ownerSubdir = ownerType === "account" ? `account/${accountId}` : `entity/${entityId}`;
     const folderRel = folderPath ? `${ownerSubdir}/${folderPath}` : ownerSubdir;
     const fullDir = path.join(root, folderRel);
     await fs.mkdir(fullDir, { recursive: true });
