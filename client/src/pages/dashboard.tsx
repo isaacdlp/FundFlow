@@ -271,7 +271,6 @@ export default function Dashboard() {
                   <tr className="border-b text-left text-xs uppercase tracking-wider text-muted-foreground">
                     <th className="py-2 pr-3 font-medium w-8"></th>
                     <th className="py-2 pr-3 font-medium">Name</th>
-                    {isAdmin && <th className="py-2 pr-3 font-medium">Investor</th>}
                     <th className="py-2 pr-3 font-medium text-right">Total Called</th>
                     <th className="py-2 pr-3 font-medium text-right">Current Value</th>
                     <th className="py-2 pr-3 font-medium text-right">Distributed</th>
@@ -304,11 +303,6 @@ export default function Dashboard() {
                               </div>
                             </div>
                           </td>
-                          {isAdmin && (
-                            <td className="py-3 pr-3 text-muted-foreground">
-                              {group.investments.length} {group.investments.length === 1 ? "investor" : "investors"}
-                            </td>
-                          )}
                           <td className="py-3 pr-3 text-right font-medium">${fmtMoney(group.initial)}</td>
                           <td className="py-3 pr-3 text-right font-medium">${fmtMoney(group.current)}</td>
                           <td className="py-3 pr-3 text-right font-medium">${fmtMoney(group.distributions)}</td>
@@ -332,27 +326,13 @@ export default function Dashboard() {
                           >
                             <td className="py-2 pr-3"></td>
                             <td className="py-2 pr-3 pl-10">
-                              <Link href={`/spvs/${inv.spvId}`}>
-                                <div className="flex items-center gap-2 cursor-pointer">
-                                  <Badge variant="secondary" className="font-normal">
-                                    {inv.investmentType || "SPV"}
-                                  </Badge>
-                                  <span className="text-muted-foreground hover:text-foreground">
-                                    RS {inv.spvName}
-                                  </span>
-                                </div>
+                              <Link href={inv.investorType === "entity" ? `/entities/${inv.investorId}` : `/accounts/${inv.investorId}`}>
+                                <span className="text-muted-foreground hover:text-foreground cursor-pointer inline-flex items-center gap-2" data-testid={`text-investor-${inv.memberId}`}>
+                                  {inv.investorType === "entity" && <Badge variant="outline" className="text-[10px] px-1 py-0">Entity</Badge>}
+                                  {inv.investorName}
+                                </span>
                               </Link>
                             </td>
-                            {isAdmin && (
-                              <td className="py-2 pr-3">
-                                <Link href={inv.investorType === "entity" ? `/entities/${inv.investorId}` : `/accounts/${inv.investorId}`}>
-                                  <span className="text-muted-foreground hover:text-foreground cursor-pointer inline-flex items-center gap-1" data-testid={`text-investor-${inv.memberId}`}>
-                                    {inv.investorType === "entity" && <Badge variant="outline" className="text-[10px] px-1 py-0">Entity</Badge>}
-                                    {inv.investorName}
-                                  </span>
-                                </Link>
-                              </td>
-                            )}
                             <td className="py-2 pr-3 text-right">${fmtMoney(initial)}</td>
                             <td className="py-2 pr-3 text-right">${fmtMoney(current)}</td>
                             <td className="py-2 pr-3 text-right">${fmtMoney(distributions)}</td>
