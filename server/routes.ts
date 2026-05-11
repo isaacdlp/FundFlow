@@ -696,9 +696,14 @@ export async function registerRoutes(
       return res.json(spvsList);
     }
 
-    const spvIds = await storage.getSpvIdsForAccount(me.id);
-    const allSpvs = await storage.getAllSpvs();
-    return res.json(allSpvs.filter(s => spvIds.includes(s.id)));
+    const [spvIds, organizerOrgIds, allSpvs] = await Promise.all([
+      storage.getSpvIdsForAccount(me.id),
+      storage.getOrganizationIdsAsOrganizer(me.id),
+      storage.getAllSpvs(),
+    ]);
+    const investedSet = new Set(spvIds);
+    const organizerOrgSet = new Set(organizerOrgIds);
+    return res.json(allSpvs.filter(s => investedSet.has(s.id) || organizerOrgSet.has(s.organizationId)));
   });
 
   app.get("/api/organizations/:id/spvs", async (req, res) => {
@@ -707,15 +712,19 @@ export async function registerRoutes(
     const me = await storage.getAccount(getAuthAccountId(req)!);
     if (!me) return res.status(401).json({ message: "Account not found" });
 
-    if (!isAdmin(me)) {
-      const orgIds = await storage.getOrganizationIdsForAccount(me.id);
-      if (!orgIds.includes(id)) {
-        return res.status(403).json({ message: "Access denied" });
-      }
-    }
-
     const spvsList = await storage.getSpvs(id);
-    res.json(spvsList);
+    if (isAdmin(me)) return res.json(spvsList);
+
+    const orgIds = await storage.getOrganizationIdsForAccount(me.id);
+    if (!orgIds.includes(id)) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+    // Organizers of the org see every SPV in the org. Plain members see only
+    // SPVs they invest in (directly or via owned entities).
+    const organizerOrgIds = await storage.getOrganizationIdsAsOrganizer(me.id);
+    if (organizerOrgIds.includes(id)) return res.json(spvsList);
+    const investedSpvIds = await storage.getSpvIdsForAccount(me.id);
+    res.json(spvsList.filter(s => investedSpvIds.includes(s.id)));
   });
 
   app.get("/api/spvs/:id", async (req, res) => {
@@ -803,15 +812,20 @@ export async function registerRoutes(
     const me = await storage.getAccount(getAuthAccountId(req)!);
     if (!me) return res.status(401).json({ message: "Account not found" });
 
-    if (!isAdmin(me)) {
-      const spvIds = await storage.getSpvIdsForAccount(me.id);
-      if (!spvIds.includes(id)) {
-        return res.status(403).json({ message: "Access denied" });
-      }
+    const members = await storage.getSpvMembers(id);
+    if (isAdmin(me) || (await canManageSpv(me, id))) {
+      return res.json(members);
     }
 
-    const members = await storage.getSpvMembers(id);
-    res.json(members);
+    const spvIds = await storage.getSpvIdsForAccount(me.id);
+    if (!spvIds.includes(id)) {
+      return res.status(403).json({ message: "Access denied" });
+    }
+    const ownedEntityIds = new Set(await storage.getEntityIdsOwnedByAccount(me.id));
+    const visible = members.filter(m =>
+      m.accountId === me.id || (m.entityId !== null && ownedEntityIds.has(m.entityId))
+    );
+    res.json(visible);
   });
 
   function validateInvestmentFields(body: any): { ok: true; data: { committed?: string; managementFee?: string; otherFee?: string; carry?: string; totalCalled?: string; distributed?: string; ownershipPercent?: string | null; date?: string | null } } | { ok: false; error: string } {

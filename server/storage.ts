@@ -192,6 +192,7 @@ export interface IStorage {
   removeEntityManager(entityId: number, accountId: number): Promise<boolean>;
 
   getOrganizationIdsForAccount(accountId: number): Promise<number[]>;
+  getOrganizationIdsAsOrganizer(accountId: number): Promise<number[]>;
   getEntityIdsForAccount(accountId: number): Promise<number[]>;
   getSpvIdsForAccount(accountId: number): Promise<number[]>;
 
@@ -1236,6 +1237,13 @@ export class DatabaseStorage implements IStorage {
       .where(and(eq(organizationMembers.accountId, accountId), eq(organizationMembers.status, "approved")));
     const ids = new Set([...asOrganizer.map(r => r.id), ...asMember.map(r => r.id)]);
     return Array.from(ids);
+  }
+
+  async getOrganizationIdsAsOrganizer(accountId: number): Promise<number[]> {
+    const rows = await db.select({ id: organizationOrganizers.organizationId })
+      .from(organizationOrganizers)
+      .where(eq(organizationOrganizers.accountId, accountId));
+    return Array.from(new Set(rows.map(r => r.id)));
   }
 
   async getEntityIdsForAccount(accountId: number): Promise<number[]> {

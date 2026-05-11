@@ -48,13 +48,16 @@ describe("/api/spvs", () => {
       expect(res.status).toBe(403);
     });
 
-    it("member of org can list its SPVs", async () => {
+    it("member of org sees only SPVs they invest in", async () => {
       const agent = await loginAs(app, mockStorage, fixtures.memberAccount);
+      const spvA2 = fixtures.spv({ id: 102, organizationId: 10 });
       mockStorage.getOrganizationIdsForAccount.mockResolvedValue([orgA.id]);
-      mockStorage.getSpvs.mockResolvedValue([spvA]);
+      mockStorage.getSpvs.mockResolvedValue([spvA, spvA2]);
+      mockStorage.getSpvIdsForAccount.mockResolvedValue([spvA.id]);
       const res = await agent.get(`/api/organizations/${orgA.id}/spvs`);
       expect(res.status).toBe(200);
       expect(res.body).toHaveLength(1);
+      expect(res.body[0].id).toBe(spvA.id);
     });
   });
 
@@ -128,6 +131,55 @@ describe("/api/spvs", () => {
       expect(mockStorage.createSpv).toHaveBeenCalledWith(
         expect.objectContaining({ organizationId: orgA.id }),
       );
+    });
+  });
+
+  describe("GET /api/spvs/:id/members", () => {
+    const me = fixtures.memberAccount;
+    const otherMember = { id: 200, spvId: spvA.id, accountId: 999, entityId: null, investorType: "account", account: { id: 999, email: "x", firstName: "X", lastName: "Y" }, entity: null, currentValue: "0" };
+    const myMember = { id: 201, spvId: spvA.id, accountId: me.id, entityId: null, investorType: "account", account: { id: me.id, email: me.email, firstName: me.firstName, lastName: me.lastName }, entity: null, currentValue: "0" };
+    const myEntityMember = { id: 202, spvId: spvA.id, accountId: null, entityId: 50, investorType: "entity", account: null, entity: { id: 50, legalName: "MyCo" }, currentValue: "0" };
+
+    it("admin sees all members", async () => {
+      const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
+      mockStorage.getSpvMembers.mockResolvedValue([otherMember, myMember, myEntityMember]);
+      const res = await agent.get(`/api/spvs/${spvA.id}/members`);
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveLength(3);
+    });
+
+    it("non-investor non-admin gets 403", async () => {
+      const agent = await loginAs(app, mockStorage, fixtures.memberAccount);
+      mockStorage.getSpvMembers.mockResolvedValue([otherMember]);
+      mockStorage.getSpv.mockResolvedValue(spvA);
+      mockStorage.getOrganization.mockResolvedValue({ ...orgA, organizers: [] });
+      mockStorage.getSpvIdsForAccount.mockResolvedValue([]);
+      const res = await agent.get(`/api/spvs/${spvA.id}/members`);
+      expect(res.status).toBe(403);
+    });
+
+    it("non-admin investor only sees their own tranches (own account + owned entities)", async () => {
+      const agent = await loginAs(app, mockStorage, fixtures.memberAccount);
+      mockStorage.getSpvMembers.mockResolvedValue([otherMember, myMember, myEntityMember]);
+      mockStorage.getSpv.mockResolvedValue(spvA);
+      mockStorage.getOrganization.mockResolvedValue({ ...orgA, organizers: [] });
+      mockStorage.getSpvIdsForAccount.mockResolvedValue([spvA.id]);
+      mockStorage.getEntityIdsOwnedByAccount.mockResolvedValue([50]);
+      const res = await agent.get(`/api/spvs/${spvA.id}/members`);
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveLength(2);
+      const ids = res.body.map((m: any) => m.id).sort();
+      expect(ids).toEqual([myMember.id, myEntityMember.id].sort());
+    });
+
+    it("organizer of the SPV's org sees all members", async () => {
+      const agent = await loginAs(app, mockStorage, fixtures.organizerAccount);
+      mockStorage.getSpvMembers.mockResolvedValue([otherMember, myMember]);
+      mockStorage.getSpv.mockResolvedValue(spvA);
+      mockStorage.getOrganization.mockResolvedValue({ ...orgA, organizers: [{ accountId: fixtures.organizerAccount.id }] });
+      const res = await agent.get(`/api/spvs/${spvA.id}/members`);
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveLength(2);
     });
   });
 

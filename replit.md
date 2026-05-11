@@ -182,7 +182,7 @@ All token CRUD requires admin role + a real session cookie (no bearer auth, even
 - All other /api routes require authentication (401 if not logged in)
 - Only role: "admin" (GP and LP roles removed; fund manager/investor relationships determined by org/SPV/entity membership)
 - **Admin** (role: "admin"): Full access to all resources, can create organizations
-- **Non-admin**: Can only see own account, entities they manage, organizations they are member/organizer of, SPVs they are members of
+- **Non-admin**: Can only see own account, entities they manage, organizations they are member/organizer of, SPVs they are members of (directly or via owned entities). On `/api/spvs/:id/members`, non-admin investors see only their own tranches; other investors are filtered out. Organizers of the SPV's org see all members.
 - Admin-only actions: create/delete organizations, delete accounts, delete SPVs/entities
 - Frontend: AuthProvider wraps app, useAuth() hook provides user/isAdmin/loginMutation/logoutMutation
 - Sidebar hides admin-only items (Accounts) for non-admin users

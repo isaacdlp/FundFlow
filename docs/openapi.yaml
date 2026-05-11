@@ -592,6 +592,7 @@ paths:
     get:
       tags: [SPVs]
       summary: List SPVs for an organization
+      description: Admin sees all SPVs in the org. Non-admin members of the org see only the SPVs they invest in (directly or through entities they own).
       responses:
         '200': { content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Spv' } } } }, description: SPVs }
     post:
@@ -631,10 +632,12 @@ paths:
     get:
       tags: [SPVs]
       summary: List SPV members (investors), one row per tranche
+      description: Admins and organizers of the SPV's organization see every member row. Non-admin investors see only their own tranches (rows where the investor is their own account or an entity they own). Non-investor non-admins receive 403.
       responses:
         '200':
-          description: Each row has investorType + either an account or entity block. The same investor may appear in multiple rows (tranches), each with its own values.
+          description: Each row has investorType + either an account or entity block. The same investor may appear in multiple rows (tranches), each with its own values. For non-admin investors, the response is filtered to only their own rows.
           content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/SpvMember' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
     post:
       tags: [SPVs]
       summary: Add an investor position / tranche (account OR entity, never both). Calling multiple times for the same investor creates additional tranches.

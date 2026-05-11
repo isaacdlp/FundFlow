@@ -44,6 +44,7 @@ export function makeMockStorage(overrides: Partial<Record<string, any>> = {}) {
     updateOrganization: vi.fn(),
     deleteOrganization: vi.fn().mockResolvedValue(true),
     getOrganizationIdsForAccount: vi.fn().mockResolvedValue([]),
+    getOrganizationIdsAsOrganizer: vi.fn().mockResolvedValue([]),
 
     // Organizers
     addOrganizer: vi.fn().mockResolvedValue(undefined),
