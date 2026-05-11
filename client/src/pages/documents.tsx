@@ -60,10 +60,20 @@ type FolderNode = {
   docs: DocItem[];
 };
 
+function ownerLabel(doc: DocItem): string {
+  const o = doc.owner;
+  const kind = doc.ownerType === "account" ? "Account" : "Entity";
+  const name = (o?.name || "Unknown").replace(/\//g, " ");
+  const id = o?.id ?? (doc.accountId ?? doc.entityId ?? "?");
+  return `${kind} · ${name} (#${id})`;
+}
+
 function buildTree(docs: DocItem[]): FolderNode {
   const root: FolderNode = { name: "", fullPath: "", children: new Map(), docs: [] };
   for (const doc of docs) {
-    const parts = (doc.folderPath || "").split("/").filter(Boolean);
+    const ownerSeg = ownerLabel(doc);
+    const folderSegs = (doc.folderPath || "").split("/").filter(Boolean);
+    const parts = [ownerSeg, ...folderSegs];
     let node = root;
     let acc = "";
     for (const p of parts) {
