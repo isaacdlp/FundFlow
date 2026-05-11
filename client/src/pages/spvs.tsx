@@ -1,5 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
+import { useTranslation } from "react-i18next";
 import type { SpvInfo } from "@shared/types";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -12,12 +13,15 @@ import { FileText, Search, Trash2, Building2 } from "lucide-react";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useOrgPermissions } from "@/hooks/use-org-permissions";
+import { useLocalePath } from "@/i18n/hooks";
 
 export default function Spvs() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const { canManageOrg } = useOrgPermissions();
   const [search, setSearch] = useState("");
+  const { t } = useTranslation();
+  const lp = useLocalePath();
 
   const { data: spvsList, isLoading } = useQuery<SpvInfo[]>({
     queryKey: ["/api/spvs"],
@@ -30,10 +34,10 @@ export default function Spvs() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/spvs"] });
-      toast({ title: "SPV deleted" });
+      toast({ title: t("spvs.deleted") });
     },
     onError: (error: Error) => {
-      toast({ title: "Failed to delete SPV", description: error.message, variant: "destructive" });
+      toast({ title: t("spvs.deleteFailed"), description: error.message, variant: "destructive" });
     },
   });
 
@@ -52,15 +56,15 @@ export default function Spvs() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold" data-testid="text-page-title">Special Purpose Vehicles</h1>
-          <p className="text-muted-foreground mt-1">Manage all SPVs across organizations</p>
+          <h1 className="text-2xl font-semibold" data-testid="text-page-title">{t("spvs.title")}</h1>
+          <p className="text-muted-foreground mt-1">{t("spvs.subtitle")}</p>
         </div>
       </div>
 
       <div className="relative max-w-sm">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
-          placeholder="Search SPVs..."
+          placeholder={t("spvs.searchPlaceholder")}
           value={search}
           onChange={e => setSearch(e.target.value)}
           className="pl-9"
@@ -81,20 +85,20 @@ export default function Spvs() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Organization</TableHead>
-                    <TableHead>Entity Type</TableHead>
-                    <TableHead className="text-center">Members</TableHead>
-                    <TableHead>Manager</TableHead>
-                    <TableHead>Total Being Raised</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
+                    <TableHead>{t("spvs.tableName")}</TableHead>
+                    <TableHead>{t("spvs.tableOrg")}</TableHead>
+                    <TableHead>{t("spvs.tableEntityType")}</TableHead>
+                    <TableHead className="text-center">{t("spvs.tableMembers")}</TableHead>
+                    <TableHead>{t("spvs.tableManager")}</TableHead>
+                    <TableHead>{t("spvs.tableTotalRaising")}</TableHead>
+                    <TableHead className="text-right">{t("common.actions")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filtered.map(spv => (
                     <TableRow key={spv.id} data-testid={`spv-row-${spv.id}`}>
                       <TableCell>
-                        <Link href={`/spvs/${spv.id}`}>
+                        <Link href={lp("spvDetail", { id: spv.id })}>
                           <div className="cursor-pointer">
                             <p className="text-sm font-medium hover:underline" data-testid={`text-spv-name-${spv.id}`}>
                               {spv.displayName}
@@ -105,31 +109,29 @@ export default function Spvs() {
                       </TableCell>
                       <TableCell>
                         {spv.organization ? (
-                          <Link href={`/organizations/${spv.organization.id}`}>
+                          <Link href={lp("organizationDetail", { id: spv.organization.id })}>
                             <div className="flex items-center gap-1.5 cursor-pointer hover:underline">
                               <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
                               <span className="text-sm" data-testid={`text-spv-org-${spv.id}`}>{spv.organization.name}</span>
                             </div>
                           </Link>
                         ) : (
-                          <span className="text-sm text-muted-foreground">Unknown</span>
+                          <span className="text-sm text-muted-foreground">{t("common.unknown")}</span>
                         )}
                       </TableCell>
-                      <TableCell>
-                        <Badge variant="outline">{spv.entityType || "LLC"}</Badge>
-                      </TableCell>
+                      <TableCell><Badge variant="outline">{spv.entityType || "LLC"}</Badge></TableCell>
                       <TableCell className="text-center">{spv.memberCount}</TableCell>
                       <TableCell>
                         {spv.manager ? (
                           <span className="text-sm">{spv.manager.firstName} {spv.manager.lastName}</span>
                         ) : (
-                          <span className="text-sm text-muted-foreground">Not assigned</span>
+                          <span className="text-sm text-muted-foreground">{t("spvs.notAssigned")}</span>
                         )}
                       </TableCell>
                       <TableCell>
                         {parseFloat(spv.totalBeingRaised || "0") > 0 ? (
                           <span className="text-sm font-medium">
-                            ${parseFloat(spv.totalBeingRaised || "0").toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            ${parseFloat(spv.totalBeingRaised || "0").toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </span>
                         ) : (
                           <span className="text-sm text-muted-foreground">$0.00</span>
@@ -137,7 +139,7 @@ export default function Spvs() {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex gap-1 justify-end">
-                          <Button variant="ghost" size="icon" onClick={() => navigate(`/spvs/${spv.id}`)} data-testid={`button-view-spv-${spv.id}`}>
+                          <Button variant="ghost" size="icon" onClick={() => navigate(lp("spvDetail", { id: spv.id }))} data-testid={`button-view-spv-${spv.id}`}>
                             <FileText className="h-4 w-4" />
                           </Button>
                           {canManageOrg(spv.organizationId) && (
@@ -165,7 +167,7 @@ export default function Spvs() {
           <CardContent className="py-12 text-center">
             <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
             <p className="text-muted-foreground">
-              {search ? "No SPVs match your search." : "No SPVs have been created yet. Create one from an organization's detail page."}
+              {search ? t("spvs.noResultsSearch") : t("spvs.noSpvs")}
             </p>
           </CardContent>
         </Card>

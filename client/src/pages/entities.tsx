@@ -1,5 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
+import { Trans, useTranslation } from "react-i18next";
 import type { EntityInfo } from "@shared/types";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Card, CardContent } from "@/components/ui/card";
@@ -9,26 +10,23 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader,
+  AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Building, Search, Trash2, Plus } from "lucide-react";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
+import { useLocalePath } from "@/i18n/hooks";
 
 export default function Entities() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const { isAdmin } = useAuth();
   const [search, setSearch] = useState("");
+  const { t } = useTranslation();
+  const lp = useLocalePath();
 
   const { data: entitiesList, isLoading } = useQuery<EntityInfo[]>({
     queryKey: ["/api/entities"],
@@ -41,10 +39,10 @@ export default function Entities() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/entities"] });
-      toast({ title: "Entity deleted" });
+      toast({ title: t("entities.deleted") });
     },
     onError: (error: Error) => {
-      toast({ title: "Failed to delete entity", description: error.message, variant: "destructive" });
+      toast({ title: t("entities.deleteFailed"), description: error.message, variant: "destructive" });
     },
   });
 
@@ -62,14 +60,14 @@ export default function Entities() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold" data-testid="text-page-title">Entities</h1>
-          <p className="text-muted-foreground mt-1">Manage associated entities (companies, trusts, etc.)</p>
+          <h1 className="text-2xl font-semibold" data-testid="text-page-title">{t("entities.title")}</h1>
+          <p className="text-muted-foreground mt-1">{t("entities.subtitle")}</p>
         </div>
         {isAdmin && (
-          <Link href="/entities/new">
+          <Link href={lp("entityNew")}>
             <Button data-testid="button-add-entity">
               <Plus className="h-4 w-4 mr-2" />
-              Add Entity
+              {t("entities.addEntity")}
             </Button>
           </Link>
         )}
@@ -78,7 +76,7 @@ export default function Entities() {
       <div className="relative max-w-sm">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
-          placeholder="Search by anything"
+          placeholder={t("entities.searchPlaceholder")}
           value={search}
           onChange={e => setSearch(e.target.value)}
           className="pl-9"
@@ -99,66 +97,60 @@ export default function Entities() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Managers</TableHead>
-                    <TableHead className="text-center">Owners</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
+                    <TableHead>{t("entities.tableName")}</TableHead>
+                    <TableHead>{t("entities.tableType")}</TableHead>
+                    <TableHead>{t("entities.tableManagers")}</TableHead>
+                    <TableHead className="text-center">{t("entities.tableOwners")}</TableHead>
+                    <TableHead className="text-right">{t("common.actions")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filtered.map(entity => (
                     <TableRow key={entity.id} data-testid={`entity-row-${entity.id}`}>
                       <TableCell>
-                        <Link href={`/entities/${entity.id}`}>
+                        <Link href={lp("entityDetail", { id: entity.id })}>
                           <span className="text-sm font-medium cursor-pointer hover:underline" data-testid={`text-entity-name-${entity.id}`}>
                             {entity.name}
                           </span>
                         </Link>
                       </TableCell>
-                      <TableCell>
-                        <Badge variant="outline">{entity.entityType}</Badge>
-                      </TableCell>
+                      <TableCell><Badge variant="outline">{entity.entityType}</Badge></TableCell>
                       <TableCell>
                         {entity.managers.length > 0 ? (
                           <span className="text-sm">
                             {entity.managers.map(m => `${m.account.firstName} ${m.account.lastName}`).join(", ")}
                           </span>
                         ) : (
-                          <span className="text-sm text-muted-foreground">No managers</span>
+                          <span className="text-sm text-muted-foreground">{t("entities.noManagers")}</span>
                         )}
                       </TableCell>
                       <TableCell className="text-center">{entity.ownerCount}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex gap-1 justify-end">
-                          <Button variant="ghost" size="icon" onClick={() => navigate(`/entities/${entity.id}`)} data-testid={`button-view-entity-${entity.id}`}>
+                          <Button variant="ghost" size="icon" onClick={() => navigate(lp("entityDetail", { id: entity.id }))} data-testid={`button-view-entity-${entity.id}`}>
                             <Building className="h-4 w-4" />
                           </Button>
                           {isAdmin && (
                             <AlertDialog>
                               <AlertDialogTrigger asChild>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  data-testid={`button-delete-entity-${entity.id}`}
-                                >
+                                <Button variant="ghost" size="icon" data-testid={`button-delete-entity-${entity.id}`}>
                                   <Trash2 className="h-4 w-4 text-destructive" />
                                 </Button>
                               </AlertDialogTrigger>
                               <AlertDialogContent>
                                 <AlertDialogHeader>
-                                  <AlertDialogTitle>Delete Entity</AlertDialogTitle>
+                                  <AlertDialogTitle>{t("entities.deleteTitle")}</AlertDialogTitle>
                                   <AlertDialogDescription>
-                                    Are you sure you want to delete <strong>{entity.name}</strong>? This will also remove all owner and manager records associated with it. This action cannot be undone.
+                                    <Trans i18nKey="entities.deleteConfirm" values={{ name: entity.name }} components={[<strong key="0" />]} />
                                   </AlertDialogDescription>
                                 </AlertDialogHeader>
                                 <AlertDialogFooter>
-                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                  <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
                                   <AlertDialogAction
                                     onClick={() => deleteMutation.mutate(entity.id)}
                                     data-testid={`button-confirm-delete-entity-${entity.id}`}
                                   >
-                                    Delete
+                                    {t("common.delete")}
                                   </AlertDialogAction>
                                 </AlertDialogFooter>
                               </AlertDialogContent>
@@ -178,7 +170,7 @@ export default function Entities() {
           <CardContent className="py-12 text-center">
             <Building className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
             <p className="text-muted-foreground">
-              {search ? "No entities match your search." : "No entities have been created yet."}
+              {search ? t("entities.noResultsSearch") : t("entities.noEntities")}
             </p>
           </CardContent>
         </Card>

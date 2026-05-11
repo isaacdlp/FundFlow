@@ -1,5 +1,8 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useRoute, Link, useLocation } from "wouter";
+import { useTranslation } from "react-i18next";
+import { useLocalePath, useLocale } from "@/i18n/hooks";
+import { ROUTE_PATTERNS } from "@/i18n/routes";
 import type { OrganizationWithOrganizers, OrganizerAccount } from "@shared/types";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -40,9 +43,12 @@ const US_STATES = [
 ];
 
 export default function CreateSpv() {
-  const [, params] = useRoute("/organizations/:orgId/spvs/new");
+  const [, params] = useRoute(ROUTE_PATTERNS.organizationSpvNew[useLocale()]);
   const orgId = params?.orgId;
   const [, navigate] = useLocation();
+  const locale = useLocale();
+  const lp = useLocalePath();
+  const { t } = useTranslation();
   const { toast } = useToast();
 
   const { data: org, isLoading: orgLoading } = useQuery<OrganizationWithOrganizers>({
@@ -107,7 +113,7 @@ export default function CreateSpv() {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/organizations", orgId, "spvs"] });
       toast({ title: "SPV created successfully" });
-      navigate(`/spvs/${data.id}`);
+      navigate(lp("spvDetail", { id: data.id }));
     },
     onError: (error: Error) => {
       toast({ title: "Failed to create SPV", description: error.message, variant: "destructive" });
@@ -135,10 +141,10 @@ export default function CreateSpv() {
 
   return (
     <div className="p-6 space-y-6 max-w-4xl">
-      <Link href={`/organizations/${orgId}`}>
+      <Link href={lp("organizationDetail", { id: orgId! })}>
         <Button variant="ghost" className="gap-2 -ml-2" data-testid="button-back">
           <ArrowLeft className="h-4 w-4" />
-          Back to {org.name}
+          {t("common.back")} {org.name}
         </Button>
       </Link>
 
@@ -499,8 +505,8 @@ export default function CreateSpv() {
       </Card>
 
       <div className="flex gap-3 justify-end pb-6">
-        <Link href={`/organizations/${orgId}`}>
-          <Button variant="outline" data-testid="button-cancel">Cancel</Button>
+        <Link href={lp("organizationDetail", { id: orgId! })}>
+          <Button variant="outline" data-testid="button-cancel">{t("common.cancel")}</Button>
         </Link>
         <Button
           onClick={() => createMutation.mutate()}

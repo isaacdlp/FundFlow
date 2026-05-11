@@ -1,5 +1,8 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useRoute, Link } from "wouter";
+import { useTranslation } from "react-i18next";
+import { useLocalePath, useLocale } from "@/i18n/hooks";
+import { ROUTE_PATTERNS } from "@/i18n/routes";
 import type { SpvInfo, SpvMemberInfo, MemberInfo, OrganizerAccount, EntityInfo, SpvAssetInfo, SpvAssetValuationInfo } from "@shared/types";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -336,7 +339,11 @@ function SpvMembersTab({ spvId, orgId, canEdit, allocationMethod }: { spvId: str
                 : isEntity
                 ? member.entity!.entityType
                 : "";
-              const profileHref = isAccount ? `/accounts/${member.account!.id}` : isEntity ? `/entities/${member.entity!.id}` : null;
+              const profileHref = isAccount
+                ? lp("accountDetail", { id: member.account!.id })
+                : isEntity
+                ? lp("entityDetail", { id: member.entity!.id })
+                : null;
               return (
                 <div key={member.id} className="p-3 rounded-md border" data-testid={`spv-member-${member.id}`}>
                   <div className="flex items-center gap-3">
@@ -803,7 +810,10 @@ function AssetValuations({ spvId, assetId, canEdit, valDate, setValDate, valValu
 }
 
 export default function SpvDetail() {
-  const [, params] = useRoute("/spvs/:id");
+  const locale = useLocale();
+  const lp = useLocalePath();
+  const { t } = useTranslation();
+  const [, params] = useRoute(ROUTE_PATTERNS.spvDetail[locale]);
   const spvId = params?.id;
   const { toast } = useToast();
   const { canManageOrg } = useOrgPermissions();
@@ -962,10 +972,10 @@ export default function SpvDetail() {
 
   return (
     <div className="p-6 space-y-6">
-      <Link href={`/organizations/${spv.organizationId}`}>
+      <Link href={lp("organizationDetail", { id: spv.organizationId })}>
         <Button variant="ghost" className="gap-2 -ml-2" data-testid="button-back">
           <ArrowLeft className="h-4 w-4" />
-          Back to Organization
+          {t("spvDetail.back", "Back to organization")}
         </Button>
       </Link>
 

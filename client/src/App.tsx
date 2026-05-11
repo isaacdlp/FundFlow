@@ -1,4 +1,6 @@
-import { Switch, Route, Link } from "wouter";
+import { useEffect } from "react";
+import { Switch, Route, Link, Router as WouterRouter } from "wouter";
+import { useTranslation } from "react-i18next";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -29,28 +31,38 @@ import Settings from "@/pages/settings";
 import Documents from "@/pages/documents";
 import { Button } from "@/components/ui/button";
 import { LogOut } from "lucide-react";
+import { LanguageSwitcher } from "@/components/language-switcher";
+import {
+  ROUTE_PATTERNS,
+  LOCALES,
+  DEFAULT_LOCALE,
+  getLocaleFromPath,
+  type Locale,
+} from "@/i18n/routes";
+import { useLocalePath, useLocale } from "@/i18n/hooks";
 
-function AdminRouter() {
+function AdminRouter({ locale }: { locale: Locale }) {
+  const r = ROUTE_PATTERNS;
   return (
     <Switch>
-      <Route path="/" component={Dashboard} />
-      <Route path="/accounts" component={Accounts} />
-      <Route path="/accounts/new" component={CreateAccount} />
-      <Route path="/accounts/:id" component={AccountDetail} />
-      <Route path="/organizations" component={Organizations} />
-      <Route path="/organizations/new" component={CreateOrganization} />
-      <Route path="/organizations/:orgId/spvs/new" component={CreateSpv} />
-      <Route path="/organizations/:id" component={OrganizationDetail} />
-      <Route path="/spvs" component={Spvs} />
-      <Route path="/spvs/:id" component={SpvDetail} />
-      <Route path="/entities" component={Entities} />
-      <Route path="/entities/new" component={CreateEntity} />
-      <Route path="/entities/:id" component={EntityDetail} />
-      <Route path="/documents" component={Documents} />
-      <Route path="/settings" component={Settings} />
-      <Route path="/settings/documents" component={Settings} />
-      <Route path="/settings/management" component={Settings} />
-      <Route path="/settings/api-tokens" component={Settings} />
+      <Route path={r.accountNew[locale]} component={CreateAccount} />
+      <Route path={r.accountDetail[locale]} component={AccountDetail} />
+      <Route path={r.accounts[locale]} component={Accounts} />
+      <Route path={r.organizationNew[locale]} component={CreateOrganization} />
+      <Route path={r.organizationSpvNew[locale]} component={CreateSpv} />
+      <Route path={r.organizationDetail[locale]} component={OrganizationDetail} />
+      <Route path={r.organizations[locale]} component={Organizations} />
+      <Route path={r.spvDetail[locale]} component={SpvDetail} />
+      <Route path={r.spvs[locale]} component={Spvs} />
+      <Route path={r.entityNew[locale]} component={CreateEntity} />
+      <Route path={r.entityDetail[locale]} component={EntityDetail} />
+      <Route path={r.entities[locale]} component={Entities} />
+      <Route path={r.documents[locale]} component={Documents} />
+      <Route path={r.settingsDocuments[locale]} component={Settings} />
+      <Route path={r.settingsManagement[locale]} component={Settings} />
+      <Route path={r.settingsApiTokens[locale]} component={Settings} />
+      <Route path={r.settings[locale]} component={Settings} />
+      <Route path={r.dashboard[locale]} component={Dashboard} />
       <Route component={NotFound} />
     </Switch>
   );
@@ -61,8 +73,10 @@ const sidebarStyle = {
   "--sidebar-width-icon": "3rem",
 };
 
-function AdminLayout() {
+function AdminLayout({ locale }: { locale: Locale }) {
   const { user, logoutMutation } = useAuth();
+  const lp = useLocalePath();
+  const { t } = useTranslation();
 
   return (
     <SidebarProvider style={sidebarStyle as React.CSSProperties}>
@@ -72,9 +86,10 @@ function AdminLayout() {
           <header className="flex items-center gap-2 p-3 border-b bg-background">
             <SidebarTrigger data-testid="button-sidebar-toggle" />
             <div className="flex-1" />
+            <LanguageSwitcher />
             {user && (
               <div className="flex items-center gap-3">
-                <Link href={`/accounts/${user.id}`}>
+                <Link href={lp("accountDetail", { id: user.id })}>
                   <span className="text-sm text-muted-foreground hover:text-foreground cursor-pointer transition-colors" data-testid="text-user-name">
                     {user.firstName} {user.lastName}
                   </span>
@@ -87,13 +102,13 @@ function AdminLayout() {
                   data-testid="button-logout"
                 >
                   <LogOut className="h-4 w-4 mr-1" />
-                  Sign Out
+                  {t("common.signOut")}
                 </Button>
               </div>
             )}
           </header>
           <main className="flex-1 overflow-auto">
-            <AdminRouter />
+            <AdminRouter locale={locale} />
           </main>
         </div>
       </div>
@@ -103,6 +118,8 @@ function AdminLayout() {
 
 function ProtectedApp() {
   const { user, isLoading } = useAuth();
+  const locale = useLocale();
+  const r = ROUTE_PATTERNS;
 
   if (isLoading) {
     return (
@@ -117,13 +134,59 @@ function ProtectedApp() {
 
   return (
     <Switch>
-      <Route path="/org/:slug" component={OrgLanding} />
-      <Route path="/forgot-password" component={ForgotPassword} />
-      <Route path="/reset-password" component={ResetPassword} />
-      <Route>
-        {user ? <AdminLayout /> : <Login />}
-      </Route>
+      <Route path={r.orgLanding[locale]} component={OrgLanding} />
+      <Route path={r.forgotPassword[locale]} component={ForgotPassword} />
+      <Route path={r.resetPassword[locale]} component={ResetPassword} />
+      <Route>{user ? <AdminLayout locale={locale} /> : <Login />}</Route>
     </Switch>
+  );
+}
+
+/** Detect target locale on bare paths and redirect to /<lang>/... once at startup. */
+function LocalePrefixGuard({ children }: { children: React.ReactNode }) {
+  const { i18n } = useTranslation();
+
+  useEffect(() => {
+    const path = window.location.pathname;
+    const fromUrl = getLocaleFromPath(path);
+    if (fromUrl) {
+      // URL is authoritative — sync i18n if it disagrees so strings render correctly.
+      if (i18n.language !== fromUrl) i18n.changeLanguage(fromUrl);
+      return;
+    }
+
+    // Determine preferred locale: localStorage → navigator → DEFAULT_LOCALE
+    let target: Locale = DEFAULT_LOCALE;
+    try {
+      const stored = window.localStorage.getItem("fundflow:lang");
+      if (stored && (LOCALES as readonly string[]).includes(stored)) {
+        target = stored as Locale;
+      } else if (typeof navigator !== "undefined") {
+        const nav = navigator.language?.slice(0, 2);
+        if (nav && (LOCALES as readonly string[]).includes(nav)) target = nav as Locale;
+      }
+    } catch {
+      // ignore
+    }
+
+    const search = window.location.search;
+    const newPath = path === "/" ? `/${target}` : `/${target}${path}`;
+    window.history.replaceState({}, "", newPath + search);
+    if (i18n.language !== target) i18n.changeLanguage(target);
+    // Trigger wouter to pick up the new path.
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  }, [i18n]);
+
+  return <>{children}</>;
+}
+
+function LocalizedRouter() {
+  const locale = useLocale();
+  // wouter base is the URL prefix wouter strips before matching routes.
+  return (
+    <WouterRouter base={`/${locale}`} key={locale}>
+      <ProtectedApp />
+    </WouterRouter>
   );
 }
 
@@ -132,7 +195,9 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <AuthProvider>
-          <ProtectedApp />
+          <LocalePrefixGuard>
+            <LocalizedRouter />
+          </LocalePrefixGuard>
         </AuthProvider>
         <Toaster />
       </TooltipProvider>

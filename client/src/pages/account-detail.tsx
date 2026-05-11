@@ -1,5 +1,8 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useRoute, Link, useLocation } from "wouter";
+import { useTranslation } from "react-i18next";
+import { useLocalePath, useLocale } from "@/i18n/hooks";
+import { ROUTE_PATTERNS } from "@/i18n/routes";
 import type { AccountWithRoles } from "@shared/types";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
@@ -48,7 +51,10 @@ const ACCOUNT_TABS = [
 ];
 
 export default function AccountDetail() {
-  const [, params] = useRoute("/accounts/:id");
+  const locale = useLocale();
+  const lp = useLocalePath();
+  const { t } = useTranslation();
+  const [, params] = useRoute(ROUTE_PATTERNS.accountDetail[locale]);
   const accountId = params?.id;
   const { toast } = useToast();
   const { user, isAdmin } = useAuth();
@@ -110,7 +116,7 @@ export default function AccountDetail() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/accounts"] });
       toast({ title: "Account deleted" });
-      navigate("/accounts");
+      navigate(lp("accounts"));
     },
     onError: (error: Error) => {
       toast({ title: "Failed to delete account", description: error.message, variant: "destructive" });
@@ -221,10 +227,10 @@ export default function AccountDetail() {
 
   return (
     <div className="p-6 space-y-6">
-      <Link href="/accounts">
+      <Link href={lp("accounts")}>
         <Button variant="ghost" className="gap-2 -ml-2" data-testid="button-back">
           <ArrowLeft className="h-4 w-4" />
-          Back to all Accounts
+          {t("accountDetail.back", "Back to accounts")}
         </Button>
       </Link>
 
@@ -249,7 +255,7 @@ export default function AccountDetail() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Link href={`/?accountId=${account.id}`}>
+          <Link href={`${lp("dashboard")}?accountId=${account.id}`}>
             <Button variant="outline" className="gap-2" data-testid="button-view-portfolio">
               <Briefcase className="h-4 w-4" />
               View Portfolio

@@ -1,5 +1,7 @@
 import { useMutation } from "@tanstack/react-query";
 import { useLocation, Link } from "wouter";
+import { useTranslation } from "react-i18next";
+import { useLocalePath } from "@/i18n/hooks";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,6 +14,8 @@ import { useToast } from "@/hooks/use-toast";
 export default function CreateOrganization() {
   const [, navigate] = useLocation();
   const { toast } = useToast();
+  const lp = useLocalePath();
+  const { t } = useTranslation();
   const [formData, setFormData] = useState({
     name: "",
     description: "",
@@ -29,7 +33,7 @@ export default function CreateOrganization() {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/organizations"] });
       toast({ title: "Organization created successfully" });
-      navigate(`/organizations/${data.id}`);
+      navigate(lp("organizationDetail", { id: data.id }));
     },
     onError: (error: Error) => {
       toast({
@@ -59,10 +63,10 @@ export default function CreateOrganization() {
 
   return (
     <div className="p-6 space-y-6">
-      <Link href="/organizations">
+      <Link href={lp("organizations")}>
         <Button variant="ghost" className="gap-2 -ml-2" data-testid="button-back">
           <ArrowLeft className="h-4 w-4" />
-          Back to Organizations
+          {t("organizationDetail.back", "Back to organizations")}
         </Button>
       </Link>
 

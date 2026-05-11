@@ -1,5 +1,8 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useRoute, Link, useLocation } from "wouter";
+import { useTranslation } from "react-i18next";
+import { useLocalePath, useLocale } from "@/i18n/hooks";
+import { ROUTE_PATTERNS } from "@/i18n/routes";
 import type { EntityInfo, EntityOwnerInfo, EntityManagerInfo, AccountWithRoles } from "@shared/types";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
@@ -346,7 +349,10 @@ function ManagersSection({ entityId, editing }: { entityId: string; editing: boo
 }
 
 export default function EntityDetail() {
-  const [, params] = useRoute("/entities/:id");
+  const locale = useLocale();
+  const lp = useLocalePath();
+  const { t } = useTranslation();
+  const [, params] = useRoute(ROUTE_PATTERNS.entityDetail[locale]);
   const entityId = params?.id;
   const { toast } = useToast();
   const { isAdmin } = useAuth();
@@ -410,7 +416,7 @@ export default function EntityDetail() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/entities"] });
       toast({ title: "Entity deleted" });
-      navigate("/entities");
+      navigate(lp("entities"));
     },
     onError: (error: Error) => {
       toast({ title: "Failed to delete entity", description: error.message, variant: "destructive" });
@@ -475,10 +481,10 @@ export default function EntityDetail() {
 
   return (
     <div className="p-6 space-y-6">
-      <Link href="/entities">
+      <Link href={lp("entities")}>
         <Button variant="ghost" className="gap-2 -ml-2" data-testid="button-back">
           <ArrowLeft className="h-4 w-4" />
-          Back to Entities
+          {t("entityDetail.back", "Back to entities")}
         </Button>
       </Link>
 
@@ -495,7 +501,7 @@ export default function EntityDetail() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Link href={`/?entityId=${entity.id}`}>
+          <Link href={`${lp("dashboard")}?entityId=${entity.id}`}>
             <Button variant="outline" className="gap-2" data-testid="button-view-portfolio">
               <Briefcase className="h-4 w-4" />
               View Portfolio

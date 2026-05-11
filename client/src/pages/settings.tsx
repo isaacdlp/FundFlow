@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
+import { useTranslation } from "react-i18next";
+import { useLocale, useLocaleFullPath } from "@/i18n/hooks";
+import { ROUTE_PATTERNS } from "@/i18n/routes";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -15,17 +18,22 @@ import { Button } from "@/components/ui/button";
 
 type TabValue = "general" | "management" | "documents" | "api-tokens";
 
-const TABS: { value: TabValue; label: string; icon: typeof SettingsIcon; adminOnly?: boolean; path: string }[] = [
-  { value: "general", label: "General", icon: SettingsIcon, path: "/settings" },
-  { value: "management", label: "Management", icon: FolderKanban, adminOnly: true, path: "/settings/management" },
-  { value: "documents", label: "Documents", icon: Files, adminOnly: true, path: "/settings/documents" },
-  { value: "api-tokens", label: "API Tokens", icon: Key, adminOnly: true, path: "/settings/api-tokens" },
+type TabRouteKey = "settings" | "settingsManagement" | "settingsDocuments" | "settingsApiTokens";
+
+const TABS: { value: TabValue; label: string; icon: typeof SettingsIcon; adminOnly?: boolean; routeKey: TabRouteKey }[] = [
+  { value: "general", label: "General", icon: SettingsIcon, routeKey: "settings" },
+  { value: "management", label: "Management", icon: FolderKanban, adminOnly: true, routeKey: "settingsManagement" },
+  { value: "documents", label: "Documents", icon: Files, adminOnly: true, routeKey: "settingsDocuments" },
+  { value: "api-tokens", label: "API Tokens", icon: Key, adminOnly: true, routeKey: "settingsApiTokens" },
 ];
 
 function tabFromPath(pathname: string): TabValue {
-  if (pathname.startsWith("/settings/api-tokens")) return "api-tokens";
-  if (pathname.startsWith("/settings/documents")) return "documents";
-  if (pathname.startsWith("/settings/management")) return "management";
+  // Match against any locale's settings sub-paths.
+  for (const loc of ["en", "es", "fr"] as const) {
+    if (pathname.startsWith(ROUTE_PATTERNS.settingsApiTokens[loc])) return "api-tokens";
+    if (pathname.startsWith(ROUTE_PATTERNS.settingsDocuments[loc])) return "documents";
+    if (pathname.startsWith(ROUTE_PATTERNS.settingsManagement[loc])) return "management";
+  }
   return "general";
 }
 
@@ -83,6 +91,9 @@ function DocumentsStorageSection() {
 export default function SettingsPage() {
   const { isAdmin, user } = useAuth();
   const [location, setLocation] = useLocation();
+  const locale = useLocale();
+  const lfp = useLocaleFullPath();
+  void useTranslation;
   const [tab, setTab] = useState<TabValue>(() => tabFromPath(location));
 
   // Keep tab + URL in sync (handles back/forward + initial deep links)
@@ -97,7 +108,8 @@ export default function SettingsPage() {
     const target = TABS.find(t => t.value === next);
     if (!target) return;
     setTab(next as TabValue);
-    if (location !== target.path) setLocation(target.path);
+    const targetPath = ROUTE_PATTERNS[target.routeKey][locale];
+    if (location !== targetPath) setLocation(targetPath);
   };
 
   return (
@@ -139,7 +151,7 @@ export default function SettingsPage() {
                 </dl>
               ) : null}
               <p className="text-xs text-muted-foreground pt-2">
-                To edit your name, email, or password, open your <a className="underline" href={user ? `/accounts/${user.id}` : "#"} data-testid="link-account-detail">account page</a>.
+                To edit your name, email, or password, open your <a className="underline" href={user ? lfp("accountDetail", { id: user.id }) : "#"} data-testid="link-account-detail">account page</a>.
               </p>
             </CardContent>
           </Card>
@@ -155,19 +167,19 @@ export default function SettingsPage() {
               <CardContent className="space-y-3 text-sm">
                 <ul className="space-y-2">
                   <li>
-                    <a className="underline" href="/accounts" data-testid="link-mgmt-accounts">Manage accounts</a>
+                    <a className="underline" href={lfp("accounts")} data-testid="link-mgmt-accounts">Manage accounts</a>
                     <span className="text-muted-foreground"> — view, edit, and delete user accounts.</span>
                   </li>
                   <li>
-                    <a className="underline" href="/organizations" data-testid="link-mgmt-orgs">Manage organizations</a>
+                    <a className="underline" href={lfp("organizations")} data-testid="link-mgmt-orgs">Manage organizations</a>
                     <span className="text-muted-foreground"> — create and configure tenant organizations.</span>
                   </li>
                   <li>
-                    <a className="underline" href="/spvs" data-testid="link-mgmt-spvs">Manage SPVs</a>
+                    <a className="underline" href={lfp("spvs")} data-testid="link-mgmt-spvs">Manage SPVs</a>
                     <span className="text-muted-foreground"> — view all special-purpose vehicles.</span>
                   </li>
                   <li>
-                    <a className="underline" href="/entities" data-testid="link-mgmt-entities">Manage entities</a>
+                    <a className="underline" href={lfp("entities")} data-testid="link-mgmt-entities">Manage entities</a>
                     <span className="text-muted-foreground"> — view all legal entities.</span>
                   </li>
                 </ul>

@@ -3,6 +3,16 @@
 ## Overview
 Multi-tenant fund management platform for VC and PE investments. Users can participate in different funds managed by different organizers. Organizations have public landing pages where users can request access or accept invite links.
 
+## Internationalization (i18n)
+- **Languages**: English (default), Spanish, French. New locales: add a code to `LOCALES` in `client/src/i18n/routes.ts`, fill in per-locale path patterns, and add a `client/src/i18n/locales/<lang>.json` file (copy from `en.json` and translate).
+- **URL strategy**: every page lives under `/<lang>/...` (e.g. `/en/accounts/5`, `/es/cuentas/5`, `/fr/comptes/5`). On a bare URL the `LocalePrefixGuard` (in `client/src/App.tsx`) redirects to the user's preferred locale (localStorage `fundflow:lang` → `navigator.language` → `en`).
+- **Routing**: `LocalizedRouter` mounts wouter's `<Router base={"/<lang>"} key={locale}>` so every page sees locale-stripped paths. Per-page `useRoute` calls use the locale-aware pattern from `ROUTE_PATTERNS[<key>][locale]` so localized URLs match (e.g. `/cuentas/:id` for Spanish accounts).
+- **Building links**: pages use `useLocalePath()` (returns a base-relative path for `<Link href>` and wouter `navigate`) or `useLocaleFullPath()` (returns the absolute `/<lang>/...` path) — never hardcode `"/accounts"` etc. The route-key map (`accounts`, `accountDetail`, `organizations`, `spvDetail`, `entities`, `documents`, `settings*`, `forgotPassword`, `resetPassword`, `orgLanding`, …) lives in `client/src/i18n/routes.ts`.
+- **Language switcher**: `<LanguageSwitcher />` (in `client/src/components/language-switcher.tsx`) appears in both the login screen header and the authenticated app header. It calls `useSwitchLanguage()` which translates the current path into the equivalent route in the target locale via `translatePath()` and persists the choice in localStorage.
+- **Strings**: translated via `react-i18next`. JSON catalogs at `client/src/i18n/locales/{en,es,fr}.json`, namespaced (`common.*`, `nav.*`, `auth.*`, `dashboard.*`, `accounts.*`, `accountDetail.*`, `organizations.*`, `organizationDetail.*`, `createOrganization.*`, `spvs.*`, `spvDetail.*`, `createSpv.*`, `entities.*`, `entityDetail.*`, `createEntity.*`, `documents.*`, `settings.*`, `apiTokens.*`, `landing.*`, `notFound.*`, `errors.*`).
+- **Server stays English**: API error messages are not translated; the client maps known substrings to localized toasts where it matters (login + password flows). Dates/numbers should be formatted with `Intl.*` using the BCP-47 tag derived from the active locale.
+- **Tests**: Playwright specs in `tests/e2e/` use bare paths (e.g. `/login`, `/organizations`) and rely on `LocalePrefixGuard` to redirect to the default locale. URL substring assertions still hold because `/en/login` contains `/login`.
+
 ## Architecture
 - **Frontend**: React + Vite + Tailwind CSS + shadcn/ui (TypeScript)
 - **Backend**: Express.js + Drizzle ORM (TypeScript)

@@ -1,5 +1,7 @@
 import { useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
+import { useTranslation } from "react-i18next";
+import { useLocalePath } from "@/i18n/hooks";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -27,6 +29,8 @@ const COUNTRIES = [
 
 export default function CreateAccount() {
   const [, navigate] = useLocation();
+  const lp = useLocalePath();
+  const { t } = useTranslation();
   const { toast } = useToast();
   const [formData, setFormData] = useState({
     firstName: "",
@@ -53,7 +57,7 @@ export default function CreateAccount() {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/accounts"] });
       toast({ title: "Account created successfully" });
-      navigate(`/accounts/${data.id}`);
+      navigate(lp("accountDetail", { id: data.id }));
     },
     onError: (error: Error) => {
       toast({
@@ -92,10 +96,10 @@ export default function CreateAccount() {
 
   return (
     <div className="p-6 space-y-6">
-      <Link href="/accounts">
+      <Link href={lp("accounts")}>
         <Button variant="ghost" className="gap-2 -ml-2" data-testid="button-back">
           <ArrowLeft className="h-4 w-4" />
-          Back to Accounts
+          {t("accountDetail.back", "Back to accounts")}
         </Button>
       </Link>
 

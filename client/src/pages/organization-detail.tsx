@@ -1,5 +1,8 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useRoute, Link, useLocation } from "wouter";
+import { useTranslation } from "react-i18next";
+import { useLocalePath, useLocale } from "@/i18n/hooks";
+import { ROUTE_PATTERNS } from "@/i18n/routes";
 import type { OrganizationWithOrganizers, AccountWithRoles, MemberInfo, InviteInfo, SpvInfo } from "@shared/types";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -219,6 +222,7 @@ function MembersTab({ orgId, canEdit }: { orgId: string; canEdit: boolean }) {
 function SpvsTab({ orgId, canEdit }: { orgId: string; canEdit: boolean }) {
   const { toast } = useToast();
   const [, navigate] = useLocation();
+  const lpSpv = useLocalePath();
 
   const { data: spvsList, isLoading } = useQuery<SpvInfo[]>({
     queryKey: ["/api/organizations", orgId, "spvs"],
@@ -251,7 +255,7 @@ function SpvsTab({ orgId, canEdit }: { orgId: string; canEdit: boolean }) {
             </p>
           </div>
           {canEdit && (
-            <Link href={`/organizations/${orgId}/spvs/new`}>
+            <Link href={lpSpv("organizationSpvNew", { orgId })}>
               <Button data-testid="button-add-spv">
                 <Plus className="h-4 w-4 mr-2" />
                 Add SPV
@@ -277,7 +281,7 @@ function SpvsTab({ orgId, canEdit }: { orgId: string; canEdit: boolean }) {
                   {spvsList.map(spv => (
                     <TableRow key={spv.id} data-testid={`spv-row-${spv.id}`}>
                       <TableCell>
-                        <Link href={`/spvs/${spv.id}`}>
+                        <Link href={lpSpv("spvDetail", { id: spv.id })}>
                           <div className="cursor-pointer">
                             <p className="text-sm font-medium hover:underline" data-testid={`text-spv-name-${spv.id}`}>
                               {spv.displayName}
@@ -308,7 +312,7 @@ function SpvsTab({ orgId, canEdit }: { orgId: string; canEdit: boolean }) {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex gap-1 justify-end">
-                          <Button variant="ghost" size="icon" onClick={() => navigate(`/spvs/${spv.id}`)} data-testid={`button-view-spv-${spv.id}`}>
+                          <Button variant="ghost" size="icon" onClick={() => navigate(lpSpv("spvDetail", { id: spv.id }))} data-testid={`button-view-spv-${spv.id}`}>
                             <FileText className="h-4 w-4" />
                           </Button>
                           {canEdit && (
@@ -470,7 +474,10 @@ function InvitesTab({ orgId, slug, canEdit }: { orgId: string; slug: string; can
 }
 
 export default function OrganizationDetail() {
-  const [, params] = useRoute("/organizations/:id");
+  const locale = useLocale();
+  const lp = useLocalePath();
+  const { t } = useTranslation();
+  const [, params] = useRoute(ROUTE_PATTERNS.organizationDetail[locale]);
   const orgId = params?.id;
   const { toast } = useToast();
   const { canManageOrg } = useOrgPermissions();
@@ -596,10 +603,10 @@ export default function OrganizationDetail() {
 
   return (
     <div className="p-6 space-y-6">
-      <Link href="/organizations">
+      <Link href={lp("organizations")}>
         <Button variant="ghost" className="gap-2 -ml-2" data-testid="button-back">
           <ArrowLeft className="h-4 w-4" />
-          Back to Organizations
+          {t("organizationDetail.back", "Back to organizations")}
         </Button>
       </Link>
 

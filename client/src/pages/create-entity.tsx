@@ -1,5 +1,7 @@
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
+import { useTranslation } from "react-i18next";
+import { useLocalePath } from "@/i18n/hooks";
 import type { AccountWithRoles } from "@shared/types";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -29,6 +31,8 @@ const CURRENCIES = ["USD ($)", "EUR (\u20ac)", "GBP (\u00a3)", "CHF", "JPY (\u00
 
 export default function CreateEntity() {
   const [, navigate] = useLocation();
+  const lp = useLocalePath();
+  const { t } = useTranslation();
   const { toast } = useToast();
 
   const { data: accountsList } = useQuery<AccountWithRoles[]>({
@@ -77,7 +81,7 @@ export default function CreateEntity() {
       }
       queryClient.invalidateQueries({ queryKey: ["/api/entities"] });
       toast({ title: "Entity created successfully" });
-      navigate(`/entities/${entity.id}`);
+      navigate(lp("entityDetail", { id: entity.id }));
     },
     onError: (error: Error) => {
       toast({ title: "Failed to create entity", description: error.message, variant: "destructive" });
@@ -98,10 +102,10 @@ export default function CreateEntity() {
 
   return (
     <div className="p-6 space-y-6 max-w-4xl">
-      <Link href="/entities">
+      <Link href={lp("entities")}>
         <Button variant="ghost" className="gap-2 -ml-2" data-testid="button-back">
           <ArrowLeft className="h-4 w-4" />
-          Back to Entities
+          {t("entityDetail.back", "Back to entities")}
         </Button>
       </Link>
 
@@ -323,8 +327,8 @@ export default function CreateEntity() {
       </Card>
 
       <div className="flex gap-3 justify-end pb-6">
-        <Link href="/entities">
-          <Button variant="outline" data-testid="button-cancel">Cancel</Button>
+        <Link href={lp("entities")}>
+          <Button variant="outline" data-testid="button-cancel">{t("common.cancel")}</Button>
         </Link>
         <Button
           onClick={() => createMutation.mutate()}

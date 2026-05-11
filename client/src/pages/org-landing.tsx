@@ -1,5 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useRoute, useSearch } from "wouter";
+import { useLocale } from "@/i18n/hooks";
+import { ROUTE_PATTERNS } from "@/i18n/routes";
 import type { OrganizationPublic } from "@shared/types";
 import { apiRequest } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -15,7 +17,8 @@ import { useToast } from "@/hooks/use-toast";
 type FlowMode = "choose" | "signup" | "signin" | "success";
 
 export default function OrgLanding() {
-  const [, params] = useRoute("/org/:slug");
+  const locale = useLocale();
+  const [, params] = useRoute(ROUTE_PATTERNS.orgLanding[locale]);
   const slug = params?.slug;
   const search = useSearch();
   const searchParams = new URLSearchParams(search);
