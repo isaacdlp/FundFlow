@@ -11,22 +11,22 @@ import { Search, TrendingUp, TrendingDown, ArrowRight, ChevronDown, ChevronRight
 import { PieChart, Pie, Cell, Tooltip as RTooltip, ResponsiveContainer, Legend } from "recharts";
 
 const PIE_GRADIENTS: { id: string; from: string; to: string }[] = [
-  { id: "grad-indigo",    from: "#a5b4fc", to: "#312e81" },
-  { id: "grad-emerald",   from: "#6ee7b7", to: "#064e3b" },
-  { id: "grad-amber",     from: "#fde68a", to: "#92400e" },
-  { id: "grad-rose",      from: "#fda4af", to: "#9f1239" },
-  { id: "grad-violet",    from: "#c4b5fd", to: "#4c1d95" },
-  { id: "grad-cyan",      from: "#67e8f9", to: "#155e75" },
-  { id: "grad-pink",      from: "#f9a8d4", to: "#9d174d" },
-  { id: "grad-lime",      from: "#bef264", to: "#365314" },
-  { id: "grad-orange",    from: "#fdba74", to: "#9a3412" },
-  { id: "grad-teal",      from: "#5eead4", to: "#134e4a" },
-  { id: "grad-blue",      from: "#93c5fd", to: "#1e3a8a" },
-  { id: "grad-yellow",    from: "#fef08a", to: "#854d0e" },
-  { id: "grad-purple",    from: "#d8b4fe", to: "#581c87" },
-  { id: "grad-green",     from: "#86efac", to: "#14532d" },
-  { id: "grad-sky",       from: "#7dd3fc", to: "#0c4a6e" },
-  { id: "grad-fuchsia",   from: "#f0abfc", to: "#701a75" },
+  { id: "grad-brand",      from: "#93c5fd", to: "#1e3a8a" },
+  { id: "grad-sky",        from: "#7dd3fc", to: "#075985" },
+  { id: "grad-indigo",     from: "#a5b4fc", to: "#312e81" },
+  { id: "grad-cyan",       from: "#67e8f9", to: "#0e7490" },
+  { id: "grad-blueSlate",  from: "#cbd5e1", to: "#1e293b" },
+  { id: "grad-royal",      from: "#bfdbfe", to: "#1d4ed8" },
+  { id: "grad-teal",       from: "#5eead4", to: "#115e59" },
+  { id: "grad-violet",     from: "#c4b5fd", to: "#4338ca" },
+  { id: "grad-azure",      from: "#a5f3fc", to: "#155e75" },
+  { id: "grad-cobalt",     from: "#60a5fa", to: "#1e40af" },
+  { id: "grad-periwinkle", from: "#dbeafe", to: "#3730a3" },
+  { id: "grad-deepSea",    from: "#7dd3fc", to: "#0c4a6e" },
+  { id: "grad-lagoon",     from: "#5eead4", to: "#0e7490" },
+  { id: "grad-midnight",   from: "#94a3b8", to: "#0f172a" },
+  { id: "grad-iris",       from: "#a5b4fc", to: "#1e1b4b" },
+  { id: "grad-aqua",       from: "#a5f3fc", to: "#0369a1" },
 ];
 
 function fmtMoney(n: number): string {
