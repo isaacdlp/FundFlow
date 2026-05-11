@@ -6,6 +6,7 @@ import {
   Users,
   Settings,
   FileText,
+  Files,
   TrendingUp,
 } from "lucide-react";
 import {
@@ -33,6 +34,7 @@ const mainNav: NavItem[] = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard },
   { title: "Organizations", url: "/organizations", icon: Building2 },
   { title: "SPVs", url: "/spvs", icon: FileText },
+  { title: "Documents", url: "/documents", icon: Files },
   { title: "Accounts", url: "/accounts", icon: Users },
   { title: "Entities", url: "/entities", icon: Building },
 ];

@@ -3,22 +3,81 @@ import { useLocation } from "wouter";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { ShieldAlert, Settings as SettingsIcon, FolderKanban, Key } from "lucide-react";
+import { ShieldAlert, Settings as SettingsIcon, FolderKanban, Key, Files } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { ApiTokensSection } from "./api-tokens";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
 
-type TabValue = "general" | "management" | "api-tokens";
+type TabValue = "general" | "management" | "documents" | "api-tokens";
 
 const TABS: { value: TabValue; label: string; icon: typeof SettingsIcon; adminOnly?: boolean; path: string }[] = [
   { value: "general", label: "General", icon: SettingsIcon, path: "/settings" },
   { value: "management", label: "Management", icon: FolderKanban, adminOnly: true, path: "/settings/management" },
+  { value: "documents", label: "Documents", icon: Files, adminOnly: true, path: "/settings/documents" },
   { value: "api-tokens", label: "API Tokens", icon: Key, adminOnly: true, path: "/settings/api-tokens" },
 ];
 
 function tabFromPath(pathname: string): TabValue {
   if (pathname.startsWith("/settings/api-tokens")) return "api-tokens";
+  if (pathname.startsWith("/settings/documents")) return "documents";
   if (pathname.startsWith("/settings/management")) return "management";
   return "general";
+}
+
+function DocumentsStorageSection() {
+  const { toast } = useToast();
+  const { data, isLoading } = useQuery<{ configured: string; effective: string; default: string }>({
+    queryKey: ["/api/settings/documents-path"],
+  });
+  const [value, setValue] = useState("");
+  useEffect(() => { if (data && value === "") setValue(data.configured ?? ""); }, [data]); // eslint-disable-line
+
+  const save = useMutation({
+    mutationFn: async () => apiRequest("PATCH", "/api/settings/documents-path", { value }),
+    onSuccess: () => {
+      toast({ title: "Storage path updated" });
+      queryClient.invalidateQueries({ queryKey: ["/api/settings/documents-path"] });
+    },
+    onError: (e: any) => toast({ title: "Update failed", description: e.message, variant: "destructive" }),
+  });
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Documents Storage</CardTitle>
+        <CardDescription>
+          Filesystem path where uploaded documents are stored. Leave empty to use the default location.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div>
+          <Label htmlFor="docs-path">Storage Path</Label>
+          <Input
+            id="docs-path"
+            value={value}
+            onChange={e => setValue(e.target.value)}
+            placeholder={data?.default ?? "./uploads/documents"}
+            disabled={isLoading}
+            data-testid="input-documents-path"
+          />
+          <p className="text-xs text-muted-foreground mt-1">
+            Effective path: <code data-testid="text-effective-path">{data?.effective ?? "—"}</code>
+          </p>
+          <p className="text-xs text-muted-foreground">
+            Default: <code>{data?.default ?? "—"}</code>
+          </p>
+        </div>
+        <Button onClick={() => save.mutate()} disabled={save.isPending} data-testid="button-save-documents-path">
+          {save.isPending ? "Saving..." : "Save"}
+        </Button>
+      </CardContent>
+    </Card>
+  );
 }
 
 export default function SettingsPage() {
@@ -114,6 +173,12 @@ export default function SettingsPage() {
                 </ul>
               </CardContent>
             </Card>
+          </TabsContent>
+        )}
+
+        {isAdmin && (
+          <TabsContent value="documents" className="mt-6">
+            <DocumentsStorageSection />
           </TabsContent>
         )}
 

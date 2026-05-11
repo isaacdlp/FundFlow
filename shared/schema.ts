@@ -217,6 +217,29 @@ export const passwordResetTokens = pgTable("password_reset_tokens", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const documents = pgTable("documents", {
+  id: serial("id").primaryKey(),
+  name: varchar("name", { length: 255 }).notNull(),
+  folderPath: varchar("folder_path", { length: 1000 }).notNull().default(""),
+  ownerType: varchar("owner_type", { length: 20 }).notNull(),
+  accountId: integer("account_id").references(() => accounts.id, { onDelete: "cascade" }),
+  entityId: integer("entity_id").references(() => entities.id, { onDelete: "cascade" }),
+  fileName: varchar("file_name", { length: 500 }).notNull(),
+  storedPath: varchar("stored_path", { length: 1000 }).notNull(),
+  mimeType: varchar("mime_type", { length: 200 }).default(""),
+  sizeBytes: integer("size_bytes").notNull().default(0),
+  uploadedBy: integer("uploaded_by").references(() => accounts.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  check("document_owner_xor", sql`(account_id IS NOT NULL)::int + (entity_id IS NOT NULL)::int = 1`),
+]);
+
+export const appSettings = pgTable("app_settings", {
+  key: varchar("key", { length: 100 }).primaryKey(),
+  value: text("value").notNull().default(""),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 export const apiTokens = pgTable("api_tokens", {
   id: serial("id").primaryKey(),
   accountId: integer("account_id").notNull().references(() => accounts.id, { onDelete: "cascade" }),
@@ -318,3 +341,17 @@ export type PasswordResetToken = typeof passwordResetTokens.$inferSelect;
 export type ApiToken = typeof apiTokens.$inferSelect;
 export type CreateApiTokenInput = z.infer<typeof createApiTokenSchema>;
 export type PublicApiToken = Omit<ApiToken, "tokenHash">;
+export type Document = typeof documents.$inferSelect;
+export type AppSetting = typeof appSettings.$inferSelect;
+
+export const createDocumentSchema = z.object({
+  name: z.string().min(1).max(255),
+  folderPath: z.string().max(1000).default(""),
+  ownerType: z.enum(["account", "entity"]),
+  accountId: z.number().int().positive().nullable().optional(),
+  entityId: z.number().int().positive().nullable().optional(),
+}).refine(d => (d.ownerType === "account" ? !!d.accountId : !!d.entityId), {
+  message: "accountId required when ownerType=account; entityId required when ownerType=entity",
+});
+
+export type CreateDocumentInput = z.infer<typeof createDocumentSchema>;

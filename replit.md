@@ -157,6 +157,17 @@ All token CRUD requires admin role + a real session cookie (no bearer auth, even
 - `POST /api/entities/:id/managers` - Add manager (body: {accountId})
 - `DELETE /api/entities/:id/managers/:accountId` - Remove manager
 
+### Documents
+- `GET /api/documents` - List documents visible to the caller. Admins see all; non-admins see documents owned by their account, plus documents owned by entities they own (recursively via `entity_owners`) or manage (via `entity_managers`).
+- `POST /api/documents` - **Admin only**. `multipart/form-data`: field `file` (binary, ≤100 MB) plus `name`, `folderPath` (e.g. `"SPVs/RS Kushki"` — slashes nest folders), `ownerType` (`"account"` or `"entity"`), and exactly one of `accountId` / `entityId`.
+- `GET /api/documents/:id/download` - Streams the file. Visibility-filtered (same rules as list).
+- `DELETE /api/documents/:id` - **Admin only**. Removes DB row + on-disk file.
+- `GET /api/settings/documents-path` - **Admin only**. Returns `{configured, effective, default}` paths.
+- `PATCH /api/settings/documents-path` - **Admin only**. `{value}`: filesystem path; empty = default `./uploads/documents`. Path is created on demand.
+- DB tables: `documents` (id, name, folderPath, ownerType, accountId XOR entityId, fileName, storedPath, mimeType, sizeBytes, uploadedBy) + `app_settings` (key/value).
+- On disk, files live under `<storage_path>/{accounts|entities}/<id>/<folderPath>/<original-name>-<timestamp>-<rand>.<ext>` so an entity's docs never collide with an account's.
+- UI: `/documents` (sidebar entry between SPVs and Accounts) shows a folder tree (built from `folderPath`) on the left, files on the right, with admin-only Upload + Delete. Storage path is editable at `/settings/documents`.
+
 ## Public Landing Page
 - Route: `/org/:slug` — standalone page (no sidebar layout)
 - Shows org info (name, description, website, location)

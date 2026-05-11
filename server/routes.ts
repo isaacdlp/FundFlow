@@ -10,6 +10,7 @@ import { fromZodError } from "zod-validation-error";
 import type { AccountWithRoles } from "./storage";
 import { sendPasswordResetEmail } from "./email";
 import { generateApiToken, hashApiToken, parseBearerToken } from "./api-tokens";
+import { registerDocumentRoutes } from "./documents";
 
 function stripPasswordHash(account: any) {
   const { passwordHash, ...rest } = account;
@@ -1356,6 +1357,8 @@ export async function registerRoutes(
     if (!removed) return res.status(404).json({ message: "Manager not found" });
     res.json({ message: "Manager removed" });
   });
+
+  registerDocumentRoutes(app);
 
   return httpServer;
 }
