@@ -10,10 +10,23 @@ import type { PortfolioInvestment, AccountWithRoles, EntityInfo } from "@shared/
 import { Search, TrendingUp, TrendingDown, ArrowRight, ChevronDown, ChevronRight, Briefcase, ArrowLeft } from "lucide-react";
 import { PieChart, Pie, Cell, Tooltip as RTooltip, ResponsiveContainer, Legend } from "recharts";
 
-const PIE_COLORS = [
-  "#2563eb", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6",
-  "#06b6d4", "#ec4899", "#84cc16", "#f97316", "#14b8a6",
-  "#6366f1", "#eab308", "#a855f7", "#22c55e", "#0ea5e9",
+const PIE_GRADIENTS: { id: string; from: string; to: string }[] = [
+  { id: "grad-indigo",    from: "#6366f1", to: "#3b3df2" },
+  { id: "grad-emerald",   from: "#34d399", to: "#059669" },
+  { id: "grad-amber",     from: "#fbbf24", to: "#d97706" },
+  { id: "grad-rose",      from: "#fb7185", to: "#e11d48" },
+  { id: "grad-violet",    from: "#a78bfa", to: "#7c3aed" },
+  { id: "grad-cyan",      from: "#22d3ee", to: "#0891b2" },
+  { id: "grad-pink",      from: "#f472b6", to: "#db2777" },
+  { id: "grad-lime",      from: "#a3e635", to: "#65a30d" },
+  { id: "grad-orange",    from: "#fb923c", to: "#ea580c" },
+  { id: "grad-teal",      from: "#2dd4bf", to: "#0d9488" },
+  { id: "grad-blue",      from: "#60a5fa", to: "#2563eb" },
+  { id: "grad-yellow",    from: "#facc15", to: "#ca8a04" },
+  { id: "grad-purple",    from: "#c084fc", to: "#9333ea" },
+  { id: "grad-green",     from: "#4ade80", to: "#16a34a" },
+  { id: "grad-sky",       from: "#38bdf8", to: "#0284c7" },
+  { id: "grad-fuchsia",   from: "#e879f9", to: "#c026d3" },
 ];
 
 function fmtMoney(n: number): string {
@@ -61,6 +74,17 @@ function SpvPieCard({
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
+                <defs>
+                  {PIE_GRADIENTS.map(g => (
+                    <linearGradient key={g.id} id={g.id} x1="0" y1="0" x2="1" y2="1">
+                      <stop offset="0%" stopColor={g.from} stopOpacity={0.95} />
+                      <stop offset="100%" stopColor={g.to} stopOpacity={1} />
+                    </linearGradient>
+                  ))}
+                  <filter id="pie-shadow" x="-20%" y="-20%" width="140%" height="140%">
+                    <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="#000" floodOpacity="0.15" />
+                  </filter>
+                </defs>
                 <Pie
                   data={data}
                   dataKey="value"
@@ -70,9 +94,10 @@ function SpvPieCard({
                   paddingAngle={2}
                   stroke="hsl(var(--background))"
                   strokeWidth={2}
+                  filter="url(#pie-shadow)"
                 >
                   {data.map((_, i) => (
-                    <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                    <Cell key={i} fill={`url(#${PIE_GRADIENTS[i % PIE_GRADIENTS.length].id})`} />
                   ))}
                 </Pie>
                 <RTooltip
@@ -84,12 +109,15 @@ function SpvPieCard({
                   height={36}
                   iconType="circle"
                   wrapperStyle={{ fontSize: 12 }}
-                  formatter={(value: string) => {
+                  formatter={(value: string, _entry: any, idx: number) => {
                     const item = data.find(d => d.name === value);
-                    if (!item) return value;
-                    if (legendFormatter) return `${value} · ${legendFormatter(item.value)}`;
-                    const pct = total > 0 ? ((item.value / total) * 100).toFixed(1) : "0";
-                    return `${value} · ${pct}%`;
+                    const color = PIE_GRADIENTS[idx % PIE_GRADIENTS.length].to;
+                    const label = !item
+                      ? value
+                      : legendFormatter
+                        ? `${value} · ${legendFormatter(item.value)}`
+                        : `${value} · ${total > 0 ? ((item.value / total) * 100).toFixed(1) : "0"}%`;
+                    return <span style={{ color }}>{label}</span>;
                   }}
                 />
               </PieChart>
