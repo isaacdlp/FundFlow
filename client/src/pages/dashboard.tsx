@@ -9,7 +9,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import type { PortfolioInvestment, AccountWithRoles, EntityInfo } from "@shared/types";
 import { Search, TrendingUp, TrendingDown, ArrowRight, ChevronDown, ChevronRight, Briefcase, ArrowLeft } from "lucide-react";
-import { PieChart, Pie, Cell, Tooltip as RTooltip, ResponsiveContainer, Legend } from "recharts";
+import { PieChart, Pie, Cell, Tooltip as RTooltip, ResponsiveContainer } from "recharts";
 import { useLocale, useLocalePath } from "@/i18n/hooks";
 
 const PIE_GRADIENTS: { id: string; from: string; to: string }[] = [
@@ -94,22 +94,13 @@ function SpvPieCard({
                   ))}
                 </Pie>
                 <RTooltip
-                  formatter={(v: any) => [valueFormatter(Number(v)), t("dashboard.tooltipValue")]}
-                  contentStyle={{ background: "hsl(var(--popover))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }}
-                />
-                <Legend
-                  verticalAlign="bottom" height={36} iconType="circle"
-                  wrapperStyle={{ fontSize: 12 }}
-                  formatter={(value: string, _entry: any, idx: number) => {
-                    const item = data.find(d => d.name === value);
-                    const color = PIE_GRADIENTS[idx % PIE_GRADIENTS.length].to;
-                    const label = !item
-                      ? value
-                      : legendFormatter
-                        ? `${value} · ${legendFormatter(item.value)}`
-                        : `${value} · ${total > 0 ? ((item.value / total) * 100).toFixed(1) : "0"}%`;
-                    return <span style={{ color }}>{label}</span>;
+                  formatter={(v: any, name: any) => {
+                    const num = Number(v);
+                    const pctSuffix = total > 0 ? ` · ${((num / total) * 100).toFixed(1)}%` : "";
+                    const formatted = legendFormatter ? legendFormatter(num) : valueFormatter(num);
+                    return [`${formatted}${pctSuffix}`, name];
                   }}
+                  contentStyle={{ background: "hsl(var(--popover))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }}
                 />
               </PieChart>
             </ResponsiveContainer>
