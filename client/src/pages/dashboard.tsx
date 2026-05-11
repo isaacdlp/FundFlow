@@ -8,7 +8,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import type { PortfolioInvestment, AccountWithRoles, EntityInfo } from "@shared/types";
 import { Search, TrendingUp, TrendingDown, ArrowRight, ChevronDown, ChevronRight, Briefcase, ArrowLeft } from "lucide-react";
-import { PieChart, Pie, Cell, Tooltip as RTooltip, ResponsiveContainer, Legend, BarChart, Bar, XAxis, YAxis, CartesianGrid } from "recharts";
+import { PieChart, Pie, Cell, Tooltip as RTooltip, ResponsiveContainer, Legend } from "recharts";
 
 const PIE_COLORS = [
   "#2563eb", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6",
@@ -34,13 +34,25 @@ function fmtDate(d: string | null): string {
   }
 }
 
-function SpvPieCard({ title, subtitle, data }: { title: string; subtitle: string; data: { name: string; value: number }[] }) {
+function SpvPieCard({
+  title,
+  subtitle,
+  data,
+  valueFormatter = (v) => `$${fmtMoney(v)}`,
+  legendFormatter,
+}: {
+  title: string;
+  subtitle: string;
+  data: { name: string; value: number }[];
+  valueFormatter?: (v: number) => string;
+  legendFormatter?: (v: number) => string;
+}) {
   const total = data.reduce((s, d) => s + d.value, 0);
   return (
     <Card>
       <CardHeader className="pb-2">
         <h3 className="text-base font-semibold" data-testid={`text-pie-title-${title.replace(/\s+/g, "-").toLowerCase()}`}>{title}</h3>
-        <p className="text-xs text-muted-foreground">{subtitle} · Total ${fmtMoney(total)}</p>
+        <p className="text-xs text-muted-foreground">{subtitle}</p>
       </CardHeader>
       <CardContent className="pt-2">
         {data.length === 0 ? (
@@ -64,7 +76,7 @@ function SpvPieCard({ title, subtitle, data }: { title: string; subtitle: string
                   ))}
                 </Pie>
                 <RTooltip
-                  formatter={(v: any) => [`$${fmtMoney(Number(v))}`, "Amount"]}
+                  formatter={(v: any) => [valueFormatter(Number(v)), "Value"]}
                   contentStyle={{ background: "hsl(var(--popover))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }}
                 />
                 <Legend
@@ -74,61 +86,13 @@ function SpvPieCard({ title, subtitle, data }: { title: string; subtitle: string
                   wrapperStyle={{ fontSize: 12 }}
                   formatter={(value: string) => {
                     const item = data.find(d => d.name === value);
-                    const pct = item && total > 0 ? ((item.value / total) * 100).toFixed(1) : "0";
+                    if (!item) return value;
+                    if (legendFormatter) return `${value} · ${legendFormatter(item.value)}`;
+                    const pct = total > 0 ? ((item.value / total) * 100).toFixed(1) : "0";
                     return `${value} · ${pct}%`;
                   }}
                 />
               </PieChart>
-            </ResponsiveContainer>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-function SpvGrowthCard({ data }: { data: { name: string; growth: number }[] }) {
-  const rowHeight = 32;
-  const chartHeight = Math.max(180, data.length * rowHeight + 40);
-  return (
-    <Card>
-      <CardHeader className="pb-2">
-        <h3 className="text-base font-semibold" data-testid="text-pie-title-percentage-growth-by-spv">Percentage growth by SPV</h3>
-        <p className="text-xs text-muted-foreground">(Current − Initial) / Initial · independent of position size</p>
-      </CardHeader>
-      <CardContent className="pt-2">
-        {data.length === 0 ? (
-          <div className="h-40 flex items-center justify-center text-sm text-muted-foreground">No data</div>
-        ) : (
-          <div style={{ height: chartHeight }}>
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={data} layout="vertical" margin={{ top: 8, right: 32, left: 8, bottom: 8 }}>
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="hsl(var(--border))" />
-                <XAxis
-                  type="number"
-                  tickFormatter={(v) => `${v.toFixed(0)}%`}
-                  stroke="hsl(var(--muted-foreground))"
-                  fontSize={11}
-                />
-                <YAxis
-                  type="category"
-                  dataKey="name"
-                  width={140}
-                  stroke="hsl(var(--muted-foreground))"
-                  fontSize={12}
-                  tick={{ fill: "hsl(var(--foreground))" }}
-                />
-                <RTooltip
-                  formatter={(v: any) => [fmtPct(Number(v)), "Growth"]}
-                  contentStyle={{ background: "hsl(var(--popover))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }}
-                  cursor={{ fill: "hsl(var(--accent))", opacity: 0.3 }}
-                />
-                <Bar dataKey="growth" radius={[0, 4, 4, 0]}>
-                  {data.map((d, i) => (
-                    <Cell key={i} fill={d.growth >= 0 ? "#10b981" : "#ef4444"} />
-                  ))}
-                </Bar>
-              </BarChart>
             </ResponsiveContainer>
           </div>
         )}
@@ -218,10 +182,10 @@ export default function Dashboard() {
 
   const initialPie = spvBreakdown.filter(s => s.initial > 0).map(s => ({ name: s.name, value: s.initial }));
   const currentPie = spvBreakdown.filter(s => s.current > 0).map(s => ({ name: s.name, value: s.current }));
-  const growthData = spvBreakdown
-    .filter(s => s.initial > 0)
-    .map(s => ({ name: s.name, growth: ((s.current - s.initial) / s.initial) * 100 }))
-    .sort((a, b) => b.growth - a.growth);
+  const growthPie = spvBreakdown
+    .filter(s => s.initial > 0 && s.current > s.initial)
+    .map(s => ({ name: s.name, value: ((s.current - s.initial) / s.initial) * 100 }))
+    .sort((a, b) => b.value - a.value);
 
   const groupedByCompany = useMemo<CompanyGroup[]>(() => {
     const map = new Map<string, CompanyGroup>();
@@ -382,12 +346,10 @@ export default function Dashboard() {
       </Card>
 
       {!isLoading && spvBreakdown.length > 0 && (
-        <div className="space-y-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <SpvPieCard title="Initial contribution by SPV" subtitle="Capital called at entry" data={initialPie} />
-            <SpvPieCard title="Current value by SPV" subtitle="Most recent valuation" data={currentPie} />
-          </div>
-          <SpvGrowthCard data={growthData} />
+        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+          <SpvPieCard title="Initial contribution by SPV" subtitle="Capital called at entry" data={initialPie} valueFormatter={(v) => `$${fmtMoney(v)}`} />
+          <SpvPieCard title="Current value by SPV" subtitle="Most recent valuation" data={currentPie} valueFormatter={(v) => `$${fmtMoney(v)}`} />
+          <SpvPieCard title="Percentage growth by SPV" subtitle="Positive growth only · (Current − Initial) / Initial" data={growthPie} valueFormatter={(v) => fmtPct(v)} legendFormatter={(v) => fmtPct(v)} />
         </div>
       )}
 
