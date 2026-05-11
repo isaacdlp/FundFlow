@@ -206,7 +206,7 @@ All token CRUD requires admin role + a real session cookie (no bearer auth, even
 - **Reset Password**: POST /api/auth/reset-password (token, password) -- validates token, updates password
 - **Change Password**: POST /api/auth/change-password (currentPassword, newPassword) -- requires auth
 - Reset tokens expire after 1 hour, single-use
-- Email sent via nodemailer to SMTP server (smtp.ionos.com:465 SSL, from app@valantum.com)
+- Email sent via nodemailer to SMTP server (smtp.ionos.com:465 SSL); sender address comes from the `SMTP_FROM` env var, displayed as `"FundFlow" <SMTP_FROM>`
 - Frontend pages: /forgot-password, /reset-password?token=...
 - Login page has "Forgot your password?" link
 - DB table: password_reset_tokens (id, accountId, token, expiresAt, used, createdAt)
