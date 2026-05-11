@@ -109,7 +109,6 @@ export default function Accounts() {
                     <TableHead>Name</TableHead>
                     <TableHead>Email</TableHead>
                     <TableHead>Roles</TableHead>
-                    <TableHead>Status</TableHead>
                     <TableHead className="w-[100px] text-right">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -144,11 +143,6 @@ export default function Accounts() {
                             </Badge>
                           ))}
                         </div>
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant={account.profileComplete ? "default" : "secondary"}>
-                          {account.profileComplete ? "Complete" : "Incomplete"}
-                        </Badge>
                       </TableCell>
                       <TableCell>
                         <div className="flex gap-1 items-center justify-end">

@@ -238,9 +238,6 @@ export default function AccountDetail() {
           </h1>
           <p className="text-muted-foreground" data-testid="text-account-email">{account.email}</p>
           <div className="flex gap-2 mt-1 flex-wrap">
-            <Badge variant={account.profileComplete ? "default" : "secondary"}>
-              {account.profileComplete ? "Profile Complete" : "Profile Incomplete"}
-            </Badge>
             {account.roles.map((role) => (
               <Badge
                 key={role.id}
