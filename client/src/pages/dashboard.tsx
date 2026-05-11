@@ -11,22 +11,22 @@ import { Search, TrendingUp, TrendingDown, ArrowRight, ChevronDown, ChevronRight
 import { PieChart, Pie, Cell, Tooltip as RTooltip, ResponsiveContainer, Legend } from "recharts";
 
 const PIE_GRADIENTS: { id: string; from: string; to: string }[] = [
-  { id: "grad-indigo",    from: "#6366f1", to: "#3b3df2" },
-  { id: "grad-emerald",   from: "#34d399", to: "#059669" },
-  { id: "grad-amber",     from: "#fbbf24", to: "#d97706" },
-  { id: "grad-rose",      from: "#fb7185", to: "#e11d48" },
-  { id: "grad-violet",    from: "#a78bfa", to: "#7c3aed" },
-  { id: "grad-cyan",      from: "#22d3ee", to: "#0891b2" },
-  { id: "grad-pink",      from: "#f472b6", to: "#db2777" },
-  { id: "grad-lime",      from: "#a3e635", to: "#65a30d" },
-  { id: "grad-orange",    from: "#fb923c", to: "#ea580c" },
-  { id: "grad-teal",      from: "#2dd4bf", to: "#0d9488" },
-  { id: "grad-blue",      from: "#60a5fa", to: "#2563eb" },
-  { id: "grad-yellow",    from: "#facc15", to: "#ca8a04" },
-  { id: "grad-purple",    from: "#c084fc", to: "#9333ea" },
-  { id: "grad-green",     from: "#4ade80", to: "#16a34a" },
-  { id: "grad-sky",       from: "#38bdf8", to: "#0284c7" },
-  { id: "grad-fuchsia",   from: "#e879f9", to: "#c026d3" },
+  { id: "grad-indigo",    from: "#a5b4fc", to: "#312e81" },
+  { id: "grad-emerald",   from: "#6ee7b7", to: "#064e3b" },
+  { id: "grad-amber",     from: "#fde68a", to: "#92400e" },
+  { id: "grad-rose",      from: "#fda4af", to: "#9f1239" },
+  { id: "grad-violet",    from: "#c4b5fd", to: "#4c1d95" },
+  { id: "grad-cyan",      from: "#67e8f9", to: "#155e75" },
+  { id: "grad-pink",      from: "#f9a8d4", to: "#9d174d" },
+  { id: "grad-lime",      from: "#bef264", to: "#365314" },
+  { id: "grad-orange",    from: "#fdba74", to: "#9a3412" },
+  { id: "grad-teal",      from: "#5eead4", to: "#134e4a" },
+  { id: "grad-blue",      from: "#93c5fd", to: "#1e3a8a" },
+  { id: "grad-yellow",    from: "#fef08a", to: "#854d0e" },
+  { id: "grad-purple",    from: "#d8b4fe", to: "#581c87" },
+  { id: "grad-green",     from: "#86efac", to: "#14532d" },
+  { id: "grad-sky",       from: "#7dd3fc", to: "#0c4a6e" },
+  { id: "grad-fuchsia",   from: "#f0abfc", to: "#701a75" },
 ];
 
 function fmtMoney(n: number): string {
@@ -76,13 +76,22 @@ function SpvPieCard({
               <PieChart>
                 <defs>
                   {PIE_GRADIENTS.map(g => (
-                    <linearGradient key={g.id} id={g.id} x1="0" y1="0" x2="1" y2="1">
-                      <stop offset="0%" stopColor={g.from} stopOpacity={0.95} />
+                    <radialGradient
+                      key={g.id}
+                      id={g.id}
+                      cx="30%"
+                      cy="30%"
+                      r="85%"
+                      fx="20%"
+                      fy="20%"
+                    >
+                      <stop offset="0%" stopColor={g.from} stopOpacity={1} />
+                      <stop offset="60%" stopColor={g.to} stopOpacity={1} />
                       <stop offset="100%" stopColor={g.to} stopOpacity={1} />
-                    </linearGradient>
+                    </radialGradient>
                   ))}
                   <filter id="pie-shadow" x="-20%" y="-20%" width="140%" height="140%">
-                    <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="#000" floodOpacity="0.15" />
+                    <feDropShadow dx="0" dy="3" stdDeviation="4" floodColor="#000" floodOpacity="0.2" />
                   </filter>
                 </defs>
                 <Pie
