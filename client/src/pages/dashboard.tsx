@@ -172,12 +172,14 @@ export default function Dashboard() {
 
   const summary = useMemo(() => {
     const initial = filtered.reduce((s, i) => s + parseFloat(i.totalCalled || "0"), 0);
+    const fees = filtered.reduce((s, i) => s + parseFloat(i.managementFee || "0") + parseFloat(i.otherFee || "0"), 0);
+    const paidIn = initial + fees;
     const current = filtered.reduce((s, i) => s + parseFloat(i.currentValue || "0"), 0);
     const distributions = filtered.reduce((s, i) => s + parseFloat(i.distributed || "0"), 0);
     const roi = initial > 0 ? ((current + distributions - initial) / initial) * 100 : 0;
     const moic = initial > 0 ? (current + distributions) / initial : 0;
-    const tvpi = initial > 0 ? (current + distributions) / initial : 0;
-    const dpi = initial > 0 ? distributions / initial : 0;
+    const tvpi = paidIn > 0 ? (current + distributions) / paidIn : 0;
+    const dpi = paidIn > 0 ? distributions / paidIn : 0;
     return { initial, current, distributions, roi, moic, tvpi, dpi, count: filtered.length };
   }, [filtered]);
 
