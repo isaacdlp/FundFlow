@@ -280,7 +280,7 @@ export default function Dashboard() {
                 </thead>
                 <tbody>
                   {groupedByCompany.flatMap(group => {
-                    const isOpen = expanded[group.key] ?? true;
+                    const isOpen = expanded[group.key] ?? false;
                     const rows: JSX.Element[] = [];
                     rows.push(
                       <tr
