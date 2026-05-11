@@ -1,0 +1,6 @@
+accounts.deleteConfirm
+apiTokens.authHeaderHint
+apiTokens.revokeConfirmStrong
+auth.resetSentMessage
+entities.deleteConfirm
+settings.editAccountHint

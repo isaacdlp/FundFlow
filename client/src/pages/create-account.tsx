@@ -56,12 +56,12 @@ export default function CreateAccount() {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/accounts"] });
-      toast({ title: "Account created successfully" });
+      toast({ title: t("createAccount.successTitle") });
       navigate(lp("accountDetail", { id: data.id }));
     },
     onError: (error: Error) => {
       toast({
-        title: "Failed to create account",
+        title: t("createAccount.errorTitle"),
         description: error.message,
         variant: "destructive",
       });
@@ -85,8 +85,8 @@ export default function CreateAccount() {
     e.preventDefault();
     if (!formData.email || !formData.firstName || !formData.lastName || !formData.password) {
       toast({
-        title: "Missing required fields",
-        description: "Please fill in first name, last name, email, and password.",
+        title: t("createAccount.missingRequiredTitle"),
+        description: t("createAccount.missingRequiredDescription"),
         variant: "destructive",
       });
       return;
@@ -99,14 +99,14 @@ export default function CreateAccount() {
       <Link href={lp("accounts")}>
         <Button variant="ghost" className="gap-2 -ml-2" data-testid="button-back">
           <ArrowLeft className="h-4 w-4" />
-          {t("accountDetail.back", "Back to accounts")}
+          {t("accountDetail.back")}
         </Button>
       </Link>
 
       <div>
-        <h1 className="text-2xl font-semibold" data-testid="text-page-title">Create Account</h1>
+        <h1 className="text-2xl font-semibold" data-testid="text-page-title">{t("createAccount.title")}</h1>
         <p className="text-muted-foreground mt-1">
-          Add a new user to the platform
+          {t("createAccount.subtitle")}
         </p>
       </div>
 
@@ -114,12 +114,12 @@ export default function CreateAccount() {
         <div className="space-y-6">
           <Card>
             <CardHeader>
-              <h2 className="text-lg font-semibold">Personal Information</h2>
+              <h2 className="text-lg font-semibold">{t("createAccount.personalInfo")}</h2>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="firstName">First Name *</Label>
+                  <Label htmlFor="firstName">{t("common.firstName")} *</Label>
                   <Input
                     id="firstName"
                     value={formData.firstName}
@@ -129,7 +129,7 @@ export default function CreateAccount() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="lastName">Last Name *</Label>
+                  <Label htmlFor="lastName">{t("common.lastName")} *</Label>
                   <Input
                     id="lastName"
                     value={formData.lastName}
@@ -141,7 +141,7 @@ export default function CreateAccount() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="birthdate">Birthdate</Label>
+                <Label htmlFor="birthdate">{t("createAccount.birthdate")}</Label>
                 <Input
                   id="birthdate"
                   type="date"
@@ -153,7 +153,7 @@ export default function CreateAccount() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="email">Email *</Label>
+                  <Label htmlFor="email">{t("common.email")} *</Label>
                   <Input
                     id="email"
                     type="email"
@@ -164,7 +164,7 @@ export default function CreateAccount() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="phone">Phone</Label>
+                  <Label htmlFor="phone">{t("common.phone")}</Label>
                   <Input
                     id="phone"
                     value={formData.phone}
@@ -175,25 +175,25 @@ export default function CreateAccount() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="taxId">SSN / Tax ID</Label>
+                <Label htmlFor="taxId">{t("common.ssnTaxId")}</Label>
                 <Input
                   id="taxId"
                   value={formData.taxId}
                   onChange={(e) => updateField("taxId", e.target.value)}
                   data-testid="input-tax-id"
                 />
-                <p className="text-xs text-muted-foreground">SSN / Tax ID is an encrypted attribute</p>
+                <p className="text-xs text-muted-foreground">{t("createAccount.taxIdHelper")}</p>
               </div>
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader>
-              <h2 className="text-lg font-semibold">Login Credentials</h2>
+              <h2 className="text-lg font-semibold">{t("createAccount.loginCredentials")}</h2>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="password">Password *</Label>
+                <Label htmlFor="password">{t("common.password")} *</Label>
                 <Input
                   id="password"
                   type="password"
@@ -208,11 +208,11 @@ export default function CreateAccount() {
 
           <Card>
             <CardHeader>
-              <h2 className="text-lg font-semibold">Residential Address</h2>
+              <h2 className="text-lg font-semibold">{t("createAccount.residentialAddress")}</h2>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="streetAddress1">Street Address 1</Label>
+                <Label htmlFor="streetAddress1">{t("createAccount.streetAddress1")}</Label>
                 <Input
                   id="streetAddress1"
                   value={formData.streetAddress1}
@@ -222,7 +222,7 @@ export default function CreateAccount() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="streetAddress2">Street Address 2 (Optional)</Label>
+                <Label htmlFor="streetAddress2">{t("createAccount.streetAddress2Optional")}</Label>
                 <Input
                   id="streetAddress2"
                   value={formData.streetAddress2}
@@ -233,13 +233,13 @@ export default function CreateAccount() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="country">Country</Label>
+                  <Label htmlFor="country">{t("common.country")}</Label>
                   <Select
                     value={formData.country}
                     onValueChange={(val) => updateField("country", val)}
                   >
                     <SelectTrigger data-testid="select-country">
-                      <SelectValue placeholder="Select country" />
+                      <SelectValue placeholder={t("common.selectCountry")} />
                     </SelectTrigger>
                     <SelectContent>
                       {COUNTRIES.map((c) => (
@@ -251,7 +251,7 @@ export default function CreateAccount() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="city">City</Label>
+                  <Label htmlFor="city">{t("common.city")}</Label>
                   <Input
                     id="city"
                     value={formData.city}
@@ -263,7 +263,7 @@ export default function CreateAccount() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="stateProvince">State / Province</Label>
+                  <Label htmlFor="stateProvince">{t("common.state")}</Label>
                   <Input
                     id="stateProvince"
                     value={formData.stateProvince}
@@ -272,7 +272,7 @@ export default function CreateAccount() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="zipPostalCode">Zip / Postal Code</Label>
+                  <Label htmlFor="zipPostalCode">{t("createAccount.zipPostalCode")}</Label>
                   <Input
                     id="zipPostalCode"
                     value={formData.zipPostalCode}
@@ -286,7 +286,7 @@ export default function CreateAccount() {
 
           <Card>
             <CardHeader>
-              <h2 className="text-lg font-semibold">Roles</h2>
+              <h2 className="text-lg font-semibold">{t("createAccount.roles")}</h2>
             </CardHeader>
             <CardContent className="space-y-4">
               <div
@@ -301,9 +301,9 @@ export default function CreateAccount() {
                 />
                 <div className="space-y-1">
                   <label htmlFor="role-admin" className="text-sm font-medium cursor-pointer">
-                    Admin
+                    {t("common.admin")}
                   </label>
-                  <p className="text-xs text-muted-foreground">Platform administrator with full access to all features and settings</p>
+                  <p className="text-xs text-muted-foreground">{t("createAccount.adminRoleDescription")}</p>
                 </div>
               </div>
             </CardContent>
@@ -316,7 +316,7 @@ export default function CreateAccount() {
               data-testid="button-submit"
             >
               <Save className="h-4 w-4 mr-2" />
-              {createMutation.isPending ? "Creating..." : "Create Account"}
+              {createMutation.isPending ? t("common.creating") : t("createAccount.createBtn")}
             </Button>
           </div>
         </div>

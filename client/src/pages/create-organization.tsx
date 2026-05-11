@@ -32,12 +32,12 @@ export default function CreateOrganization() {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/organizations"] });
-      toast({ title: "Organization created successfully" });
+      toast({ title: t("createOrganization.successTitle") });
       navigate(lp("organizationDetail", { id: data.id }));
     },
     onError: (error: Error) => {
       toast({
-        title: "Failed to create organization",
+        title: t("createOrganization.errorTitle"),
         description: error.message,
         variant: "destructive",
       });
@@ -52,8 +52,8 @@ export default function CreateOrganization() {
     e.preventDefault();
     if (!formData.name) {
       toast({
-        title: "Missing required fields",
-        description: "Organization name is required.",
+        title: t("createOrganization.missingFieldsTitle"),
+        description: t("createOrganization.nameRequiredMessage"),
         variant: "destructive",
       });
       return;
@@ -66,14 +66,14 @@ export default function CreateOrganization() {
       <Link href={lp("organizations")}>
         <Button variant="ghost" className="gap-2 -ml-2" data-testid="button-back">
           <ArrowLeft className="h-4 w-4" />
-          {t("organizationDetail.back", "Back to organizations")}
+          {t("organizationDetail.back")}
         </Button>
       </Link>
 
       <div>
-        <h1 className="text-2xl font-semibold" data-testid="text-page-title">Create Organization</h1>
+        <h1 className="text-2xl font-semibold" data-testid="text-page-title">{t("createOrganization.title")}</h1>
         <p className="text-muted-foreground mt-1">
-          Add a new organization to the platform
+          {t("createOrganization.subtitle")}
         </p>
       </div>
 
@@ -81,11 +81,11 @@ export default function CreateOrganization() {
         <div className="space-y-6">
           <Card>
             <CardHeader>
-              <h2 className="text-lg font-semibold">Organization Details</h2>
+              <h2 className="text-lg font-semibold">{t("createOrganization.detailsSection")}</h2>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="name">Organization Name *</Label>
+                <Label htmlFor="name">{t("createOrganization.nameLabel")}</Label>
                 <Input
                   id="name"
                   value={formData.name}
@@ -96,7 +96,7 @@ export default function CreateOrganization() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="description">Description</Label>
+                <Label htmlFor="description">{t("common.description")}</Label>
                 <Input
                   id="description"
                   value={formData.description}
@@ -106,12 +106,12 @@ export default function CreateOrganization() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="website">Website</Label>
+                <Label htmlFor="website">{t("common.website")}</Label>
                 <Input
                   id="website"
                   value={formData.website}
                   onChange={(e) => updateField("website", e.target.value)}
-                  placeholder="https://..."
+                  placeholder={t("createOrganization.websitePlaceholder")}
                   data-testid="input-website"
                 />
               </div>
@@ -120,12 +120,12 @@ export default function CreateOrganization() {
 
           <Card>
             <CardHeader>
-              <h2 className="text-lg font-semibold">Location</h2>
+              <h2 className="text-lg font-semibold">{t("createOrganization.locationSection")}</h2>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="city">City</Label>
+                  <Label htmlFor="city">{t("common.city")}</Label>
                   <Input
                     id="city"
                     value={formData.city}
@@ -134,7 +134,7 @@ export default function CreateOrganization() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="stateProvince">State / Province</Label>
+                  <Label htmlFor="stateProvince">{t("common.state")}</Label>
                   <Input
                     id="stateProvince"
                     value={formData.stateProvince}
@@ -143,7 +143,7 @@ export default function CreateOrganization() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="country">Country</Label>
+                  <Label htmlFor="country">{t("common.country")}</Label>
                   <Input
                     id="country"
                     value={formData.country}
@@ -162,7 +162,7 @@ export default function CreateOrganization() {
               data-testid="button-submit"
             >
               <Save className="h-4 w-4 mr-2" />
-              {createMutation.isPending ? "Creating..." : "Create Organization"}
+              {createMutation.isPending ? t("common.creating") : t("createOrganization.createBtn")}
             </Button>
           </div>
         </div>

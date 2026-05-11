@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
-import { useTranslation } from "react-i18next";
+import { Trans, useTranslation } from "react-i18next";
 import { useLocale, useLocaleFullPath } from "@/i18n/hooks";
 import { ROUTE_PATTERNS } from "@/i18n/routes";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -20,11 +20,11 @@ type TabValue = "general" | "management" | "documents" | "api-tokens";
 
 type TabRouteKey = "settings" | "settingsManagement" | "settingsDocuments" | "settingsApiTokens";
 
-const TABS: { value: TabValue; label: string; icon: typeof SettingsIcon; adminOnly?: boolean; routeKey: TabRouteKey }[] = [
-  { value: "general", label: "General", icon: SettingsIcon, routeKey: "settings" },
-  { value: "management", label: "Management", icon: FolderKanban, adminOnly: true, routeKey: "settingsManagement" },
-  { value: "documents", label: "Documents", icon: Files, adminOnly: true, routeKey: "settingsDocuments" },
-  { value: "api-tokens", label: "API Tokens", icon: Key, adminOnly: true, routeKey: "settingsApiTokens" },
+const TABS: { value: TabValue; labelKey: string; icon: typeof SettingsIcon; adminOnly?: boolean; routeKey: TabRouteKey }[] = [
+  { value: "general", labelKey: "settings.tabGeneral", icon: SettingsIcon, routeKey: "settings" },
+  { value: "management", labelKey: "settings.tabManagement", icon: FolderKanban, adminOnly: true, routeKey: "settingsManagement" },
+  { value: "documents", labelKey: "settings.tabDocuments", icon: Files, adminOnly: true, routeKey: "settingsDocuments" },
+  { value: "api-tokens", labelKey: "settings.tabApiTokens", icon: Key, adminOnly: true, routeKey: "settingsApiTokens" },
 ];
 
 function tabFromPath(pathname: string): TabValue {
@@ -39,6 +39,7 @@ function tabFromPath(pathname: string): TabValue {
 
 function DocumentsStorageSection() {
   const { toast } = useToast();
+  const { t } = useTranslation();
   const { data, isLoading } = useQuery<{ configured: string; effective: string; default: string }>({
     queryKey: ["/api/settings/documents-path"],
   });
@@ -48,23 +49,23 @@ function DocumentsStorageSection() {
   const save = useMutation({
     mutationFn: async () => apiRequest("PATCH", "/api/settings/documents-path", { value }),
     onSuccess: () => {
-      toast({ title: "Storage path updated" });
+      toast({ title: t("settings.storagePathUpdated") });
       queryClient.invalidateQueries({ queryKey: ["/api/settings/documents-path"] });
     },
-    onError: (e: any) => toast({ title: "Update failed", description: e.message, variant: "destructive" }),
+    onError: (e: any) => toast({ title: t("settings.updateFailed"), description: e.message, variant: "destructive" }),
   });
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Documents Storage</CardTitle>
+        <CardTitle>{t("settings.documentsStorageTitle")}</CardTitle>
         <CardDescription>
-          Filesystem path where uploaded documents are stored. Leave empty to use the default location.
+          {t("settings.documentsStorageDescription")}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
         <div>
-          <Label htmlFor="docs-path">Storage Path</Label>
+          <Label htmlFor="docs-path">{t("settings.storagePath")}</Label>
           <Input
             id="docs-path"
             value={value}
@@ -74,14 +75,14 @@ function DocumentsStorageSection() {
             data-testid="input-documents-path"
           />
           <p className="text-xs text-muted-foreground mt-1">
-            Effective path: <code data-testid="text-effective-path">{data?.effective ?? "—"}</code>
+            {t("settings.effectivePath")}: <code data-testid="text-effective-path">{data?.effective ?? "—"}</code>
           </p>
           <p className="text-xs text-muted-foreground">
-            Default: <code>{data?.default ?? "—"}</code>
+            {t("settings.defaultPath")}: <code>{data?.default ?? "—"}</code>
           </p>
         </div>
         <Button onClick={() => save.mutate()} disabled={save.isPending} data-testid="button-save-documents-path">
-          {save.isPending ? "Saving..." : "Save"}
+          {save.isPending ? t("common.saving") : t("common.save")}
         </Button>
       </CardContent>
     </Card>
@@ -93,7 +94,7 @@ export default function SettingsPage() {
   const [location, setLocation] = useLocation();
   const locale = useLocale();
   const lfp = useLocaleFullPath();
-  void useTranslation;
+  const { t } = useTranslation();
   const [tab, setTab] = useState<TabValue>(() => tabFromPath(location));
 
   // Keep tab + URL in sync (handles back/forward + initial deep links)
@@ -116,19 +117,19 @@ export default function SettingsPage() {
     <div className="container mx-auto p-6 space-y-6 max-w-5xl">
       <div>
         <h1 className="text-2xl font-semibold flex items-center gap-2" data-testid="text-page-title">
-          <SettingsIcon className="h-6 w-6" /> Settings
+          <SettingsIcon className="h-6 w-6" /> {t("settings.title")}
         </h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Manage your account, organization administration, and API access.
+          {t("settings.pageSubtitle")}
         </p>
       </div>
 
       <Tabs value={tab} onValueChange={handleTabChange}>
         <TabsList>
-          {visibleTabs.map(t => (
-            <TabsTrigger key={t.value} value={t.value} data-testid={`tab-${t.value}`}>
-              <t.icon className="h-4 w-4 mr-2" />
-              {t.label}
+          {visibleTabs.map(item => (
+            <TabsTrigger key={item.value} value={item.value} data-testid={`tab-${item.value}`}>
+              <item.icon className="h-4 w-4 mr-2" />
+              {t(item.labelKey)}
             </TabsTrigger>
           ))}
         </TabsList>
@@ -136,22 +137,27 @@ export default function SettingsPage() {
         <TabsContent value="general" className="mt-6">
           <Card>
             <CardHeader>
-              <CardTitle>General</CardTitle>
-              <CardDescription>Your account profile and preferences.</CardDescription>
+              <CardTitle>{t("settings.tabGeneral")}</CardTitle>
+              <CardDescription>{t("settings.generalDescription")}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               {user ? (
                 <dl className="grid grid-cols-[140px_1fr] gap-y-3 text-sm" data-testid="list-account-info">
-                  <dt className="text-muted-foreground">Name</dt>
+                  <dt className="text-muted-foreground">{t("common.name")}</dt>
                   <dd data-testid="text-account-name">{user.firstName} {user.lastName}</dd>
-                  <dt className="text-muted-foreground">Email</dt>
+                  <dt className="text-muted-foreground">{t("common.email")}</dt>
                   <dd data-testid="text-account-email">{user.email}</dd>
-                  <dt className="text-muted-foreground">Roles</dt>
+                  <dt className="text-muted-foreground">{t("settings.roles")}</dt>
                   <dd data-testid="text-account-roles">{user.roles.map(r => r.name).join(", ") || "—"}</dd>
                 </dl>
               ) : null}
               <p className="text-xs text-muted-foreground pt-2">
-                To edit your name, email, or password, open your <a className="underline" href={user ? lfp("accountDetail", { id: user.id }) : "#"} data-testid="link-account-detail">account page</a>.
+                <Trans
+                  i18nKey="settings.editAccountHint"
+                  components={[
+                    <a key="0" className="underline" href={user ? lfp("accountDetail", { id: user.id }) : "#"} data-testid="link-account-detail" />,
+                  ]}
+                />
               </p>
             </CardContent>
           </Card>
@@ -161,26 +167,26 @@ export default function SettingsPage() {
           <TabsContent value="management" className="mt-6">
             <Card>
               <CardHeader>
-                <CardTitle>Management</CardTitle>
-                <CardDescription>Administrative shortcuts for managing the platform.</CardDescription>
+                <CardTitle>{t("settings.managementTitle")}</CardTitle>
+                <CardDescription>{t("settings.managementSubtitle")}</CardDescription>
               </CardHeader>
               <CardContent className="space-y-3 text-sm">
                 <ul className="space-y-2">
                   <li>
-                    <a className="underline" href={lfp("accounts")} data-testid="link-mgmt-accounts">Manage accounts</a>
-                    <span className="text-muted-foreground"> — view, edit, and delete user accounts.</span>
+                    <a className="underline" href={lfp("accounts")} data-testid="link-mgmt-accounts">{t("settings.manageAccounts")}</a>
+                    <span className="text-muted-foreground"> — {t("settings.manageAccountsDescription")}</span>
                   </li>
                   <li>
-                    <a className="underline" href={lfp("organizations")} data-testid="link-mgmt-orgs">Manage organizations</a>
-                    <span className="text-muted-foreground"> — create and configure tenant organizations.</span>
+                    <a className="underline" href={lfp("organizations")} data-testid="link-mgmt-orgs">{t("settings.manageOrganizations")}</a>
+                    <span className="text-muted-foreground"> — {t("settings.manageOrganizationsDescription")}</span>
                   </li>
                   <li>
-                    <a className="underline" href={lfp("spvs")} data-testid="link-mgmt-spvs">Manage SPVs</a>
-                    <span className="text-muted-foreground"> — view all special-purpose vehicles.</span>
+                    <a className="underline" href={lfp("spvs")} data-testid="link-mgmt-spvs">{t("settings.manageSpvs")}</a>
+                    <span className="text-muted-foreground"> — {t("settings.manageSpvsDescription")}</span>
                   </li>
                   <li>
-                    <a className="underline" href={lfp("entities")} data-testid="link-mgmt-entities">Manage entities</a>
-                    <span className="text-muted-foreground"> — view all legal entities.</span>
+                    <a className="underline" href={lfp("entities")} data-testid="link-mgmt-entities">{t("settings.manageEntities")}</a>
+                    <span className="text-muted-foreground"> — {t("settings.manageEntitiesDescription")}</span>
                   </li>
                 </ul>
               </CardContent>
@@ -204,7 +210,7 @@ export default function SettingsPage() {
       {!isAdmin && tab !== "general" && (
         <Alert variant="destructive" data-testid="alert-admin-required">
           <ShieldAlert className="h-4 w-4" />
-          <AlertDescription>This section is only available to administrators.</AlertDescription>
+          <AlertDescription>{t("settings.adminOnly")}</AlertDescription>
         </Alert>
       )}
     </div>

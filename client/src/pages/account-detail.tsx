@@ -1,6 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useRoute, Link, useLocation } from "wouter";
-import { useTranslation } from "react-i18next";
+import { Trans, useTranslation } from "react-i18next";
 import { useLocalePath, useLocale } from "@/i18n/hooks";
 import { ROUTE_PATTERNS } from "@/i18n/routes";
 import type { AccountWithRoles } from "@shared/types";
@@ -44,16 +44,15 @@ const COUNTRIES = [
   "Switzerland", "Netherlands", "Sweden", "Ireland", "Portugal",
 ];
 
-const ACCOUNT_TABS = [
-  { value: "personal", label: "Personal Information" },
-  { value: "login", label: "Login Information" },
-  { value: "permissions", label: "Permissions" },
-];
-
 export default function AccountDetail() {
   const locale = useLocale();
   const lp = useLocalePath();
   const { t } = useTranslation();
+  const ACCOUNT_TABS = [
+    { value: "personal", label: t("accountDetail.personalInfo") },
+    { value: "login", label: t("accountDetail.loginInfo") },
+    { value: "permissions", label: t("accountDetail.permissions") },
+  ];
   const [, params] = useRoute(ROUTE_PATTERNS.accountDetail[locale]);
   const accountId = params?.id;
   const { toast } = useToast();
@@ -102,10 +101,10 @@ export default function AccountDetail() {
       queryClient.invalidateQueries({ queryKey: ["/api/accounts", accountId] });
       queryClient.invalidateQueries({ queryKey: ["/api/accounts"] });
       setEditing(false);
-      toast({ title: "Profile updated successfully" });
+      toast({ title: t("accountDetail.profileUpdated") });
     },
     onError: (error: Error) => {
-      toast({ title: "Failed to update profile", description: error.message, variant: "destructive" });
+      toast({ title: t("accountDetail.profileUpdateFailed"), description: error.message, variant: "destructive" });
     },
   });
 
@@ -115,11 +114,11 @@ export default function AccountDetail() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/accounts"] });
-      toast({ title: "Account deleted" });
+      toast({ title: t("accounts.deleted") });
       navigate(lp("accounts"));
     },
     onError: (error: Error) => {
-      toast({ title: "Failed to delete account", description: error.message, variant: "destructive" });
+      toast({ title: t("accounts.deleteFailed"), description: error.message, variant: "destructive" });
     },
   });
 
@@ -132,12 +131,12 @@ export default function AccountDetail() {
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
-      toast({ title: "Password changed successfully" });
+      toast({ title: t("auth.passwordChanged") });
     },
     onError: (error: Error) => {
       let desc = error.message;
       try { desc = JSON.parse(desc.replace(/^\d+:\s*/, "")).message; } catch {}
-      toast({ title: "Failed to change password", description: desc, variant: "destructive" });
+      toast({ title: t("accountDetail.passwordChangeFailed"), description: desc, variant: "destructive" });
     },
   });
 
@@ -147,20 +146,20 @@ export default function AccountDetail() {
       return res.json();
     },
     onSuccess: () => {
-      toast({ title: "Password reset email sent", description: "A reset link has been sent to the user's email address." });
+      toast({ title: t("accountDetail.passwordResetEmailSent"), description: t("accountDetail.passwordResetEmailSentDesc") });
     },
     onError: (error: Error) => {
-      toast({ title: "Failed to send reset email", description: error.message, variant: "destructive" });
+      toast({ title: t("accountDetail.sendResetFailed"), description: error.message, variant: "destructive" });
     },
   });
 
   const handleChangePassword = () => {
     if (newPassword !== confirmPassword) {
-      toast({ title: "Passwords do not match", variant: "destructive" });
+      toast({ title: t("auth.passwordsDoNotMatch"), variant: "destructive" });
       return;
     }
     if (newPassword.length < 6) {
-      toast({ title: "New password must be at least 6 characters", variant: "destructive" });
+      toast({ title: t("auth.passwordTooShort"), variant: "destructive" });
       return;
     }
     changePasswordMutation.mutate({ currentPassword, newPassword });
@@ -218,7 +217,7 @@ export default function AccountDetail() {
   if (!account) {
     return (
       <div className="p-6">
-        <p className="text-muted-foreground">Account not found.</p>
+        <p className="text-muted-foreground">{t("accountDetail.notFound")}</p>
       </div>
     );
   }
@@ -258,7 +257,7 @@ export default function AccountDetail() {
           <Link href={`${lp("dashboard")}?accountId=${account.id}`}>
             <Button variant="outline" className="gap-2" data-testid="button-view-portfolio">
               <Briefcase className="h-4 w-4" />
-              View Portfolio
+              {t("accountDetail.viewPortfolio")}
             </Button>
           </Link>
           {isAdmin && !isOwnAccount && (
@@ -266,23 +265,27 @@ export default function AccountDetail() {
               <AlertDialogTrigger asChild>
                 <Button variant="outline" className="gap-2 text-destructive hover:text-destructive" data-testid="button-delete-account">
                   <Trash2 className="h-4 w-4" />
-                  Delete Account
+                  {t("accounts.deleteTitle")}
                 </Button>
               </AlertDialogTrigger>
               <AlertDialogContent>
                 <AlertDialogHeader>
-                  <AlertDialogTitle>Delete Account</AlertDialogTitle>
+                  <AlertDialogTitle>{t("accounts.deleteTitle")}</AlertDialogTitle>
                   <AlertDialogDescription>
-                    Are you sure you want to delete <strong>{account.firstName} {account.lastName}</strong> ({account.email})? This will remove their access and any role assignments. This action cannot be undone.
+                    <Trans
+                      i18nKey="accounts.deleteConfirm"
+                      values={{ name: `${account.firstName} ${account.lastName}`, email: account.email }}
+                      components={[<strong key="0" />]}
+                    />
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
                   <AlertDialogAction
                     onClick={() => deleteAccountMutation.mutate()}
                     data-testid="button-confirm-delete-account"
                   >
-                    Delete
+                    {t("common.delete")}
                   </AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>
@@ -303,17 +306,17 @@ export default function AccountDetail() {
         <TabsContent value="personal" className="mt-6">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0">
-              <h2 className="text-lg font-semibold">Personal Information</h2>
+              <h2 className="text-lg font-semibold">{t("accountDetail.personalInfo")}</h2>
               {!editing ? (
                 <Button variant="outline" size="sm" onClick={() => setEditing(true)} data-testid="button-edit">
                   <Pencil className="h-3.5 w-3.5 mr-1.5" />
-                  Edit
+                  {t("common.edit")}
                 </Button>
               ) : (
                 <div className="flex gap-2">
                   <Button variant="ghost" size="sm" onClick={handleCancel} data-testid="button-cancel">
                     <X className="h-3.5 w-3.5 mr-1.5" />
-                    Cancel
+                    {t("common.cancel")}
                   </Button>
                   <Button
                     size="sm"
@@ -322,7 +325,7 @@ export default function AccountDetail() {
                     data-testid="button-save"
                   >
                     <Save className="h-3.5 w-3.5 mr-1.5" />
-                    {updateMutation.isPending ? "Saving..." : "Save"}
+                    {updateMutation.isPending ? t("common.saving") : t("common.save")}
                   </Button>
                 </div>
               )}
@@ -330,7 +333,7 @@ export default function AccountDetail() {
             <CardContent className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="firstName">First Name *</Label>
+                  <Label htmlFor="firstName">{t("common.firstName")} *</Label>
                   <Input
                     id="firstName"
                     value={(formData.firstName as string) || ""}
@@ -340,7 +343,7 @@ export default function AccountDetail() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="lastName">Last Name *</Label>
+                  <Label htmlFor="lastName">{t("common.lastName")} *</Label>
                   <Input
                     id="lastName"
                     value={(formData.lastName as string) || ""}
@@ -352,7 +355,7 @@ export default function AccountDetail() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="birthdate">Birthdate</Label>
+                <Label htmlFor="birthdate">{t("createAccount.birthdate")}</Label>
                 <Input
                   id="birthdate"
                   type="date"
@@ -365,7 +368,7 @@ export default function AccountDetail() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="email">Email *</Label>
+                  <Label htmlFor="email">{t("common.email")} *</Label>
                   <Input
                     id="email"
                     type="email"
@@ -376,7 +379,7 @@ export default function AccountDetail() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="phone">Phone</Label>
+                  <Label htmlFor="phone">{t("common.phone")}</Label>
                   <Input
                     id="phone"
                     value={(formData.phone as string) || ""}
@@ -388,7 +391,7 @@ export default function AccountDetail() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="taxId">SSN / Tax ID</Label>
+                <Label htmlFor="taxId">{t("common.ssnTaxId")}</Label>
                 <Input
                   id="taxId"
                   value={(formData.taxId as string) || ""}
@@ -396,15 +399,15 @@ export default function AccountDetail() {
                   disabled={!editing}
                   data-testid="input-tax-id"
                 />
-                <p className="text-xs text-muted-foreground">SSN / Tax ID is an encrypted attribute</p>
+                <p className="text-xs text-muted-foreground">{t("createAccount.taxIdHelper")}</p>
               </div>
 
               <Separator />
 
-              <h3 className="text-base font-semibold">Residential Address</h3>
+              <h3 className="text-base font-semibold">{t("createAccount.residentialAddress")}</h3>
 
               <div className="space-y-2">
-                <Label htmlFor="streetAddress1">Street Address 1 *</Label>
+                <Label htmlFor="streetAddress1">{t("createAccount.streetAddress1")} *</Label>
                 <Input
                   id="streetAddress1"
                   value={(formData.streetAddress1 as string) || ""}
@@ -415,7 +418,7 @@ export default function AccountDetail() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="streetAddress2">Street Address 2 (Optional)</Label>
+                <Label htmlFor="streetAddress2">{t("createAccount.streetAddress2Optional")}</Label>
                 <Input
                   id="streetAddress2"
                   value={(formData.streetAddress2 as string) || ""}
@@ -427,14 +430,14 @@ export default function AccountDetail() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="country">Country *</Label>
+                  <Label htmlFor="country">{t("common.country")} *</Label>
                   {editing ? (
                     <Select
                       value={(formData.country as string) || ""}
                       onValueChange={(val) => updateField("country", val)}
                     >
                       <SelectTrigger data-testid="select-country">
-                        <SelectValue placeholder="Select country" />
+                        <SelectValue placeholder={t("common.selectCountry")} />
                       </SelectTrigger>
                       <SelectContent>
                         {COUNTRIES.map((c) => (
@@ -453,7 +456,7 @@ export default function AccountDetail() {
                   )}
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="city">City *</Label>
+                  <Label htmlFor="city">{t("common.city")} *</Label>
                   <Input
                     id="city"
                     value={(formData.city as string) || ""}
@@ -466,7 +469,7 @@ export default function AccountDetail() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="stateProvince">State / Province *</Label>
+                  <Label htmlFor="stateProvince">{t("common.state")} *</Label>
                   <Input
                     id="stateProvince"
                     value={(formData.stateProvince as string) || ""}
@@ -476,7 +479,7 @@ export default function AccountDetail() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="zipPostalCode">Zip / Postal Code *</Label>
+                  <Label htmlFor="zipPostalCode">{t("createAccount.zipPostalCode")} *</Label>
                   <Input
                     id="zipPostalCode"
                     value={(formData.zipPostalCode as string) || ""}
@@ -493,51 +496,51 @@ export default function AccountDetail() {
         <TabsContent value="login" className="mt-6">
           <Card>
             <CardHeader>
-              <h2 className="text-lg font-semibold">Login Information</h2>
+              <h2 className="text-lg font-semibold">{t("accountDetail.loginInfo")}</h2>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label>Email Address</Label>
+                <Label>{t("auth.emailAddress")}</Label>
                 <Input value={account.email} disabled data-testid="input-login-email" />
               </div>
               <Separator />
               <div className="space-y-4">
                 <div className="flex items-center gap-2">
                   <KeyRound className="h-4 w-4 text-muted-foreground" />
-                  <Label className="text-base font-medium">Password</Label>
+                  <Label className="text-base font-medium">{t("common.password")}</Label>
                 </div>
                 {isOwnAccount ? (
                   <div className="space-y-3">
                     <div className="space-y-2">
-                      <Label htmlFor="currentPassword">Current Password</Label>
+                      <Label htmlFor="currentPassword">{t("common.currentPassword")}</Label>
                       <Input
                         id="currentPassword"
                         type="password"
                         value={currentPassword}
                         onChange={(e) => setCurrentPassword(e.target.value)}
-                        placeholder="Enter current password"
+                        placeholder={t("accountDetail.enterCurrentPassword")}
                         data-testid="input-current-password"
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="newPassword">New Password</Label>
+                      <Label htmlFor="newPassword">{t("common.newPassword")}</Label>
                       <Input
                         id="newPassword"
                         type="password"
                         value={newPassword}
                         onChange={(e) => setNewPassword(e.target.value)}
-                        placeholder="Enter new password (min 6 characters)"
+                        placeholder={t("accountDetail.enterNewPassword")}
                         data-testid="input-new-password"
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="confirmPassword">Confirm New Password</Label>
+                      <Label htmlFor="confirmPassword">{t("common.confirmPassword")}</Label>
                       <Input
                         id="confirmPassword"
                         type="password"
                         value={confirmPassword}
                         onChange={(e) => setConfirmPassword(e.target.value)}
-                        placeholder="Confirm new password"
+                        placeholder={t("accountDetail.confirmNewPasswordPlaceholder")}
                         data-testid="input-confirm-password"
                       />
                     </div>
@@ -549,17 +552,17 @@ export default function AccountDetail() {
                       {changePasswordMutation.isPending ? (
                         <>
                           <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                          Changing...
+                          {t("auth.changingPassword")}
                         </>
                       ) : (
-                        "Change Password"
+                        t("auth.changePassword")
                       )}
                     </Button>
                   </div>
                 ) : (
                   <div className="space-y-3">
                     <p className="text-sm text-muted-foreground">
-                      Send a password reset link to this user's email address.
+                      {t("accountDetail.sendResetDescription")}
                     </p>
                     <Button
                       variant="outline"
@@ -570,12 +573,12 @@ export default function AccountDetail() {
                       {sendResetMutation.isPending ? (
                         <>
                           <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                          Sending...
+                          {t("auth.sending")}
                         </>
                       ) : (
                         <>
                           <Mail className="h-4 w-4 mr-2" />
-                          Send Password Reset Email
+                          {t("accountDetail.sendResetEmail")}
                         </>
                       )}
                     </Button>
@@ -583,9 +586,9 @@ export default function AccountDetail() {
                 )}
               </div>
               <div className="space-y-2">
-                <Label>Account Created</Label>
+                <Label>{t("accountDetail.accountCreated")}</Label>
                 <Input
-                  value={new Date(account.createdAt).toLocaleDateString("en-US", {
+                  value={new Date(account.createdAt).toLocaleDateString(locale, {
                     year: "numeric",
                     month: "long",
                     day: "numeric",
@@ -601,17 +604,17 @@ export default function AccountDetail() {
         <TabsContent value="permissions" className="mt-6">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0">
-              <h2 className="text-lg font-semibold">Roles & Permissions</h2>
+              <h2 className="text-lg font-semibold">{t("accountDetail.rolesTitle")}</h2>
               {!editing ? (
                 <Button variant="outline" size="sm" onClick={() => setEditing(true)} data-testid="button-edit-roles">
                   <Pencil className="h-3.5 w-3.5 mr-1.5" />
-                  Edit
+                  {t("common.edit")}
                 </Button>
               ) : (
                 <div className="flex gap-2">
                   <Button variant="ghost" size="sm" onClick={handleCancel} data-testid="button-cancel-roles">
                     <X className="h-3.5 w-3.5 mr-1.5" />
-                    Cancel
+                    {t("common.cancel")}
                   </Button>
                   <Button
                     size="sm"
@@ -620,7 +623,7 @@ export default function AccountDetail() {
                     data-testid="button-save-roles"
                   >
                     <Save className="h-3.5 w-3.5 mr-1.5" />
-                    {updateMutation.isPending ? "Saving..." : "Save"}
+                    {updateMutation.isPending ? t("common.saving") : t("common.save")}
                   </Button>
                 </div>
               )}
@@ -642,9 +645,9 @@ export default function AccountDetail() {
                     htmlFor="role-admin"
                     className="text-sm font-medium cursor-pointer"
                   >
-                    Admin
+                    {t("common.admin")}
                   </label>
-                  <p className="text-xs text-muted-foreground">Platform administrator with full access to all features and settings</p>
+                  <p className="text-xs text-muted-foreground">{t("createAccount.adminRoleDescription")}</p>
                 </div>
               </div>
             </CardContent>

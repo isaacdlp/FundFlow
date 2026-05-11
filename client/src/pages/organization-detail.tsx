@@ -28,6 +28,7 @@ import { useOrgPermissions } from "@/hooks/use-org-permissions";
 
 function MembersTab({ orgId, canEdit }: { orgId: string; canEdit: boolean }) {
   const { toast } = useToast();
+  const { t } = useTranslation();
 
   const { data: members, isLoading } = useQuery<MemberInfo[]>({
     queryKey: ["/api/organizations", orgId, "members"],
@@ -40,10 +41,10 @@ function MembersTab({ orgId, canEdit }: { orgId: string; canEdit: boolean }) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/organizations", orgId, "members"] });
-      toast({ title: "Member status updated" });
+      toast({ title: t("organizationDetail.memberStatusUpdated") });
     },
     onError: (error: Error) => {
-      toast({ title: "Failed to update member", description: error.message, variant: "destructive" });
+      toast({ title: t("organizationDetail.memberUpdateFailed"), description: error.message, variant: "destructive" });
     },
   });
 
@@ -54,10 +55,10 @@ function MembersTab({ orgId, canEdit }: { orgId: string; canEdit: boolean }) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/organizations", orgId, "members"] });
-      toast({ title: "Member removed" });
+      toast({ title: t("organizationDetail.memberRemoved") });
     },
     onError: (error: Error) => {
-      toast({ title: "Failed to remove member", description: error.message, variant: "destructive" });
+      toast({ title: t("organizationDetail.memberRemoveFailed"), description: error.message, variant: "destructive" });
     },
   });
 
@@ -75,7 +76,7 @@ function MembersTab({ orgId, canEdit }: { orgId: string; canEdit: boolean }) {
         <Card>
           <CardHeader>
             <div className="flex items-center gap-2">
-              <h2 className="text-lg font-semibold">Pending Requests</h2>
+              <h2 className="text-lg font-semibold">{t("organizationDetail.pendingRequests")}</h2>
               <Badge variant="secondary">{pending.length}</Badge>
             </div>
           </CardHeader>
@@ -100,7 +101,7 @@ function MembersTab({ orgId, canEdit }: { orgId: string; canEdit: boolean }) {
                       data-testid={`button-approve-${member.accountId}`}
                     >
                       <Check className="h-3.5 w-3.5 mr-1" />
-                      Approve
+                      {t("common.approve")}
                     </Button>
                     <Button
                       size="sm"
@@ -111,7 +112,7 @@ function MembersTab({ orgId, canEdit }: { orgId: string; canEdit: boolean }) {
                       data-testid={`button-reject-${member.accountId}`}
                     >
                       <Ban className="h-3.5 w-3.5 mr-1" />
-                      Reject
+                      {t("common.reject")}
                     </Button>
                   </div>
                 )}
@@ -124,7 +125,7 @@ function MembersTab({ orgId, canEdit }: { orgId: string; canEdit: boolean }) {
       <Card>
         <CardHeader>
           <div className="flex items-center gap-2">
-            <h2 className="text-lg font-semibold">Approved Members</h2>
+            <h2 className="text-lg font-semibold">{t("organizationDetail.approvedMembers")}</h2>
             <Badge variant="secondary">{approved.length}</Badge>
           </div>
         </CardHeader>
@@ -140,7 +141,7 @@ function MembersTab({ orgId, canEdit }: { orgId: string; canEdit: boolean }) {
                     <p className="text-sm font-medium truncate">{member.account.firstName} {member.account.lastName}</p>
                     <p className="text-xs text-muted-foreground truncate">{member.account.email}</p>
                   </div>
-                  {member.inviteId && <Badge variant="outline" className="text-xs">Via Invite</Badge>}
+                  {member.inviteId && <Badge variant="outline" className="text-xs">{t("organizationDetail.viaInvite")}</Badge>}
                   {canEdit && (
                     <Button
                       variant="ghost"
@@ -156,7 +157,7 @@ function MembersTab({ orgId, canEdit }: { orgId: string; canEdit: boolean }) {
               ))}
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground text-center py-6">No approved members yet.</p>
+            <p className="text-sm text-muted-foreground text-center py-6">{t("organizationDetail.noApprovedMembers")}</p>
           )}
         </CardContent>
       </Card>
@@ -165,7 +166,7 @@ function MembersTab({ orgId, canEdit }: { orgId: string; canEdit: boolean }) {
         <Card>
           <CardHeader>
             <div className="flex items-center gap-2">
-              <h2 className="text-lg font-semibold">Rejected</h2>
+              <h2 className="text-lg font-semibold">{t("organizationDetail.rejected")}</h2>
               <Badge variant="secondary">{rejected.length}</Badge>
             </div>
           </CardHeader>
@@ -189,7 +190,7 @@ function MembersTab({ orgId, canEdit }: { orgId: string; canEdit: boolean }) {
                       data-testid={`button-reapprove-${member.accountId}`}
                     >
                       <Check className="h-3.5 w-3.5 mr-1" />
-                      Re-approve
+                      {t("organizationDetail.reapprove")}
                     </Button>
                     <Button
                       variant="ghost"
@@ -211,7 +212,7 @@ function MembersTab({ orgId, canEdit }: { orgId: string; canEdit: boolean }) {
       {(!members || members.length === 0) && (
         <Card>
           <CardContent className="text-center py-12">
-            <p className="text-muted-foreground">No membership requests yet. Share the organization's landing page or invite link to get started.</p>
+            <p className="text-muted-foreground">{t("organizationDetail.noMembershipRequests")}</p>
           </CardContent>
         </Card>
       )}
@@ -221,6 +222,7 @@ function MembersTab({ orgId, canEdit }: { orgId: string; canEdit: boolean }) {
 
 function SpvsTab({ orgId, canEdit }: { orgId: string; canEdit: boolean }) {
   const { toast } = useToast();
+  const { t } = useTranslation();
   const [, navigate] = useLocation();
   const lpSpv = useLocalePath();
 
@@ -235,10 +237,10 @@ function SpvsTab({ orgId, canEdit }: { orgId: string; canEdit: boolean }) {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/organizations", orgId, "spvs"] });
-      toast({ title: "SPV deleted" });
+      toast({ title: t("spvs.deleted") });
     },
     onError: (error: Error) => {
-      toast({ title: "Failed to delete SPV", description: error.message, variant: "destructive" });
+      toast({ title: t("spvs.deleteFailed"), description: error.message, variant: "destructive" });
     },
   });
 
@@ -249,16 +251,16 @@ function SpvsTab({ orgId, canEdit }: { orgId: string; canEdit: boolean }) {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0">
           <div>
-            <h2 className="text-lg font-semibold">Special Purpose Vehicles</h2>
+            <h2 className="text-lg font-semibold">{t("spvs.title")}</h2>
             <p className="text-sm text-muted-foreground mt-1">
-              SPVs created within this organization
+              {t("organizationDetail.spvsTabDescription")}
             </p>
           </div>
           {canEdit && (
             <Link href={lpSpv("organizationSpvNew", { orgId })}>
               <Button data-testid="button-add-spv">
                 <Plus className="h-4 w-4 mr-2" />
-                Add SPV
+                {t("organizationDetail.addSpv")}
               </Button>
             </Link>
           )}
@@ -269,12 +271,12 @@ function SpvsTab({ orgId, canEdit }: { orgId: string; canEdit: boolean }) {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Entity Type</TableHead>
-                    <TableHead className="text-center">Members</TableHead>
-                    <TableHead>Manager</TableHead>
-                    <TableHead>Total Being Raised</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
+                    <TableHead>{t("spvs.tableName")}</TableHead>
+                    <TableHead>{t("spvs.tableEntityType")}</TableHead>
+                    <TableHead className="text-center">{t("spvs.tableMembers")}</TableHead>
+                    <TableHead>{t("spvs.tableManager")}</TableHead>
+                    <TableHead>{t("spvs.tableTotalRaising")}</TableHead>
+                    <TableHead className="text-right">{t("common.actions")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -298,7 +300,7 @@ function SpvsTab({ orgId, canEdit }: { orgId: string; canEdit: boolean }) {
                         {spv.manager ? (
                           <span className="text-sm">{spv.manager.firstName} {spv.manager.lastName}</span>
                         ) : (
-                          <span className="text-sm text-muted-foreground">Not assigned</span>
+                          <span className="text-sm text-muted-foreground">{t("spvs.notAssigned")}</span>
                         )}
                       </TableCell>
                       <TableCell>
@@ -336,7 +338,7 @@ function SpvsTab({ orgId, canEdit }: { orgId: string; canEdit: boolean }) {
           ) : (
             <div className="text-center py-12">
               <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-              <p className="text-muted-foreground">No SPVs created yet. Click "Add SPV" to create one.</p>
+              <p className="text-muted-foreground">{t("organizationDetail.noSpvsHint")}</p>
             </div>
           )}
         </CardContent>
@@ -347,6 +349,7 @@ function SpvsTab({ orgId, canEdit }: { orgId: string; canEdit: boolean }) {
 
 function InvitesTab({ orgId, slug, canEdit }: { orgId: string; slug: string; canEdit: boolean }) {
   const { toast } = useToast();
+  const { t } = useTranslation();
 
   const { data: invites, isLoading } = useQuery<InviteInfo[]>({
     queryKey: ["/api/organizations", orgId, "invites"],
@@ -359,23 +362,23 @@ function InvitesTab({ orgId, slug, canEdit }: { orgId: string; slug: string; can
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/organizations", orgId, "invites"] });
-      toast({ title: "Invite link generated" });
+      toast({ title: t("organizationDetail.inviteGenerated") });
     },
     onError: (error: Error) => {
-      toast({ title: "Failed to generate invite", description: error.message, variant: "destructive" });
+      toast({ title: t("organizationDetail.inviteGenerateFailed"), description: error.message, variant: "destructive" });
     },
   });
 
   const copyInviteUrl = (token: string) => {
     const url = `${window.location.origin}/org/${slug}?invite=${token}`;
     navigator.clipboard.writeText(url);
-    toast({ title: "Invite link copied to clipboard" });
+    toast({ title: t("organizationDetail.inviteLinkCopied") });
   };
 
   const copyLandingUrl = () => {
     const url = `${window.location.origin}/org/${slug}`;
     navigator.clipboard.writeText(url);
-    toast({ title: "Landing page URL copied to clipboard" });
+    toast({ title: t("organizationDetail.landingUrlCopied") });
   };
 
   if (isLoading) {
@@ -387,8 +390,8 @@ function InvitesTab({ orgId, slug, canEdit }: { orgId: string; slug: string; can
       <Card>
         <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0">
           <div>
-            <h2 className="text-lg font-semibold">Landing Page</h2>
-            <p className="text-sm text-muted-foreground mt-1">Share this URL for users to request access</p>
+            <h2 className="text-lg font-semibold">{t("organizationDetail.landingPage")}</h2>
+            <p className="text-sm text-muted-foreground mt-1">{t("organizationDetail.landingPageHint")}</p>
           </div>
         </CardHeader>
         <CardContent>
@@ -409,8 +412,8 @@ function InvitesTab({ orgId, slug, canEdit }: { orgId: string; slug: string; can
       <Card>
         <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0">
           <div>
-            <h2 className="text-lg font-semibold">Invite Links</h2>
-            <p className="text-sm text-muted-foreground mt-1">Single-use links that grant pre-approved access</p>
+            <h2 className="text-lg font-semibold">{t("organizationDetail.invitesTitle")}</h2>
+            <p className="text-sm text-muted-foreground mt-1">{t("organizationDetail.invitesHint")}</p>
           </div>
           {canEdit && (
             <Button
@@ -419,7 +422,7 @@ function InvitesTab({ orgId, slug, canEdit }: { orgId: string; slug: string; can
               data-testid="button-generate-invite"
             >
               <Link2 className="h-4 w-4 mr-2" />
-              {createInviteMutation.isPending ? "Generating..." : "Generate Invite"}
+              {createInviteMutation.isPending ? t("organizationDetail.generating") : t("organizationDetail.generateInvite")}
             </Button>
           )}
         </CardHeader>
@@ -434,18 +437,18 @@ function InvitesTab({ orgId, slug, canEdit }: { orgId: string; slug: string; can
                         {invite.token.substring(0, 16)}...
                       </code>
                       {invite.used ? (
-                        <Badge variant="secondary">Used</Badge>
+                        <Badge variant="secondary">{t("organizationDetail.inviteUsed")}</Badge>
                       ) : (
-                        <Badge variant="outline" className="text-green-600 border-green-300">Available</Badge>
+                        <Badge variant="outline" className="text-green-600 border-green-300">{t("organizationDetail.inviteAvailable")}</Badge>
                       )}
                     </div>
                     {invite.usedByAccount && (
                       <p className="text-xs text-muted-foreground mt-1">
-                        Used by {invite.usedByAccount.firstName} {invite.usedByAccount.lastName} ({invite.usedByAccount.email})
+                        {t("organizationDetail.usedByAccount", { firstName: invite.usedByAccount.firstName, lastName: invite.usedByAccount.lastName, email: invite.usedByAccount.email })}
                       </p>
                     )}
                     <p className="text-xs text-muted-foreground mt-0.5">
-                      Created {new Date(invite.createdAt).toLocaleDateString()}
+                      {t("organizationDetail.createdOn", { date: new Date(invite.createdAt).toLocaleDateString() })}
                     </p>
                   </div>
                   {!invite.used && (
@@ -456,7 +459,7 @@ function InvitesTab({ orgId, slug, canEdit }: { orgId: string; slug: string; can
                       data-testid={`button-copy-invite-${invite.id}`}
                     >
                       <Copy className="h-3.5 w-3.5 mr-1.5" />
-                      Copy Link
+                      {t("organizationDetail.copyLink")}
                     </Button>
                   )}
                 </div>
@@ -464,7 +467,7 @@ function InvitesTab({ orgId, slug, canEdit }: { orgId: string; slug: string; can
             </div>
           ) : (
             <p className="text-sm text-muted-foreground text-center py-6">
-              No invite links generated yet. Click "Generate Invite" to create one.
+              {t("organizationDetail.noInvitesHint")}
             </p>
           )}
         </CardContent>
@@ -519,10 +522,10 @@ export default function OrganizationDetail() {
       queryClient.invalidateQueries({ queryKey: ["/api/organizations", orgId] });
       queryClient.invalidateQueries({ queryKey: ["/api/organizations"] });
       setEditing(false);
-      toast({ title: "Organization updated successfully" });
+      toast({ title: t("organizationDetail.orgUpdated") });
     },
     onError: (error: Error) => {
-      toast({ title: "Failed to update organization", description: error.message, variant: "destructive" });
+      toast({ title: t("organizationDetail.orgUpdateFailed"), description: error.message, variant: "destructive" });
     },
   });
 
@@ -535,10 +538,10 @@ export default function OrganizationDetail() {
       queryClient.invalidateQueries({ queryKey: ["/api/organizations", orgId] });
       queryClient.invalidateQueries({ queryKey: ["/api/organizations"] });
       setSelectedAccountId("");
-      toast({ title: "Organizer added successfully" });
+      toast({ title: t("organizationDetail.organizerAdded") });
     },
     onError: (error: Error) => {
-      toast({ title: "Failed to add organizer", description: error.message, variant: "destructive" });
+      toast({ title: t("organizationDetail.organizerAddFailed"), description: error.message, variant: "destructive" });
     },
   });
 
@@ -550,10 +553,10 @@ export default function OrganizationDetail() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/organizations", orgId] });
       queryClient.invalidateQueries({ queryKey: ["/api/organizations"] });
-      toast({ title: "Organizer removed" });
+      toast({ title: t("organizationDetail.organizerRemoved") });
     },
     onError: (error: Error) => {
-      toast({ title: "Failed to remove organizer", description: error.message, variant: "destructive" });
+      toast({ title: t("organizationDetail.organizerRemoveFailed"), description: error.message, variant: "destructive" });
     },
   });
 
@@ -596,7 +599,7 @@ export default function OrganizationDetail() {
   if (!org) {
     return (
       <div className="p-6">
-        <p className="text-muted-foreground">Organization not found.</p>
+        <p className="text-muted-foreground">{t("organizationDetail.notFound")}</p>
       </div>
     );
   }
@@ -606,7 +609,7 @@ export default function OrganizationDetail() {
       <Link href={lp("organizations")}>
         <Button variant="ghost" className="gap-2 -ml-2" data-testid="button-back">
           <ArrowLeft className="h-4 w-4" />
-          {t("organizationDetail.back", "Back to organizations")}
+          {t("organizationDetail.back")}
         </Button>
       </Link>
 
@@ -621,7 +624,7 @@ export default function OrganizationDetail() {
           )}
           <div className="flex gap-2 mt-1 flex-wrap">
             <Badge variant="secondary">
-              {org.organizers.length} Organizer{org.organizers.length !== 1 ? "s" : ""}
+              {t("organizationDetail.organizerCount", { count: org.organizers.length })}
             </Badge>
             {org.country && (
               <Badge variant="outline">
@@ -634,27 +637,27 @@ export default function OrganizationDetail() {
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
-          <TabsTrigger value="settings" data-testid="tab-settings">Settings</TabsTrigger>
-          <TabsTrigger value="organizers" data-testid="tab-organizers">Organizers</TabsTrigger>
-          {canEdit && <TabsTrigger value="spvs" data-testid="tab-spvs">SPVs</TabsTrigger>}
-          {canEdit && <TabsTrigger value="members" data-testid="tab-members">Members</TabsTrigger>}
-          {canEdit && <TabsTrigger value="invites" data-testid="tab-invites">Invites</TabsTrigger>}
+          <TabsTrigger value="settings" data-testid="tab-settings">{t("organizationDetail.tabSettings")}</TabsTrigger>
+          <TabsTrigger value="organizers" data-testid="tab-organizers">{t("organizationDetail.organizersTitle")}</TabsTrigger>
+          {canEdit && <TabsTrigger value="spvs" data-testid="tab-spvs">{t("organizationDetail.tabSpvs")}</TabsTrigger>}
+          {canEdit && <TabsTrigger value="members" data-testid="tab-members">{t("organizationDetail.tabMembers")}</TabsTrigger>}
+          {canEdit && <TabsTrigger value="invites" data-testid="tab-invites">{t("organizationDetail.tabInvites")}</TabsTrigger>}
         </TabsList>
 
         <TabsContent value="settings" className="mt-6">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0">
-              <h2 className="text-lg font-semibold">Organization Settings</h2>
+              <h2 className="text-lg font-semibold">{t("organizationDetail.settingsTitle")}</h2>
               {canEdit && (!editing ? (
                 <Button variant="outline" size="sm" onClick={() => setEditing(true)} data-testid="button-edit">
                   <Pencil className="h-3.5 w-3.5 mr-1.5" />
-                  Edit
+                  {t("common.edit")}
                 </Button>
               ) : (
                 <div className="flex gap-2">
                   <Button variant="ghost" size="sm" onClick={handleCancel} data-testid="button-cancel">
                     <X className="h-3.5 w-3.5 mr-1.5" />
-                    Cancel
+                    {t("common.cancel")}
                   </Button>
                   <Button
                     size="sm"
@@ -663,14 +666,14 @@ export default function OrganizationDetail() {
                     data-testid="button-save"
                   >
                     <Save className="h-3.5 w-3.5 mr-1.5" />
-                    {updateMutation.isPending ? "Saving..." : "Save"}
+                    {updateMutation.isPending ? t("common.saving") : t("common.save")}
                   </Button>
                 </div>
               ))}
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="name">Organization Name *</Label>
+                <Label htmlFor="name">{t("createOrganization.nameLabel")}</Label>
                 <Input
                   id="name"
                   value={formData.name || ""}
@@ -681,7 +684,7 @@ export default function OrganizationDetail() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="slug">Slug (URL identifier)</Label>
+                <Label htmlFor="slug">{t("organizationDetail.slugLabel")}</Label>
                 <Input
                   id="slug"
                   value={org.slug}
@@ -692,7 +695,7 @@ export default function OrganizationDetail() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="description">Description</Label>
+                <Label htmlFor="description">{t("common.description")}</Label>
                 <Input
                   id="description"
                   value={formData.description || ""}
@@ -703,24 +706,24 @@ export default function OrganizationDetail() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="website">Website</Label>
+                <Label htmlFor="website">{t("common.website")}</Label>
                 <Input
                   id="website"
                   value={formData.website || ""}
                   onChange={(e) => updateField("website", e.target.value)}
                   disabled={!editing}
-                  placeholder="https://..."
+                  placeholder={t("createOrganization.websitePlaceholder")}
                   data-testid="input-website"
                 />
               </div>
 
               <Separator />
 
-              <h3 className="text-base font-semibold">Location</h3>
+              <h3 className="text-base font-semibold">{t("createOrganization.locationSection")}</h3>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="city">City</Label>
+                  <Label htmlFor="city">{t("common.city")}</Label>
                   <Input
                     id="city"
                     value={formData.city || ""}
@@ -730,7 +733,7 @@ export default function OrganizationDetail() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="stateProvince">State / Province</Label>
+                  <Label htmlFor="stateProvince">{t("common.state")}</Label>
                   <Input
                     id="stateProvince"
                     value={formData.stateProvince || ""}
@@ -740,7 +743,7 @@ export default function OrganizationDetail() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="country">Country</Label>
+                  <Label htmlFor="country">{t("common.country")}</Label>
                   <Input
                     id="country"
                     value={formData.country || ""}
@@ -755,10 +758,10 @@ export default function OrganizationDetail() {
 
               <div className="space-y-1">
                 <p className="text-sm text-muted-foreground">
-                  Created: {new Date(org.createdAt).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}
+                  {t("organizationDetail.createdLabel", { date: new Date(org.createdAt).toLocaleDateString(locale === "en" ? "en-US" : locale, { year: "numeric", month: "long", day: "numeric" }) })}
                 </p>
                 <p className="text-sm text-muted-foreground">
-                  Last updated: {new Date(org.updatedAt).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}
+                  {t("organizationDetail.lastUpdatedLabel", { date: new Date(org.updatedAt).toLocaleDateString(locale === "en" ? "en-US" : locale, { year: "numeric", month: "long", day: "numeric" }) })}
                 </p>
               </div>
             </CardContent>
@@ -769,9 +772,9 @@ export default function OrganizationDetail() {
           <Card>
             <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0">
               <div>
-                <h2 className="text-lg font-semibold">Organizers</h2>
+                <h2 className="text-lg font-semibold">{t("organizationDetail.organizersTitle")}</h2>
                 <p className="text-sm text-muted-foreground mt-1">
-                  Organizers can manage this organization's settings, funds, and SPVs
+                  {t("organizationDetail.organizersTabDescription")}
                 </p>
               </div>
             </CardHeader>
@@ -780,10 +783,10 @@ export default function OrganizationDetail() {
                 <>
                   <div className="flex items-end gap-3">
                     <div className="flex-1 space-y-2">
-                      <Label>Add Organizer</Label>
+                      <Label>{t("organizationDetail.addOrganizer")}</Label>
                       <Select value={selectedAccountId} onValueChange={setSelectedAccountId}>
                         <SelectTrigger data-testid="select-organizer">
-                          <SelectValue placeholder="Select an account..." />
+                          <SelectValue placeholder={t("organizationDetail.selectAccountPlaceholder")} />
                         </SelectTrigger>
                         <SelectContent>
                           {availableAccounts && availableAccounts.length > 0 ? (
@@ -793,7 +796,7 @@ export default function OrganizationDetail() {
                               </SelectItem>
                             ))
                           ) : (
-                            <SelectItem value="none" disabled>No accounts available</SelectItem>
+                            <SelectItem value="none" disabled>{t("organizationDetail.noAccountsAvailable")}</SelectItem>
                           )}
                         </SelectContent>
                       </Select>
@@ -804,7 +807,7 @@ export default function OrganizationDetail() {
                       data-testid="button-add-organizer"
                     >
                       <UserPlus className="h-4 w-4 mr-2" />
-                      {addOrganizerMutation.isPending ? "Adding..." : "Add"}
+                      {addOrganizerMutation.isPending ? t("organizationDetail.adding") : t("common.add")}
                     </Button>
                   </div>
 
@@ -846,7 +849,7 @@ export default function OrganizationDetail() {
               ) : (
                 <div className="text-center py-8">
                   <p className="text-sm text-muted-foreground">
-                    No organizers assigned yet. Add an account as an organizer above.
+                    {t("organizationDetail.noOrganizersHint")}
                   </p>
                 </div>
               )}

@@ -24,7 +24,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Separator } from "@/components/ui/separator";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -41,7 +40,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { ArrowLeft, Pencil, Save, X as XIcon, Plus, Trash2, Building, Users, UserPlus, Briefcase } from "lucide-react";
+import { ArrowLeft, Pencil, Save, X as XIcon, Plus, Trash2, Building, Users, Briefcase } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -52,6 +51,7 @@ const ENTITY_TYPES = [
 const CURRENCIES = ["USD ($)", "EUR (\u20ac)", "GBP (\u00a3)", "CHF", "JPY (\u00a5)", "CAD ($)", "AUD ($)"];
 
 function OwnersTab({ entityId }: { entityId: string }) {
+  const { t } = useTranslation();
   const { toast } = useToast();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [ownerType, setOwnerType] = useState("account");
@@ -90,10 +90,10 @@ function OwnersTab({ entityId }: { entityId: string }) {
       setDialogOpen(false);
       setSelectedOwnerId("");
       setOwnershipPercent("0");
-      toast({ title: "Owner added" });
+      toast({ title: t("entityDetail.ownerAdded") });
     },
     onError: (error: Error) => {
-      toast({ title: "Failed to add owner", description: error.message, variant: "destructive" });
+      toast({ title: t("entityDetail.ownerAddFailed"), description: error.message, variant: "destructive" });
     },
   });
 
@@ -105,10 +105,10 @@ function OwnersTab({ entityId }: { entityId: string }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/entities", entityId, "owners"] });
       queryClient.invalidateQueries({ queryKey: ["/api/entities", entityId] });
-      toast({ title: "Owner removed" });
+      toast({ title: t("entityDetail.ownerRemoved") });
     },
     onError: (error: Error) => {
-      toast({ title: "Failed to remove owner", description: error.message, variant: "destructive" });
+      toast({ title: t("entityDetail.ownerRemoveFailed"), description: error.message, variant: "destructive" });
     },
   });
 
@@ -120,42 +120,42 @@ function OwnersTab({ entityId }: { entityId: string }) {
     <Card>
       <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0">
         <div>
-          <h2 className="text-lg font-semibold">Owners</h2>
+          <h2 className="text-lg font-semibold">{t("entityDetail.ownersTitle")}</h2>
           <p className="text-sm text-muted-foreground mt-1">
-            Accounts or entities that own a share of this entity
+            {t("entityDetail.ownersDescription")}
           </p>
         </div>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
             <Button data-testid="button-add-owner">
               <Plus className="h-4 w-4 mr-2" />
-              Add Owner
+              {t("entityDetail.addOwner")}
             </Button>
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Add Owner</DialogTitle>
+              <DialogTitle>{t("entityDetail.addOwner")}</DialogTitle>
             </DialogHeader>
             <div className="space-y-4 pt-4">
               <div className="space-y-2">
-                <Label>Owner Type</Label>
+                <Label>{t("entityDetail.ownerType")}</Label>
                 <RadioGroup value={ownerType} onValueChange={v => { setOwnerType(v); setSelectedOwnerId(""); }} className="flex gap-4">
                   <div className="flex items-center space-x-2">
                     <RadioGroupItem value="account" id="owner-account" data-testid="radio-owner-account" />
-                    <Label htmlFor="owner-account" className="font-normal">Account (Individual)</Label>
+                    <Label htmlFor="owner-account" className="font-normal">{t("entityDetail.ownerAccountIndividual")}</Label>
                   </div>
                   <div className="flex items-center space-x-2">
                     <RadioGroupItem value="entity" id="owner-entity" data-testid="radio-owner-entity" />
-                    <Label htmlFor="owner-entity" className="font-normal">Entity</Label>
+                    <Label htmlFor="owner-entity" className="font-normal">{t("entityDetail.ownerEntityOption")}</Label>
                   </div>
                 </RadioGroup>
               </div>
 
               <div className="space-y-2">
-                <Label>Owner</Label>
+                <Label>{t("entityDetail.owner")}</Label>
                 <Select value={selectedOwnerId} onValueChange={setSelectedOwnerId}>
                   <SelectTrigger data-testid="select-owner">
-                    <SelectValue placeholder={ownerType === "account" ? "Select an account..." : "Select an entity..."} />
+                    <SelectValue placeholder={ownerType === "account" ? t("entityDetail.selectAccountPlaceholder") : t("entityDetail.selectEntityPlaceholder")} />
                   </SelectTrigger>
                   <SelectContent>
                     {ownerType === "account" ? (
@@ -176,7 +176,7 @@ function OwnersTab({ entityId }: { entityId: string }) {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="ownershipPercent">Ownership Override</Label>
+                <Label htmlFor="ownershipPercent">{t("entityDetail.ownershipOverride")}</Label>
                 <Input
                   id="ownershipPercent"
                   type="number"
@@ -185,19 +185,19 @@ function OwnersTab({ entityId }: { entityId: string }) {
                   max="100"
                   value={ownershipPercent}
                   onChange={e => setOwnershipPercent(e.target.value)}
-                  placeholder="0%"
+                  placeholder={t("entityDetail.ownershipPlaceholder")}
                   data-testid="input-ownership-percent"
                 />
               </div>
 
               <div className="flex gap-2 justify-end pt-2">
-                <Button variant="outline" onClick={() => setDialogOpen(false)} data-testid="button-close-dialog">Close</Button>
+                <Button variant="outline" onClick={() => setDialogOpen(false)} data-testid="button-close-dialog">{t("common.close")}</Button>
                 <Button
                   onClick={() => addMutation.mutate()}
                   disabled={!selectedOwnerId || addMutation.isPending}
                   data-testid="button-confirm-add-owner"
                 >
-                  {addMutation.isPending ? "Adding..." : "Add Owner"}
+                  {addMutation.isPending ? t("entityDetail.adding") : t("entityDetail.addOwner")}
                 </Button>
               </div>
             </div>
@@ -232,7 +232,7 @@ function OwnersTab({ entityId }: { entityId: string }) {
                       <p className="text-xs text-muted-foreground truncate">{owner.ownerEntity.entityType}</p>
                     </>
                   ) : (
-                    <p className="text-sm text-muted-foreground">Unknown owner</p>
+                    <p className="text-sm text-muted-foreground">{t("entityDetail.unknownOwner")}</p>
                   )}
                 </div>
                 <div className="text-right mr-2">
@@ -253,7 +253,7 @@ function OwnersTab({ entityId }: { entityId: string }) {
         ) : (
           <div className="text-center py-12">
             <Users className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-            <p className="text-muted-foreground">No owners added yet.</p>
+            <p className="text-muted-foreground">{t("entityDetail.noOwnersAdded")}</p>
           </div>
         )}
       </CardContent>
@@ -262,6 +262,7 @@ function OwnersTab({ entityId }: { entityId: string }) {
 }
 
 function ManagersSection({ entityId, editing }: { entityId: string; editing: boolean }) {
+  const { t } = useTranslation();
   const { toast } = useToast();
 
   const { data: managers } = useQuery<EntityManagerInfo[]>({
@@ -280,10 +281,10 @@ function ManagersSection({ entityId, editing }: { entityId: string; editing: boo
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/entities", entityId, "managers"] });
       queryClient.invalidateQueries({ queryKey: ["/api/entities", entityId] });
-      toast({ title: "Manager added" });
+      toast({ title: t("entityDetail.managerAdded") });
     },
     onError: (error: Error) => {
-      toast({ title: "Failed to add manager", description: error.message, variant: "destructive" });
+      toast({ title: t("entityDetail.managerAddFailed"), description: error.message, variant: "destructive" });
     },
   });
 
@@ -295,10 +296,10 @@ function ManagersSection({ entityId, editing }: { entityId: string; editing: boo
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/entities", entityId, "managers"] });
       queryClient.invalidateQueries({ queryKey: ["/api/entities", entityId] });
-      toast({ title: "Manager removed" });
+      toast({ title: t("entityDetail.managerRemoved") });
     },
     onError: (error: Error) => {
-      toast({ title: "Failed to remove manager", description: error.message, variant: "destructive" });
+      toast({ title: t("entityDetail.managerRemoveFailed"), description: error.message, variant: "destructive" });
     },
   });
 
@@ -307,15 +308,15 @@ function ManagersSection({ entityId, editing }: { entityId: string; editing: boo
   return (
     <Card>
       <CardHeader>
-        <h2 className="text-lg font-semibold">Administration</h2>
+        <h2 className="text-lg font-semibold">{t("createEntity.administration")}</h2>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="space-y-2">
-          <Label>Managers</Label>
+          <Label>{t("createEntity.managers")}</Label>
           {editing && (
             <Select onValueChange={v => addMutation.mutate(parseInt(v))}>
               <SelectTrigger data-testid="select-add-manager">
-                <SelectValue placeholder="Add a manager..." />
+                <SelectValue placeholder={t("entityDetail.addManagerPlaceholder")} />
               </SelectTrigger>
               <SelectContent>
                 {availableAccounts.map(a => (
@@ -341,7 +342,7 @@ function ManagersSection({ entityId, editing }: { entityId: string; editing: boo
             ))}
           </div>
         ) : (
-          <p className="text-sm text-muted-foreground">No managers assigned</p>
+          <p className="text-sm text-muted-foreground">{t("entityDetail.noManagersAssigned")}</p>
         )}
       </CardContent>
     </Card>
@@ -402,10 +403,10 @@ export default function EntityDetail() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/entities", entityId] });
       setEditing(false);
-      toast({ title: "Entity updated" });
+      toast({ title: t("entityDetail.saved") });
     },
     onError: (error: Error) => {
-      toast({ title: "Failed to update entity", description: error.message, variant: "destructive" });
+      toast({ title: t("entityDetail.saveFailed"), description: error.message, variant: "destructive" });
     },
   });
 
@@ -415,11 +416,11 @@ export default function EntityDetail() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/entities"] });
-      toast({ title: "Entity deleted" });
+      toast({ title: t("entities.deleted") });
       navigate(lp("entities"));
     },
     onError: (error: Error) => {
-      toast({ title: "Failed to delete entity", description: error.message, variant: "destructive" });
+      toast({ title: t("entities.deleteFailed"), description: error.message, variant: "destructive" });
     },
   });
 
@@ -474,7 +475,7 @@ export default function EntityDetail() {
   if (!entity) {
     return (
       <div className="p-6">
-        <p className="text-muted-foreground">Entity not found.</p>
+        <p className="text-muted-foreground">{t("entityDetail.entityNotFound")}</p>
       </div>
     );
   }
@@ -484,7 +485,7 @@ export default function EntityDetail() {
       <Link href={lp("entities")}>
         <Button variant="ghost" className="gap-2 -ml-2" data-testid="button-back">
           <ArrowLeft className="h-4 w-4" />
-          {t("entityDetail.back", "Back to entities")}
+          {t("entityDetail.back")}
         </Button>
       </Link>
 
@@ -493,18 +494,18 @@ export default function EntityDetail() {
           <Building className="h-8 w-8" />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-sm text-muted-foreground">Entity</p>
+          <p className="text-sm text-muted-foreground">{t("entityDetail.entityLabel")}</p>
           <h1 className="text-2xl font-semibold" data-testid="text-entity-name">{entity.name}</h1>
           <div className="flex gap-2 mt-1 flex-wrap">
             <Badge variant="secondary">{entity.entityType}</Badge>
-            <Badge variant="outline">{entity.ownerCount} Owner{entity.ownerCount !== 1 ? "s" : ""}</Badge>
+            <Badge variant="outline">{t("entityDetail.ownersCount", { count: entity.ownerCount })}</Badge>
           </div>
         </div>
         <div className="flex items-center gap-2">
           <Link href={`${lp("dashboard")}?entityId=${entity.id}`}>
             <Button variant="outline" className="gap-2" data-testid="button-view-portfolio">
               <Briefcase className="h-4 w-4" />
-              View Portfolio
+              {t("entityDetail.viewPortfolio")}
             </Button>
           </Link>
           {isAdmin && (
@@ -512,23 +513,23 @@ export default function EntityDetail() {
               <AlertDialogTrigger asChild>
                 <Button variant="outline" className="gap-2 text-destructive hover:text-destructive" data-testid="button-delete-entity">
                   <Trash2 className="h-4 w-4" />
-                  Delete Entity
+                  {t("entities.deleteTitle")}
                 </Button>
               </AlertDialogTrigger>
               <AlertDialogContent>
                 <AlertDialogHeader>
-                  <AlertDialogTitle>Delete Entity</AlertDialogTitle>
+                  <AlertDialogTitle>{t("entities.deleteTitle")}</AlertDialogTitle>
                   <AlertDialogDescription>
-                    Are you sure you want to delete <strong>{entity.name}</strong>? This will also remove all owner and manager records associated with it. This action cannot be undone.
+                    {t("entityDetail.deleteEntityConfirm", { name: entity.name })}
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
                   <AlertDialogAction
                     onClick={() => deleteEntityMutation.mutate()}
                     data-testid="button-confirm-delete-entity"
                   >
-                    Delete
+                    {t("common.delete")}
                   </AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>
@@ -539,8 +540,8 @@ export default function EntityDetail() {
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList>
-          <TabsTrigger value="overview" data-testid="tab-overview">Overview</TabsTrigger>
-          <TabsTrigger value="owners" data-testid="tab-owners">Owners</TabsTrigger>
+          <TabsTrigger value="overview" data-testid="tab-overview">{t("entityDetail.tabOverview")}</TabsTrigger>
+          <TabsTrigger value="owners" data-testid="tab-owners">{t("entityDetail.tabOwners")}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="mt-6 space-y-6">
@@ -548,17 +549,17 @@ export default function EntityDetail() {
             {!editing ? (
               <Button variant="outline" size="sm" onClick={() => setEditing(true)} data-testid="button-edit">
                 <Pencil className="h-3.5 w-3.5 mr-1.5" />
-                Edit
+                {t("common.edit")}
               </Button>
             ) : (
               <div className="flex gap-2">
                 <Button variant="ghost" size="sm" onClick={handleCancel} data-testid="button-cancel">
                   <XIcon className="h-3.5 w-3.5 mr-1.5" />
-                  Cancel
+                  {t("common.cancel")}
                 </Button>
                 <Button size="sm" onClick={handleSave} disabled={updateMutation.isPending} data-testid="button-save">
                   <Save className="h-3.5 w-3.5 mr-1.5" />
-                  {updateMutation.isPending ? "Saving..." : "Save"}
+                  {updateMutation.isPending ? t("common.saving") : t("common.save")}
                 </Button>
               </div>
             )}
@@ -566,32 +567,32 @@ export default function EntityDetail() {
 
           <Card>
             <CardHeader>
-              <h2 className="text-lg font-semibold">General Information</h2>
+              <h2 className="text-lg font-semibold">{t("createEntity.general")}</h2>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label>Name</Label>
+                <Label>{t("common.name")}</Label>
                 <Input value={formData.name || ""} onChange={e => updateField("name", e.target.value)} disabled={!editing} data-testid="input-name" />
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Date Established</Label>
+                  <Label>{t("createEntity.dateEstablished")}</Label>
                   <Input type="date" value={formData.dateEstablished || ""} onChange={e => updateField("dateEstablished", e.target.value)} disabled={!editing} data-testid="input-date-established" />
                 </div>
                 <div className="space-y-2">
-                  <Label>Type</Label>
+                  <Label>{t("common.type")}</Label>
                   <Select value={formData.entityType || "LLC"} onValueChange={v => updateField("entityType", v)} disabled={!editing}>
                     <SelectTrigger data-testid="select-entity-type">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      {ENTITY_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                      {ENTITY_TYPES.map(et => <SelectItem key={et} value={et}>{et}</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
               </div>
               <div className="space-y-2">
-                <Label>Currency</Label>
+                <Label>{t("createEntity.currency")}</Label>
                 <Select value={formData.currency || "USD ($)"} onValueChange={v => updateField("currency", v)} disabled={!editing}>
                   <SelectTrigger data-testid="select-currency">
                     <SelectValue />
@@ -602,19 +603,19 @@ export default function EntityDetail() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Tax ID</Label>
+                <Label>{t("createEntity.taxId")}</Label>
                 <Input value={formData.taxId || ""} onChange={e => updateField("taxId", e.target.value)} disabled={!editing} data-testid="input-tax-id" />
               </div>
               <div className="space-y-2">
-                <Label>Ownership Allocation</Label>
+                <Label>{t("entityDetail.ownershipAllocation")}</Label>
                 <RadioGroup value={formData.ownershipAllocation || "percent"} onValueChange={v => updateField("ownershipAllocation", v)} className="flex gap-4" disabled={!editing}>
                   <div className="flex items-center space-x-2">
                     <RadioGroupItem value="capital" id="detail-capital" disabled={!editing} />
-                    <Label htmlFor="detail-capital" className="font-normal">Capital</Label>
+                    <Label htmlFor="detail-capital" className="font-normal">{t("createEntity.capital")}</Label>
                   </div>
                   <div className="flex items-center space-x-2">
                     <RadioGroupItem value="percent" id="detail-percent" disabled={!editing} />
-                    <Label htmlFor="detail-percent" className="font-normal">Percent</Label>
+                    <Label htmlFor="detail-percent" className="font-normal">{t("createEntity.percent")}</Label>
                   </div>
                 </RadioGroup>
               </div>
@@ -625,33 +626,33 @@ export default function EntityDetail() {
 
           <Card>
             <CardHeader>
-              <h2 className="text-lg font-semibold">Address</h2>
+              <h2 className="text-lg font-semibold">{t("createEntity.addressSection")}</h2>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label>Country</Label>
+                <Label>{t("common.country")}</Label>
                 <Input value={formData.country || ""} onChange={e => updateField("country", e.target.value)} disabled={!editing} data-testid="input-country" />
               </div>
               <div className="space-y-2">
-                <Label>Street</Label>
+                <Label>{t("createEntity.street")}</Label>
                 <Input value={formData.streetAddress || ""} onChange={e => updateField("streetAddress", e.target.value)} disabled={!editing} data-testid="input-street" />
               </div>
               <div className="space-y-2">
-                <Label>Street (continued)</Label>
+                <Label>{t("createEntity.streetContinued")}</Label>
                 <Input value={formData.streetAddress2 || ""} onChange={e => updateField("streetAddress2", e.target.value)} disabled={!editing} data-testid="input-street2" />
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>City</Label>
+                  <Label>{t("common.city")}</Label>
                   <Input value={formData.city || ""} onChange={e => updateField("city", e.target.value)} disabled={!editing} data-testid="input-city" />
                 </div>
                 <div className="space-y-2">
-                  <Label>State / Province</Label>
+                  <Label>{t("common.state")}</Label>
                   <Input value={formData.stateProvince || ""} onChange={e => updateField("stateProvince", e.target.value)} disabled={!editing} data-testid="input-state-province" />
                 </div>
               </div>
               <div className="space-y-2">
-                <Label>Zip / Postal Code</Label>
+                <Label>{t("createEntity.zipPostalCode")}</Label>
                 <Input value={formData.zipPostalCode || ""} onChange={e => updateField("zipPostalCode", e.target.value)} disabled={!editing} data-testid="input-zip" />
               </div>
             </CardContent>
@@ -659,54 +660,54 @@ export default function EntityDetail() {
 
           <Card>
             <CardHeader>
-              <h2 className="text-lg font-semibold">Disbursement Preference</h2>
+              <h2 className="text-lg font-semibold">{t("createEntity.disbursementPreference")}</h2>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label>Disbursement Method</Label>
+                <Label>{t("entityDetail.disbursementMethod")}</Label>
                 <RadioGroup value={formData.disbursementMethod || "wire_transfer"} onValueChange={v => updateField("disbursementMethod", v)} className="flex gap-4" disabled={!editing}>
                   <div className="flex items-center space-x-2">
                     <RadioGroupItem value="wire_transfer" id="detail-wire" disabled={!editing} />
-                    <Label htmlFor="detail-wire" className="font-normal">Wire Transfer</Label>
+                    <Label htmlFor="detail-wire" className="font-normal">{t("createEntity.wireTransfer")}</Label>
                   </div>
                   <div className="flex items-center space-x-2">
                     <RadioGroupItem value="check" id="detail-check" disabled={!editing} />
-                    <Label htmlFor="detail-check" className="font-normal">Check</Label>
+                    <Label htmlFor="detail-check" className="font-normal">{t("createEntity.check")}</Label>
                   </div>
                   <div className="flex items-center space-x-2">
                     <RadioGroupItem value="other" id="detail-other" disabled={!editing} />
-                    <Label htmlFor="detail-other" className="font-normal">Other</Label>
+                    <Label htmlFor="detail-other" className="font-normal">{t("createEntity.other")}</Label>
                   </div>
                 </RadioGroup>
               </div>
               <div className="space-y-2">
-                <Label>Bank Name</Label>
+                <Label>{t("createEntity.bankName")}</Label>
                 <Input value={formData.bankName || ""} onChange={e => updateField("bankName", e.target.value)} disabled={!editing} data-testid="input-bank-name" />
               </div>
               <div className="space-y-2">
-                <Label>Bank Address</Label>
+                <Label>{t("createEntity.bankAddress")}</Label>
                 <Textarea value={formData.bankAddress || ""} onChange={e => updateField("bankAddress", e.target.value)} disabled={!editing} data-testid="input-bank-address" />
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>Bank Routing Number</Label>
+                  <Label>{t("createEntity.bankRoutingNumber")}</Label>
                   <Input value={formData.bankRoutingNumber || ""} onChange={e => updateField("bankRoutingNumber", e.target.value)} disabled={!editing} data-testid="input-routing" />
                 </div>
                 <div className="space-y-2">
-                  <Label>Bank Swift Code</Label>
+                  <Label>{t("createEntity.bankSwiftCode")}</Label>
                   <Input value={formData.bankSwiftCode || ""} onChange={e => updateField("bankSwiftCode", e.target.value)} disabled={!editing} data-testid="input-swift" />
                 </div>
               </div>
               <div className="space-y-2">
-                <Label>Bank Account Number</Label>
+                <Label>{t("createEntity.bankAccountNumber")}</Label>
                 <Input value={formData.bankAccountNumber || ""} onChange={e => updateField("bankAccountNumber", e.target.value)} disabled={!editing} data-testid="input-account-number" />
               </div>
               <div className="space-y-2">
-                <Label>Bank Account Name</Label>
+                <Label>{t("createEntity.bankAccountName")}</Label>
                 <Input value={formData.bankAccountName || ""} onChange={e => updateField("bankAccountName", e.target.value)} disabled={!editing} data-testid="input-account-name" />
               </div>
               <div className="space-y-2">
-                <Label>For Further Credit To</Label>
+                <Label>{t("createEntity.forFurtherCreditTo")}</Label>
                 <Input value={formData.forFurtherCreditTo || ""} onChange={e => updateField("forFurtherCreditTo", e.target.value)} disabled={!editing} data-testid="input-ffc" />
               </div>
             </CardContent>

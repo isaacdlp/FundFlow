@@ -80,11 +80,11 @@ export default function CreateEntity() {
         await apiRequest("POST", `/api/entities/${entity.id}/managers`, { accountId });
       }
       queryClient.invalidateQueries({ queryKey: ["/api/entities"] });
-      toast({ title: "Entity created successfully" });
+      toast({ title: t("createEntity.successTitle") });
       navigate(lp("entityDetail", { id: entity.id }));
     },
     onError: (error: Error) => {
-      toast({ title: "Failed to create entity", description: error.message, variant: "destructive" });
+      toast({ title: t("createEntity.errorTitle"), description: error.message, variant: "destructive" });
     },
   });
 
@@ -105,33 +105,33 @@ export default function CreateEntity() {
       <Link href={lp("entities")}>
         <Button variant="ghost" className="gap-2 -ml-2" data-testid="button-back">
           <ArrowLeft className="h-4 w-4" />
-          {t("entityDetail.back", "Back to entities")}
+          {t("entityDetail.back")}
         </Button>
       </Link>
 
       <div>
-        <h1 className="text-2xl font-semibold">New Entity</h1>
+        <h1 className="text-2xl font-semibold">{t("createEntity.title")}</h1>
       </div>
 
       <Card>
         <CardHeader>
-          <h2 className="text-lg font-semibold">General Information</h2>
+          <h2 className="text-lg font-semibold">{t("createEntity.general")}</h2>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="name">Name *</Label>
+            <Label htmlFor="name">{t("createEntity.nameRequired")}</Label>
             <Input
               id="name"
               value={form.name}
               onChange={e => updateField("name", e.target.value)}
-              placeholder="Entity name"
+              placeholder={t("createEntity.namePlaceholder")}
               data-testid="input-name"
             />
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="dateEstablished">Date Established</Label>
+              <Label htmlFor="dateEstablished">{t("createEntity.dateEstablished")}</Label>
               <Input
                 id="dateEstablished"
                 type="date"
@@ -141,14 +141,14 @@ export default function CreateEntity() {
               />
             </div>
             <div className="space-y-2">
-              <Label>Type</Label>
+              <Label>{t("common.type")}</Label>
               <Select value={form.entityType} onValueChange={v => updateField("entityType", v)}>
                 <SelectTrigger data-testid="select-entity-type">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {ENTITY_TYPES.map(t => (
-                    <SelectItem key={t} value={t}>{t}</SelectItem>
+                  {ENTITY_TYPES.map(et => (
+                    <SelectItem key={et} value={et}>{et}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -156,7 +156,7 @@ export default function CreateEntity() {
           </div>
 
           <div className="space-y-2">
-            <Label>Currency</Label>
+            <Label>{t("createEntity.currency")}</Label>
             <Select value={form.currency} onValueChange={v => updateField("currency", v)}>
               <SelectTrigger data-testid="select-currency">
                 <SelectValue />
@@ -170,27 +170,27 @@ export default function CreateEntity() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="taxId">Tax ID</Label>
+            <Label htmlFor="taxId">{t("createEntity.taxId")}</Label>
             <Input
               id="taxId"
               value={form.taxId}
               onChange={e => updateField("taxId", e.target.value)}
-              placeholder="12-3456789"
+              placeholder={t("createEntity.taxIdPlaceholder")}
               data-testid="input-tax-id"
             />
-            <p className="text-xs text-muted-foreground">EIN / Tax ID is an entity attribute</p>
+            <p className="text-xs text-muted-foreground">{t("createEntity.taxIdHelper")}</p>
           </div>
 
           <div className="space-y-2">
-            <Label>How do you like to allocate ownership in this entity?</Label>
+            <Label>{t("createEntity.ownershipQuestion")}</Label>
             <RadioGroup value={form.ownershipAllocation} onValueChange={v => updateField("ownershipAllocation", v)} className="flex gap-4">
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="capital" id="capital" data-testid="radio-capital" />
-                <Label htmlFor="capital" className="font-normal">Capital</Label>
+                <Label htmlFor="capital" className="font-normal">{t("createEntity.capital")}</Label>
               </div>
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="percent" id="percent" data-testid="radio-percent" />
-                <Label htmlFor="percent" className="font-normal">Percent</Label>
+                <Label htmlFor="percent" className="font-normal">{t("createEntity.percent")}</Label>
               </div>
             </RadioGroup>
           </div>
@@ -199,14 +199,14 @@ export default function CreateEntity() {
 
       <Card>
         <CardHeader>
-          <h2 className="text-lg font-semibold">Administration</h2>
+          <h2 className="text-lg font-semibold">{t("createEntity.administration")}</h2>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label>Managers</Label>
+            <Label>{t("createEntity.managers")}</Label>
             <Select onValueChange={v => addManager(parseInt(v))}>
               <SelectTrigger data-testid="select-manager">
-                <SelectValue placeholder="Select accounts to add as managers..." />
+                <SelectValue placeholder={t("createEntity.selectManagersPlaceholder")} />
               </SelectTrigger>
               <SelectContent>
                 {availableAccounts.map(a => (
@@ -238,33 +238,33 @@ export default function CreateEntity() {
 
       <Card>
         <CardHeader>
-          <h2 className="text-lg font-semibold">Address</h2>
+          <h2 className="text-lg font-semibold">{t("createEntity.addressSection")}</h2>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="country">Country</Label>
+            <Label htmlFor="country">{t("common.country")}</Label>
             <Input id="country" value={form.country} onChange={e => updateField("country", e.target.value)} data-testid="input-country" />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="streetAddress">Street</Label>
+            <Label htmlFor="streetAddress">{t("createEntity.street")}</Label>
             <Input id="streetAddress" value={form.streetAddress} onChange={e => updateField("streetAddress", e.target.value)} data-testid="input-street" />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="streetAddress2">Street (continued)</Label>
+            <Label htmlFor="streetAddress2">{t("createEntity.streetContinued")}</Label>
             <Input id="streetAddress2" value={form.streetAddress2} onChange={e => updateField("streetAddress2", e.target.value)} data-testid="input-street2" />
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="entityCity">City</Label>
+              <Label htmlFor="entityCity">{t("common.city")}</Label>
               <Input id="entityCity" value={form.city} onChange={e => updateField("city", e.target.value)} data-testid="input-city" />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="entityStateProvince">State / Province</Label>
+              <Label htmlFor="entityStateProvince">{t("common.state")}</Label>
               <Input id="entityStateProvince" value={form.stateProvince} onChange={e => updateField("stateProvince", e.target.value)} data-testid="input-state-province" />
             </div>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="zipPostalCode">Zip / Postal Code</Label>
+            <Label htmlFor="zipPostalCode">{t("createEntity.zipPostalCode")}</Label>
             <Input id="zipPostalCode" value={form.zipPostalCode} onChange={e => updateField("zipPostalCode", e.target.value)} data-testid="input-zip" />
           </div>
         </CardContent>
@@ -272,55 +272,55 @@ export default function CreateEntity() {
 
       <Card>
         <CardHeader>
-          <h2 className="text-lg font-semibold">Disbursement Preference</h2>
+          <h2 className="text-lg font-semibold">{t("createEntity.disbursementPreference")}</h2>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label>How do you want to receive disbursements?</Label>
+            <Label>{t("createEntity.disbursementQuestion")}</Label>
             <RadioGroup value={form.disbursementMethod} onValueChange={v => updateField("disbursementMethod", v)} className="flex gap-4">
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="wire_transfer" id="wire" data-testid="radio-wire" />
-                <Label htmlFor="wire" className="font-normal">Wire Transfer</Label>
+                <Label htmlFor="wire" className="font-normal">{t("createEntity.wireTransfer")}</Label>
               </div>
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="check" id="check" data-testid="radio-check" />
-                <Label htmlFor="check" className="font-normal">Check</Label>
+                <Label htmlFor="check" className="font-normal">{t("createEntity.check")}</Label>
               </div>
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="other" id="other" data-testid="radio-other" />
-                <Label htmlFor="other" className="font-normal">Other</Label>
+                <Label htmlFor="other" className="font-normal">{t("createEntity.other")}</Label>
               </div>
             </RadioGroup>
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="bankName">Bank Name</Label>
+            <Label htmlFor="bankName">{t("createEntity.bankName")}</Label>
             <Input id="bankName" value={form.bankName} onChange={e => updateField("bankName", e.target.value)} data-testid="input-bank-name" />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="bankAddress">Bank Address</Label>
+            <Label htmlFor="bankAddress">{t("createEntity.bankAddress")}</Label>
             <Textarea id="bankAddress" value={form.bankAddress} onChange={e => updateField("bankAddress", e.target.value)} data-testid="input-bank-address" />
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="bankRoutingNumber">Bank Routing Number</Label>
+              <Label htmlFor="bankRoutingNumber">{t("createEntity.bankRoutingNumber")}</Label>
               <Input id="bankRoutingNumber" value={form.bankRoutingNumber} onChange={e => updateField("bankRoutingNumber", e.target.value)} data-testid="input-routing" />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="bankSwiftCode">Bank Swift Code</Label>
+              <Label htmlFor="bankSwiftCode">{t("createEntity.bankSwiftCode")}</Label>
               <Input id="bankSwiftCode" value={form.bankSwiftCode} onChange={e => updateField("bankSwiftCode", e.target.value)} data-testid="input-swift" />
             </div>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="bankAccountNumber">Bank Account Number</Label>
+            <Label htmlFor="bankAccountNumber">{t("createEntity.bankAccountNumber")}</Label>
             <Input id="bankAccountNumber" value={form.bankAccountNumber} onChange={e => updateField("bankAccountNumber", e.target.value)} data-testid="input-account-number" />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="bankAccountName">Bank Account Name</Label>
+            <Label htmlFor="bankAccountName">{t("createEntity.bankAccountName")}</Label>
             <Input id="bankAccountName" value={form.bankAccountName} onChange={e => updateField("bankAccountName", e.target.value)} data-testid="input-account-name" />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="forFurtherCreditTo">For Further Credit To</Label>
+            <Label htmlFor="forFurtherCreditTo">{t("createEntity.forFurtherCreditTo")}</Label>
             <Input id="forFurtherCreditTo" value={form.forFurtherCreditTo} onChange={e => updateField("forFurtherCreditTo", e.target.value)} data-testid="input-ffc" />
           </div>
         </CardContent>
@@ -335,7 +335,7 @@ export default function CreateEntity() {
           disabled={createMutation.isPending || !form.name}
           data-testid="button-create-entity"
         >
-          {createMutation.isPending ? "Creating..." : "Confirm Changes"}
+          {createMutation.isPending ? t("common.creating") : t("createEntity.confirmChanges")}
         </Button>
       </div>
     </div>

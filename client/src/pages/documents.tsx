@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
@@ -60,18 +61,18 @@ type FolderNode = {
   docs: DocItem[];
 };
 
-function ownerLabel(doc: DocItem): string {
+function ownerLabel(doc: DocItem, labels: { account: string; entity: string; unknown: string }): string {
   const o = doc.owner;
-  const kind = doc.ownerType === "account" ? "Account" : "Entity";
-  const name = (o?.name || "Unknown").replace(/\//g, " ");
+  const kind = doc.ownerType === "account" ? labels.account : labels.entity;
+  const name = (o?.name || labels.unknown).replace(/\//g, " ");
   const id = o?.id ?? (doc.accountId ?? doc.entityId ?? "?");
   return `${kind} · ${name} (#${id})`;
 }
 
-function buildTree(docs: DocItem[]): FolderNode {
+function buildTree(docs: DocItem[], ownerLabels: { account: string; entity: string; unknown: string }): FolderNode {
   const root: FolderNode = { name: "", fullPath: "", children: new Map(), docs: [] };
   for (const doc of docs) {
-    const ownerSeg = ownerLabel(doc);
+    const ownerSeg = ownerLabel(doc, ownerLabels);
     const folderSegs = (doc.folderPath || "").split("/").filter(Boolean);
     const parts = [ownerSeg, ...folderSegs];
     let node = root;
@@ -89,12 +90,13 @@ function buildTree(docs: DocItem[]): FolderNode {
 }
 
 function FolderTree({
-  node, depth, selectedPath, onSelect,
+  node, depth, selectedPath, onSelect, rootLabel,
 }: {
   node: FolderNode;
   depth: number;
   selectedPath: string;
   onSelect: (path: string) => void;
+  rootLabel: string;
 }) {
   const [open, setOpen] = useState(true);
   const isSelected = node.fullPath === selectedPath;
@@ -112,11 +114,11 @@ function FolderTree({
       >
         {children.length > 0 && !isRoot ? (open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />) : <span className="w-3" />}
         {isRoot ? <Files className="h-4 w-4" /> : open ? <FolderOpen className="h-4 w-4" /> : <Folder className="h-4 w-4" />}
-        <span className="truncate">{isRoot ? "All Documents" : node.name}</span>
+        <span className="truncate">{isRoot ? rootLabel : node.name}</span>
         <span className="ml-auto text-xs text-muted-foreground">{node.docs.length || ""}</span>
       </button>
       {open && children.map(c => (
-        <FolderTree key={c.fullPath} node={c} depth={depth + 1} selectedPath={selectedPath} onSelect={onSelect} />
+        <FolderTree key={c.fullPath} node={c} depth={depth + 1} selectedPath={selectedPath} onSelect={onSelect} rootLabel={rootLabel} />
       ))}
     </div>
   );
@@ -143,6 +145,7 @@ function findNode(root: FolderNode, fullPath: string): FolderNode | null {
 
 function UploadDialog({ accounts, entities }: { accounts: AccountLite[]; entities: EntityLite[] }) {
   const { toast } = useToast();
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [folderPath, setFolderPath] = useState("");
@@ -158,7 +161,7 @@ function UploadDialog({ accounts, entities }: { accounts: AccountLite[]; entitie
 
   const upload = useMutation({
     mutationFn: async () => {
-      if (!file) throw new Error("Please select a file");
+      if (!file) throw new Error(t("documents.selectFile"));
       const fd = new FormData();
       fd.append("file", file);
       fd.append("name", name || file.name);
@@ -169,16 +172,16 @@ function UploadDialog({ accounts, entities }: { accounts: AccountLite[]; entitie
       const res = await fetch("/api/documents", { method: "POST", body: fd, credentials: "include" });
       if (!res.ok) {
         const text = await res.text().catch(() => res.statusText);
-        throw new Error(text || "Upload failed");
+        throw new Error(text || t("documents.uploadFailed"));
       }
       return res.json();
     },
     onSuccess: () => {
-      toast({ title: "Document uploaded" });
+      toast({ title: t("documents.uploaded") });
       queryClient.invalidateQueries({ queryKey: ["/api/documents"] });
       setOpen(false); reset();
     },
-    onError: (e: any) => toast({ title: "Upload failed", description: e.message, variant: "destructive" }),
+    onError: (e: any) => toast({ title: t("documents.uploadFailed"), description: e.message, variant: "destructive" }),
   });
 
   const canSubmit = !!file && (ownerType === "account" ? !!accountId : !!entityId);
@@ -187,45 +190,45 @@ function UploadDialog({ accounts, entities }: { accounts: AccountLite[]; entitie
     <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) reset(); }}>
       <DialogTrigger asChild>
         <Button data-testid="button-upload-document">
-          <Upload className="h-4 w-4 mr-2" /> Upload
+          <Upload className="h-4 w-4 mr-2" /> {t("documents.upload")}
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Upload Document</DialogTitle>
+          <DialogTitle>{t("documents.uploadTitle")}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
           <div>
-            <Label htmlFor="doc-file">File</Label>
+            <Label htmlFor="doc-file">{t("documents.file")}</Label>
             <Input id="doc-file" type="file" onChange={e => setFile(e.target.files?.[0] ?? null)}
               data-testid="input-doc-file" />
           </div>
           <div>
-            <Label htmlFor="doc-name">Name</Label>
+            <Label htmlFor="doc-name">{t("documents.name")}</Label>
             <Input id="doc-name" value={name} onChange={e => setName(e.target.value)}
-              placeholder={file?.name ?? "Document name"} data-testid="input-doc-name" />
+              placeholder={file?.name ?? t("documents.namePlaceholder")} data-testid="input-doc-name" />
           </div>
           <div>
-            <Label htmlFor="doc-folder">Folder Path</Label>
+            <Label htmlFor="doc-folder">{t("documents.folderPath")}</Label>
             <Input id="doc-folder" value={folderPath} onChange={e => setFolderPath(e.target.value)}
-              placeholder="e.g. SPVs/RS Kushki" data-testid="input-doc-folder" />
-            <p className="text-xs text-muted-foreground mt-1">Use "/" to nest folders. Leave empty for root.</p>
+              placeholder={t("documents.folderPathPlaceholder")} data-testid="input-doc-folder" />
+            <p className="text-xs text-muted-foreground mt-1">{t("documents.folderPathHint")}</p>
           </div>
           <div>
-            <Label>Associate with</Label>
+            <Label>{t("documents.associateWith")}</Label>
             <Select value={ownerType} onValueChange={(v) => setOwnerType(v as any)}>
               <SelectTrigger data-testid="select-owner-type"><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="account">Account</SelectItem>
-                <SelectItem value="entity">Entity</SelectItem>
+                <SelectItem value="account">{t("documents.account")}</SelectItem>
+                <SelectItem value="entity">{t("documents.entity")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
           {ownerType === "account" ? (
             <div>
-              <Label>Account</Label>
+              <Label>{t("documents.account")}</Label>
               <Select value={accountId} onValueChange={setAccountId}>
-                <SelectTrigger data-testid="select-account"><SelectValue placeholder="Select account" /></SelectTrigger>
+                <SelectTrigger data-testid="select-account"><SelectValue placeholder={t("documents.selectAccount")} /></SelectTrigger>
                 <SelectContent>
                   {accounts.map(a => (
                     <SelectItem key={a.id} value={String(a.id)}>{a.firstName} {a.lastName} ({a.email})</SelectItem>
@@ -235,9 +238,9 @@ function UploadDialog({ accounts, entities }: { accounts: AccountLite[]; entitie
             </div>
           ) : (
             <div>
-              <Label>Entity</Label>
+              <Label>{t("documents.entity")}</Label>
               <Select value={entityId} onValueChange={setEntityId}>
-                <SelectTrigger data-testid="select-entity"><SelectValue placeholder="Select entity" /></SelectTrigger>
+                <SelectTrigger data-testid="select-entity"><SelectValue placeholder={t("documents.selectEntity")} /></SelectTrigger>
                 <SelectContent>
                   {entities.map(e => (
                     <SelectItem key={e.id} value={String(e.id)}>{e.name}</SelectItem>
@@ -248,10 +251,10 @@ function UploadDialog({ accounts, entities }: { accounts: AccountLite[]; entitie
           )}
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+          <Button variant="outline" onClick={() => setOpen(false)}>{t("common.cancel")}</Button>
           <Button onClick={() => upload.mutate()} disabled={!canSubmit || upload.isPending}
             data-testid="button-confirm-upload">
-            {upload.isPending ? "Uploading..." : "Upload"}
+            {upload.isPending ? t("documents.uploading") : t("documents.upload")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -262,6 +265,7 @@ function UploadDialog({ accounts, entities }: { accounts: AccountLite[]; entitie
 export default function DocumentsPage() {
   const { isAdmin } = useAuth();
   const { toast } = useToast();
+  const { t } = useTranslation();
   const [selectedPath, setSelectedPath] = useState("");
 
   const { data: docs = [], isLoading } = useQuery<DocItem[]>({ queryKey: ["/api/documents"] });
@@ -272,7 +276,14 @@ export default function DocumentsPage() {
     queryKey: ["/api/entities"], enabled: isAdmin,
   });
 
-  const tree = useMemo(() => buildTree(docs), [docs]);
+  const ownerLabels = useMemo(() => ({
+    account: t("documents.account"),
+    entity: t("documents.entity"),
+    unknown: t("common.unknown"),
+  }), [t]);
+  const rootLabel = t("documents.allDocuments");
+
+  const tree = useMemo(() => buildTree(docs, ownerLabels), [docs, ownerLabels]);
   const selectedNode = useMemo(() => findNode(tree, selectedPath) ?? tree, [tree, selectedPath]);
   const visibleDocs = useMemo(() => {
     if (!selectedPath) return docs;
@@ -282,10 +293,10 @@ export default function DocumentsPage() {
   const del = useMutation({
     mutationFn: async (id: number) => apiRequest("DELETE", `/api/documents/${id}`),
     onSuccess: () => {
-      toast({ title: "Document deleted" });
+      toast({ title: t("documents.deleted") });
       queryClient.invalidateQueries({ queryKey: ["/api/documents"] });
     },
-    onError: (e: any) => toast({ title: "Delete failed", description: e.message, variant: "destructive" }),
+    onError: (e: any) => toast({ title: t("documents.deleteFailed"), description: e.message, variant: "destructive" }),
   });
 
   return (
@@ -293,10 +304,10 @@ export default function DocumentsPage() {
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold flex items-center gap-2" data-testid="text-page-title">
-            <Files className="h-6 w-6" /> Documents
+            <Files className="h-6 w-6" /> {t("documents.title")}
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            {isAdmin ? "Manage and share documents associated with accounts and entities." : "Documents associated with you and your entities."}
+            {isAdmin ? t("documents.subtitleAdmin") : t("documents.subtitleUser")}
           </p>
         </div>
         {isAdmin && <UploadDialog accounts={accounts} entities={entities} />}
@@ -305,20 +316,20 @@ export default function DocumentsPage() {
       <div className="grid grid-cols-1 md:grid-cols-[260px_1fr] gap-6">
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-sm">Folders</CardTitle>
+            <CardTitle className="text-sm">{t("documents.foldersTitle")}</CardTitle>
           </CardHeader>
           <CardContent className="p-2">
-            <FolderTree node={tree} depth={0} selectedPath={selectedPath} onSelect={setSelectedPath} />
+            <FolderTree node={tree} depth={0} selectedPath={selectedPath} onSelect={setSelectedPath} rootLabel={rootLabel} />
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm">
-              {selectedPath || "All Documents"} <span className="text-muted-foreground font-normal">({visibleDocs.length})</span>
+              {selectedPath || rootLabel} <span className="text-muted-foreground font-normal">({visibleDocs.length})</span>
             </CardTitle>
             <CardDescription>
-              {selectedPath ? "Showing documents in this folder and its sub-folders." : "All documents you can access."}
+              {selectedPath ? t("documents.selectedFolder") : t("documents.selectedAll")}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -326,7 +337,7 @@ export default function DocumentsPage() {
               <div className="space-y-2"><Skeleton className="h-12 w-full" /><Skeleton className="h-12 w-full" /></div>
             ) : visibleDocs.length === 0 ? (
               <div className="text-center py-12 text-muted-foreground text-sm" data-testid="text-empty-docs">
-                No documents in this folder.
+                {t("documents.noDocuments")}
               </div>
             ) : (
               <div className="divide-y">
@@ -341,7 +352,7 @@ export default function DocumentsPage() {
                         <span>· {formatBytes(doc.sizeBytes)}</span>
                         {doc.owner && (
                           <Badge variant="secondary" className="text-xs">
-                            {doc.owner.type === "account" ? "Account" : "Entity"}: {doc.owner.name}
+                            {doc.owner.type === "account" ? t("documents.account") : t("documents.entity")}: {doc.owner.name}
                           </Badge>
                         )}
                       </div>
@@ -360,15 +371,15 @@ export default function DocumentsPage() {
                         </AlertDialogTrigger>
                         <AlertDialogContent>
                           <AlertDialogHeader>
-                            <AlertDialogTitle>Delete document?</AlertDialogTitle>
+                            <AlertDialogTitle>{t("documents.deleteTitle")}</AlertDialogTitle>
                             <AlertDialogDescription>
-                              This will permanently remove "{doc.name}" and the file on disk.
+                              {t("documents.deleteConfirm", { name: doc.name })}
                             </AlertDialogDescription>
                           </AlertDialogHeader>
                           <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
                             <AlertDialogAction onClick={() => del.mutate(doc.id)} data-testid={`button-confirm-delete-${doc.id}`}>
-                              Delete
+                              {t("common.delete")}
                             </AlertDialogAction>
                           </AlertDialogFooter>
                         </AlertDialogContent>

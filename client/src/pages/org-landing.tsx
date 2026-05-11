@@ -1,5 +1,6 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useRoute, useSearch } from "wouter";
+import { useTranslation } from "react-i18next";
 import { useLocale } from "@/i18n/hooks";
 import { ROUTE_PATTERNS } from "@/i18n/routes";
 import type { OrganizationPublic } from "@shared/types";
@@ -18,6 +19,7 @@ type FlowMode = "choose" | "signup" | "signin" | "success";
 
 export default function OrgLanding() {
   const locale = useLocale();
+  const { t } = useTranslation();
   const [, params] = useRoute(ROUTE_PATTERNS.orgLanding[locale]);
   const slug = params?.slug;
   const search = useSearch();
@@ -66,20 +68,20 @@ export default function OrgLanding() {
       setSuccessStatus(inviteValid ? "approved" : "pending");
       setSuccessMessage(
         inviteValid
-          ? "Your account has been created and you've been granted access to this organization."
-          : "Your account has been created and your access request has been submitted. An organizer will review it shortly."
+          ? t("landing.successInviteApproved")
+          : t("landing.successPendingNew")
       );
       setMode("success");
     },
     onError: (error: Error) => {
       const msg = error.message || "";
       if (msg.includes("409") || msg.includes("already exists")) {
-        toast({ title: "Account already exists", description: "An account with this email already exists. Please sign in instead.", variant: "destructive" });
+        toast({ title: t("landing.errorAccountExistsTitle"), description: t("landing.errorAccountExistsDescription"), variant: "destructive" });
         setMode("signin");
         setSigninForm({ email: signupForm.email, password: "" });
         return;
       }
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({ title: t("landing.errorTitle"), description: error.message, variant: "destructive" });
     },
   });
 
@@ -100,13 +102,13 @@ export default function OrgLanding() {
       setSuccessStatus(inviteValid ? "approved" : "pending");
       setSuccessMessage(
         inviteValid
-          ? "You've been granted access to this organization."
-          : "Your access request has been submitted. An organizer will review it shortly."
+          ? t("landing.successInviteApprovedExisting")
+          : t("landing.successPendingExisting")
       );
       setMode("success");
     },
     onError: (error: Error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+      toast({ title: t("landing.errorTitle"), description: error.message, variant: "destructive" });
     },
   });
 
@@ -127,9 +129,9 @@ export default function OrgLanding() {
         <Card className="w-full max-w-lg">
           <CardContent className="text-center py-12">
             <Building2 className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-            <h2 className="text-xl font-semibold mb-2">Organization Not Found</h2>
+            <h2 className="text-xl font-semibold mb-2">{t("landing.notFoundTitle")}</h2>
             <p className="text-muted-foreground">
-              The organization you're looking for doesn't exist.
+              {t("landing.notFoundDescription")}
             </p>
           </CardContent>
         </Card>
@@ -176,7 +178,7 @@ export default function OrgLanding() {
           <Card className="border-green-200 bg-green-50 dark:border-green-900 dark:bg-green-950">
             <CardContent className="pt-4 pb-4">
               <p className="text-sm text-green-700 dark:text-green-300 font-medium" data-testid="text-invite-notice">
-                You've been invited to join this organization. Sign up or sign in to accept.
+                {t("landing.inviteNotice")}
               </p>
             </CardContent>
           </Card>
@@ -186,7 +188,7 @@ export default function OrgLanding() {
           <Card className="border-red-200 bg-red-50 dark:border-red-900 dark:bg-red-950">
             <CardContent className="pt-4 pb-4">
               <p className="text-sm text-red-700 dark:text-red-300 font-medium" data-testid="text-invite-invalid">
-                This invite link is invalid or has already been used. You can still request access below.
+                {t("landing.inviteInvalid")}
               </p>
             </CardContent>
           </Card>
@@ -201,7 +203,7 @@ export default function OrgLanding() {
                 <Clock className="h-12 w-12 mx-auto text-yellow-500 mb-4" />
               )}
               <h2 className="text-lg font-semibold mb-2" data-testid="text-success-title">
-                {successStatus === "approved" ? "Access Granted" : "Request Submitted"}
+                {successStatus === "approved" ? t("landing.successAccessGranted") : t("landing.successRequestSubmitted")}
               </h2>
               <p className="text-muted-foreground" data-testid="text-success-message">{successMessage}</p>
             </CardContent>
@@ -212,15 +214,15 @@ export default function OrgLanding() {
           <Card>
             <CardHeader>
               <h2 className="text-lg font-semibold text-center">
-                {inviteValid ? "Accept Invitation" : "Request Access"}
+                {inviteValid ? t("landing.acceptInvitation") : t("landing.requestAccess")}
               </h2>
             </CardHeader>
             <CardContent className="space-y-3">
               <Button className="w-full" size="lg" onClick={() => setMode("signup")} data-testid="button-new-user">
-                I'm new — Create an account
+                {t("landing.newUser")}
               </Button>
               <Button className="w-full" variant="outline" size="lg" onClick={() => setMode("signin")} data-testid="button-existing-user">
-                I have an account — Sign in
+                {t("landing.existingUser")}
               </Button>
             </CardContent>
           </Card>
@@ -229,15 +231,15 @@ export default function OrgLanding() {
         {mode === "signup" && (
           <Card>
             <CardHeader>
-              <h2 className="text-lg font-semibold">Create Account</h2>
+              <h2 className="text-lg font-semibold">{t("landing.createAccountTitle")}</h2>
               <p className="text-sm text-muted-foreground">
-                {inviteValid ? "Create your account to join this organization" : "Create your account and request access"}
+                {inviteValid ? t("landing.createAccountInvite") : t("landing.createAccountRequest")}
               </p>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="signup-firstName">First Name *</Label>
+                  <Label htmlFor="signup-firstName">{t("landing.firstNameRequired")}</Label>
                   <Input
                     id="signup-firstName"
                     value={signupForm.firstName}
@@ -246,7 +248,7 @@ export default function OrgLanding() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="signup-lastName">Last Name *</Label>
+                  <Label htmlFor="signup-lastName">{t("landing.lastNameRequired")}</Label>
                   <Input
                     id="signup-lastName"
                     value={signupForm.lastName}
@@ -256,7 +258,7 @@ export default function OrgLanding() {
                 </div>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="signup-email">Email *</Label>
+                <Label htmlFor="signup-email">{t("landing.emailRequired")}</Label>
                 <Input
                   id="signup-email"
                   type="email"
@@ -266,7 +268,7 @@ export default function OrgLanding() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="signup-password">Password *</Label>
+                <Label htmlFor="signup-password">{t("landing.passwordRequired")}</Label>
                 <Input
                   id="signup-password"
                   type="password"
@@ -280,7 +282,7 @@ export default function OrgLanding() {
 
               <div className="flex gap-3">
                 <Button variant="outline" className="flex-1" onClick={() => setMode("choose")} data-testid="button-signup-back">
-                  Back
+                  {t("common.back")}
                 </Button>
                 <Button
                   className="flex-1"
@@ -288,7 +290,7 @@ export default function OrgLanding() {
                   disabled={signupRequestMutation.isPending || !signupForm.firstName || !signupForm.lastName || !signupForm.email || !signupForm.password}
                   data-testid="button-signup-submit"
                 >
-                  {signupRequestMutation.isPending ? "Submitting..." : (inviteValid ? "Accept & Join" : "Create & Request Access")}
+                  {signupRequestMutation.isPending ? t("landing.submitting") : (inviteValid ? t("landing.acceptAndJoin") : t("landing.createAndRequest"))}
                 </Button>
               </div>
             </CardContent>
@@ -298,14 +300,14 @@ export default function OrgLanding() {
         {mode === "signin" && (
           <Card>
             <CardHeader>
-              <h2 className="text-lg font-semibold">Sign In</h2>
+              <h2 className="text-lg font-semibold">{t("landing.signInTitle")}</h2>
               <p className="text-sm text-muted-foreground">
-                {inviteValid ? "Sign in to accept your invitation" : "Sign in to request access"}
+                {inviteValid ? t("landing.signInInvite") : t("landing.signInRequest")}
               </p>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="signin-email">Email</Label>
+                <Label htmlFor="signin-email">{t("common.email")}</Label>
                 <Input
                   id="signin-email"
                   type="email"
@@ -315,7 +317,7 @@ export default function OrgLanding() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="signin-password">Password</Label>
+                <Label htmlFor="signin-password">{t("common.password")}</Label>
                 <Input
                   id="signin-password"
                   type="password"
@@ -329,7 +331,7 @@ export default function OrgLanding() {
 
               <div className="flex gap-3">
                 <Button variant="outline" className="flex-1" onClick={() => setMode("choose")} data-testid="button-signin-back">
-                  Back
+                  {t("common.back")}
                 </Button>
                 <Button
                   className="flex-1"
@@ -337,7 +339,7 @@ export default function OrgLanding() {
                   disabled={signinRequestMutation.isPending || !signinForm.email || !signinForm.password}
                   data-testid="button-signin-submit"
                 >
-                  {signinRequestMutation.isPending ? "Signing in..." : (inviteValid ? "Sign In & Join" : "Sign In & Request Access")}
+                  {signinRequestMutation.isPending ? t("auth.signingIn") : (inviteValid ? t("landing.signInAndJoin") : t("landing.signInAndRequest"))}
                 </Button>
               </div>
             </CardContent>

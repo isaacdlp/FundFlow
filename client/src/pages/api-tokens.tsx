@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { Trans, useTranslation } from "react-i18next";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -42,16 +43,20 @@ function formatDate(value: string | Date | null): string {
   return new Date(value).toLocaleString();
 }
 
-function tokenStatus(t: PublicApiToken): { label: string; variant: "default" | "secondary" | "destructive" | "outline" } {
-  if (t.revokedAt) return { label: "Revoked", variant: "destructive" };
-  if (t.expiresAt && new Date(t.expiresAt).getTime() < Date.now()) {
-    return { label: "Expired", variant: "secondary" };
+function tokenStatus(
+  tk: PublicApiToken,
+  t: (k: string) => string,
+): { label: string; variant: "default" | "secondary" | "destructive" | "outline" } {
+  if (tk.revokedAt) return { label: t("apiTokens.statusRevoked"), variant: "destructive" };
+  if (tk.expiresAt && new Date(tk.expiresAt).getTime() < Date.now()) {
+    return { label: t("apiTokens.statusExpired"), variant: "secondary" };
   }
-  return { label: "Active", variant: "default" };
+  return { label: t("apiTokens.statusActive"), variant: "default" };
 }
 
 export function ApiTokensSection() {
   const { toast } = useToast();
+  const { t } = useTranslation();
   const [createOpen, setCreateOpen] = useState(false);
   const [name, setName] = useState("");
   const [expiresInDays, setExpiresInDays] = useState("");
@@ -78,7 +83,7 @@ export function ApiTokensSection() {
       queryClient.invalidateQueries({ queryKey: ["/api/auth/tokens"] });
     },
     onError: (e: any) => {
-      toast({ title: "Could not create token", description: e?.message ?? "Unknown error", variant: "destructive" });
+      toast({ title: t("apiTokens.createFailed"), description: e?.message ?? t("apiTokens.unknownError"), variant: "destructive" });
     },
   });
 
@@ -87,20 +92,20 @@ export function ApiTokensSection() {
       await apiRequest("DELETE", `/api/auth/tokens/${id}`);
     },
     onSuccess: () => {
-      toast({ title: "Token revoked", description: "It can no longer be used to authenticate." });
+      toast({ title: t("apiTokens.revoked"), description: t("apiTokens.revokedDescription") });
       queryClient.invalidateQueries({ queryKey: ["/api/auth/tokens"] });
     },
     onError: (e: any) => {
-      toast({ title: "Could not revoke token", description: e?.message ?? "Unknown error", variant: "destructive" });
+      toast({ title: t("apiTokens.revokeFailed"), description: e?.message ?? t("apiTokens.unknownError"), variant: "destructive" });
     },
   });
 
   const copyToClipboard = async (text: string) => {
     try {
       await navigator.clipboard.writeText(text);
-      toast({ title: "Copied", description: "Token copied to clipboard." });
+      toast({ title: t("common.copied"), description: t("apiTokens.copiedDescription") });
     } catch {
-      toast({ title: "Copy failed", description: "Please copy manually.", variant: "destructive" });
+      toast({ title: t("apiTokens.copyFailedTitle"), description: t("apiTokens.copyFailedDescription"), variant: "destructive" });
     }
   };
 
@@ -109,52 +114,52 @@ export function ApiTokensSection() {
       <div className="flex items-start justify-between gap-4">
         <div>
           <h2 className="text-xl font-semibold flex items-center gap-2" data-testid="text-section-title-tokens">
-            <Key className="h-5 w-5" /> API Tokens
+            <Key className="h-5 w-5" /> {t("apiTokens.title")}
           </h2>
           <p className="text-sm text-muted-foreground mt-1">
-            Personal access tokens for programmatic access to the FundFlow API. Tokens inherit your account's permissions.
+            {t("apiTokens.sectionDescription")}
           </p>
         </div>
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
           <DialogTrigger asChild>
             <Button data-testid="button-create-token">
-              <Plus className="h-4 w-4 mr-2" /> New token
+              <Plus className="h-4 w-4 mr-2" /> {t("apiTokens.newToken")}
             </Button>
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Create API token</DialogTitle>
+              <DialogTitle>{t("apiTokens.createDialogTitle")}</DialogTitle>
               <DialogDescription>
-                Give your token a recognizable name. The full token will be shown to you exactly once after creation.
+                {t("apiTokens.createDialogDescription")}
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-2">
               <div className="space-y-2">
-                <Label htmlFor="token-name">Name</Label>
+                <Label htmlFor="token-name">{t("common.name")}</Label>
                 <Input
                   id="token-name"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="e.g. CI pipeline, Laptop"
+                  placeholder={t("apiTokens.namePlaceholder")}
                   data-testid="input-token-name"
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="token-expires">Expires in (days)</Label>
+                <Label htmlFor="token-expires">{t("apiTokens.expiresIn")}</Label>
                 <Input
                   id="token-expires"
                   type="number"
                   min="1"
                   value={expiresInDays}
                   onChange={(e) => setExpiresInDays(e.target.value)}
-                  placeholder="Leave blank for no expiration"
+                  placeholder={t("apiTokens.expiresPlaceholder")}
                   data-testid="input-token-expires"
                 />
               </div>
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setCreateOpen(false)} data-testid="button-cancel-create">
-                Cancel
+                {t("common.cancel")}
               </Button>
               <Button
                 onClick={() => createMutation.mutate()}
@@ -162,7 +167,7 @@ export function ApiTokensSection() {
                 data-testid="button-confirm-create"
               >
                 {createMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                Create token
+                {t("apiTokens.createToken")}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -172,10 +177,10 @@ export function ApiTokensSection() {
       {created && (
         <Alert className="border-amber-500/50 bg-amber-500/5" data-testid="alert-token-created">
           <ShieldAlert className="h-4 w-4" />
-          <AlertTitle>Save your token now</AlertTitle>
+          <AlertTitle>{t("apiTokens.saveTokenAlertTitle")}</AlertTitle>
           <AlertDescription className="space-y-3">
             <p>
-              This is the only time the full token will be displayed. Store it somewhere safe — you won't be able to retrieve it again.
+              {t("apiTokens.saveTokenAlertDescription")}
             </p>
             <div className="flex items-center gap-2 bg-background border rounded-md p-2 font-mono text-xs break-all">
               <span className="flex-1" data-testid="text-new-token">{created.token}</span>
@@ -183,15 +188,15 @@ export function ApiTokensSection() {
                 size="sm"
                 variant="ghost"
                 onClick={() => copyToClipboard(created.token)}
-                aria-label="Copy token to clipboard"
+                aria-label={t("apiTokens.copyAriaLabel")}
                 data-testid="button-copy-token"
               >
                 <Copy className="h-4 w-4" />
-                <span className="sr-only">Copy token</span>
+                <span className="sr-only">{t("apiTokens.copyToken")}</span>
               </Button>
             </div>
             <Button size="sm" variant="outline" onClick={() => setCreated(null)} data-testid="button-dismiss-token">
-              I've saved it
+              {t("apiTokens.acknowledgeSaved")}
             </Button>
           </AlertDescription>
         </Alert>
@@ -199,9 +204,12 @@ export function ApiTokensSection() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Your tokens</CardTitle>
+          <CardTitle>{t("apiTokens.yourTokens")}</CardTitle>
           <CardDescription>
-            Tokens authenticate via the <code className="text-xs bg-muted px-1 py-0.5 rounded">Authorization: Bearer ff_…</code> header.
+            <Trans
+              i18nKey="apiTokens.authHeaderHint"
+              components={[<code key="0" className="text-xs bg-muted px-1 py-0.5 rounded" />]}
+            />
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -213,44 +221,44 @@ export function ApiTokensSection() {
           ) : error ? (
             <Alert variant="destructive" data-testid="alert-tokens-error">
               <ShieldAlert className="h-4 w-4" />
-              <AlertTitle>Couldn't load tokens</AlertTitle>
+              <AlertTitle>{t("apiTokens.loadFailedTitle")}</AlertTitle>
               <AlertDescription>
                 {/403/.test(String((error as any)?.message))
-                  ? "You need administrator access to manage API tokens."
-                  : (error as any)?.message ?? "Unknown error. Try refreshing the page."}
+                  ? t("apiTokens.loadFailed403")
+                  : (error as any)?.message ?? t("apiTokens.loadFailedUnknown")}
               </AlertDescription>
             </Alert>
           ) : !tokens || tokens.length === 0 ? (
             <p className="text-sm text-muted-foreground py-8 text-center" data-testid="text-empty">
-              You haven't created any tokens yet.
+              {t("apiTokens.noTokens")}
             </p>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Prefix</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Last used</TableHead>
-                  <TableHead>Expires</TableHead>
-                  <TableHead>Created</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
+                  <TableHead>{t("apiTokens.tableName")}</TableHead>
+                  <TableHead>{t("apiTokens.tablePrefix")}</TableHead>
+                  <TableHead>{t("common.status")}</TableHead>
+                  <TableHead>{t("apiTokens.tableLastUsed")}</TableHead>
+                  <TableHead>{t("apiTokens.tableExpires")}</TableHead>
+                  <TableHead>{t("apiTokens.tableCreated")}</TableHead>
+                  <TableHead className="text-right">{t("common.actions")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {tokens.map((t) => {
-                  const status = tokenStatus(t);
-                  const isRevoked = !!t.revokedAt;
+                {tokens.map((tk) => {
+                  const status = tokenStatus(tk, t);
+                  const isRevoked = !!tk.revokedAt;
                   return (
-                    <TableRow key={t.id} data-testid={`row-token-${t.id}`}>
-                      <TableCell className="font-medium" data-testid={`text-token-name-${t.id}`}>{t.name}</TableCell>
-                      <TableCell className="font-mono text-xs">ff_{t.prefix}…</TableCell>
+                    <TableRow key={tk.id} data-testid={`row-token-${tk.id}`}>
+                      <TableCell className="font-medium" data-testid={`text-token-name-${tk.id}`}>{tk.name}</TableCell>
+                      <TableCell className="font-mono text-xs">ff_{tk.prefix}…</TableCell>
                       <TableCell>
-                        <Badge variant={status.variant} data-testid={`status-token-${t.id}`}>{status.label}</Badge>
+                        <Badge variant={status.variant} data-testid={`status-token-${tk.id}`}>{status.label}</Badge>
                       </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">{formatDate(t.lastUsedAt)}</TableCell>
-                      <TableCell className="text-sm text-muted-foreground">{formatDate(t.expiresAt)}</TableCell>
-                      <TableCell className="text-sm text-muted-foreground">{formatDate(t.createdAt)}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{formatDate(tk.lastUsedAt)}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{formatDate(tk.expiresAt)}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{formatDate(tk.createdAt)}</TableCell>
                       <TableCell className="text-right">
                         {!isRevoked && (
                           <AlertDialog>
@@ -259,27 +267,31 @@ export function ApiTokensSection() {
                                 size="sm"
                                 variant="ghost"
                                 disabled={revokeMutation.isPending}
-                                aria-label={`Revoke token ${t.name}`}
-                                data-testid={`button-revoke-${t.id}`}
+                                aria-label={t("apiTokens.revokeTokenAria", { name: tk.name })}
+                                data-testid={`button-revoke-${tk.id}`}
                               >
                                 <Trash2 className="h-4 w-4" />
-                                <span className="sr-only">Revoke {t.name}</span>
+                                <span className="sr-only">{t("apiTokens.revokeTokenAria", { name: tk.name })}</span>
                               </Button>
                             </AlertDialogTrigger>
                             <AlertDialogContent>
                               <AlertDialogHeader>
-                                <AlertDialogTitle>Revoke this token?</AlertDialogTitle>
+                                <AlertDialogTitle>{t("apiTokens.revokeTitle")}</AlertDialogTitle>
                                 <AlertDialogDescription>
-                                  Any system using <strong>{t.name}</strong> will immediately stop being able to authenticate. This cannot be undone.
+                                  <Trans
+                                    i18nKey="apiTokens.revokeConfirmStrong"
+                                    values={{ name: tk.name }}
+                                    components={[<strong key="0" />]}
+                                  />
                                 </AlertDialogDescription>
                               </AlertDialogHeader>
                               <AlertDialogFooter>
-                                <AlertDialogCancel data-testid={`button-revoke-cancel-${t.id}`}>Cancel</AlertDialogCancel>
+                                <AlertDialogCancel data-testid={`button-revoke-cancel-${tk.id}`}>{t("common.cancel")}</AlertDialogCancel>
                                 <AlertDialogAction
-                                  onClick={() => revokeMutation.mutate(t.id)}
-                                  data-testid={`button-revoke-confirm-${t.id}`}
+                                  onClick={() => revokeMutation.mutate(tk.id)}
+                                  data-testid={`button-revoke-confirm-${tk.id}`}
                                 >
-                                  Revoke
+                                  {t("apiTokens.revoke")}
                                 </AlertDialogAction>
                               </AlertDialogFooter>
                             </AlertDialogContent>
