@@ -26,6 +26,7 @@ tests/
     entity-managers.test.ts # manager add/remove
     password-reset.test.ts # forgot/reset + change-password
     api-tokens.test.ts    # generator/hash/parser primitives + admin-only token CRUD (non-admin → 403, bearer → 401) + bearer auth on protected routes
+    documents.test.ts     # multipart upload, list visibility (admin vs non-admin), download/delete gating, /api/settings/documents-path admin gating, folderPath traversal sanitization
   client/                 # Frontend tests (Vitest + jsdom + RTL)
     setup.ts              # jest-dom matchers + cleanup
     use-org-permissions.test.tsx
@@ -70,6 +71,7 @@ npx playwright test --headed
 ### Backend (`tests/server`)
 
 - Each test file mocks `server/storage` (and `server/email`) with `vi.mock(...)` so route handlers can be tested in isolation without a real database or SMTP server.
+- A handful of routes (currently `documents.ts`) reach past `IStorage` and use the raw Drizzle `db` client and the filesystem directly. Those tests extend the same `vi.mock("../../server/storage", ...)` to also export a chainable `db` mock (`queueSelect([...])` / `queueInsertReturning([...])`) and stub `fs`/`fs/promises` so multipart uploads never touch disk. See `tests/server/documents.test.ts` for the pattern.
 - `createTestApp()` returns a fresh Express app with an in-memory session store, the same routes as production, and no Vite/static layer.
 - `loginAs(app, mockStorage, account)` returns a Supertest agent with the session cookie attached. It primes `getAccountByEmail`, `verifyPassword`, and `getAccount` so the subsequent `requireAuth` lookups succeed.
 - Override storage behavior per test with `mockStorage.someMethod.mockResolvedValue(...)`. When you need different return values for the same method based on input (e.g. `getAccount` returning the logged-in admin for one ID and a different account for another), use `.mockImplementation(async (id) => ...)`.
