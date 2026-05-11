@@ -55,6 +55,15 @@ tags:
     description: Legal entities (LLCs, Corps, Trusts) with owners and managers
   - name: Portfolio
     description: Investment positions held by accounts and entities
+  - name: Documents
+    description: |
+      Files attached to either an Account or an Entity, organized in a
+      user-defined folder tree. Visibility for non-admin callers is scoped to
+      documents owned by their account, plus documents owned by entities they
+      own (recursively, via `entity_owners`) or manage (via `entity_managers`).
+      Upload, delete, and storage settings are admin-only.
+  - name: Settings
+    description: Platform-wide settings (admin-only)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Reusable security
@@ -855,6 +864,163 @@ paths:
       summary: Remove a manager
       responses: { '200': { description: Removed } }
 
+  # ──── Documents ───────────────────────────────────────────────────────────
+  /api/documents:
+    get:
+      tags: [Documents]
+      summary: List documents visible to the caller
+      description: |
+        Admins see every document. Non-admins see documents owned by their
+        own account, plus documents owned by entities they own (recursively,
+        via `entity_owners`) or manage (via `entity_managers`).
+      responses:
+        '200':
+          description: Documents (newest first)
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Document' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [Documents]
+      summary: Upload a document (admin-only, multipart)
+      description: |
+        Multipart upload, max 100 MB. Each document must be associated with
+        **exactly one** owner — provide either `accountId` (when
+        `ownerType=account`) or `entityId` (when `ownerType=entity`).
+
+        `folderPath` is a virtual path made of `/`-separated segments
+        (e.g. `"SPVs/RS Kushki"`). Segments are sanitized server-side
+        (illegal chars become `_`, `..` is stripped).
+
+        On disk the file is written under
+        `<storage_path>/{account|entity}/<id>/<folderPath>/<original-name>-<timestamp>-<rand>.<ext>`,
+        so an entity's documents never collide with an account's.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, ownerType]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Binary contents (≤ 100 MB).
+                name:
+                  type: string
+                  description: Display name. Defaults to the uploaded file's original name.
+                folderPath:
+                  type: string
+                  example: "SPVs/RS Kushki"
+                  description: Virtual folder path; `/`-separated. Empty = root.
+                ownerType:
+                  type: string
+                  enum: [account, entity]
+                accountId:
+                  type: integer
+                  description: Required when `ownerType=account`.
+                entityId:
+                  type: integer
+                  description: Required when `ownerType=entity`.
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Document' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/documents/{id}/download:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    get:
+      tags: [Documents]
+      summary: Stream the file's binary contents
+      description: |
+        Visibility-filtered using the same rules as `GET /api/documents`.
+        Returns `Content-Disposition: attachment` with the original filename.
+        Returns `410 Gone` if the DB row exists but the file is missing on disk.
+      responses:
+        '200':
+          description: File stream
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '410':
+          description: File missing on disk (DB row still present)
+          content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } }
+
+  /api/documents/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    delete:
+      tags: [Documents]
+      summary: Delete a document (admin-only)
+      description: Removes the database row **and** the file on disk.
+      responses:
+        '200': { description: Deleted }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ──── Settings ────────────────────────────────────────────────────────────
+  /api/settings/documents-path:
+    get:
+      tags: [Settings]
+      summary: Get the document storage path (admin-only)
+      description: |
+        Returns the `configured` value (empty string if unset), the
+        `effective` absolute path actually used (resolved from configured or
+        the default), and the `default` path.
+      responses:
+        '200':
+          description: Storage path info
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DocumentsPathSettings' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    patch:
+      tags: [Settings]
+      summary: Set the document storage path (admin-only)
+      description: |
+        Pass an absolute or relative filesystem path in `value`. Empty string
+        falls back to the default (`./uploads/documents`). The path is
+        created on demand. Existing files are not migrated.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                value:
+                  type: string
+                  description: Filesystem path; empty string = default.
+      responses:
+        '200':
+          description: Updated path info
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  configured: { type: string }
+                  effective: { type: string }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
   # ──── Portfolio ───────────────────────────────────────────────────────────
   /api/portfolio:
     get:
@@ -1121,6 +1287,64 @@ components:
         currency: { type: string }
         ownershipAllocation: { type: string, enum: [percent, shares] }
         disbursementMethod: { type: string }
+
+    Document:
+      type: object
+      description: |
+        A file attached to either an Account or an Entity. Exactly one of
+        `accountId` / `entityId` is non-null. The on-disk file lives at
+        `<storage_path>/<storedPath>` — the API never exposes the absolute
+        filesystem path; use `GET /api/documents/{id}/download` to fetch the
+        contents.
+      properties:
+        id: { type: integer }
+        name:
+          type: string
+          description: Display name. Defaults to the uploaded file's original name.
+        folderPath:
+          type: string
+          description: Sanitized virtual folder path (slash-separated).
+          example: "SPVs/RS Kushki"
+        ownerType: { type: string, enum: [account, entity] }
+        accountId: { type: integer, nullable: true }
+        entityId: { type: integer, nullable: true }
+        fileName:
+          type: string
+          description: Original filename as uploaded by the client.
+        storedPath:
+          type: string
+          description: Path under the storage root (server-internal; do not rely on its exact format).
+        mimeType: { type: string }
+        sizeBytes: { type: integer }
+        uploadedBy: { type: integer, description: "Account id of the admin who uploaded the file." }
+        owner:
+          type: object
+          nullable: true
+          description: Resolved owner summary.
+          properties:
+            id: { type: integer }
+            type: { type: string, enum: [account, entity] }
+            name: { type: string }
+        uploader:
+          type: object
+          nullable: true
+          properties:
+            id: { type: integer }
+            name: { type: string }
+        createdAt: { type: string, format: date-time }
+
+    DocumentsPathSettings:
+      type: object
+      properties:
+        configured:
+          type: string
+          description: Raw value stored in `app_settings` (empty string if unset).
+        effective:
+          type: string
+          description: Absolute path actually used (resolved from `configured` or `default`).
+        default:
+          type: string
+          description: Default path used when `configured` is empty.
 
     PublicApiToken:
       type: object
