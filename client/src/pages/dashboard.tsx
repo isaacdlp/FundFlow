@@ -8,6 +8,13 @@ import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import type { PortfolioInvestment, AccountWithRoles, EntityInfo } from "@shared/types";
 import { Search, TrendingUp, TrendingDown, ArrowRight, ChevronDown, ChevronRight, Briefcase, ArrowLeft } from "lucide-react";
+import { PieChart, Pie, Cell, Tooltip as RTooltip, ResponsiveContainer, Legend } from "recharts";
+
+const PIE_COLORS = [
+  "#2563eb", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6",
+  "#06b6d4", "#ec4899", "#84cc16", "#f97316", "#14b8a6",
+  "#6366f1", "#eab308", "#a855f7", "#22c55e", "#0ea5e9",
+];
 
 function fmtMoney(n: number): string {
   return n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -25,6 +32,59 @@ function fmtDate(d: string | null): string {
   } catch {
     return d;
   }
+}
+
+function SpvPieCard({ title, subtitle, data }: { title: string; subtitle: string; data: { name: string; value: number }[] }) {
+  const total = data.reduce((s, d) => s + d.value, 0);
+  return (
+    <Card>
+      <CardHeader className="pb-2">
+        <h3 className="text-base font-semibold" data-testid={`text-pie-title-${title.replace(/\s+/g, "-").toLowerCase()}`}>{title}</h3>
+        <p className="text-xs text-muted-foreground">{subtitle} · Total ${fmtMoney(total)}</p>
+      </CardHeader>
+      <CardContent className="pt-2">
+        {data.length === 0 ? (
+          <div className="h-64 flex items-center justify-center text-sm text-muted-foreground">No data</div>
+        ) : (
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={data}
+                  dataKey="value"
+                  nameKey="name"
+                  innerRadius={55}
+                  outerRadius={95}
+                  paddingAngle={2}
+                  stroke="hsl(var(--background))"
+                  strokeWidth={2}
+                >
+                  {data.map((_, i) => (
+                    <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                  ))}
+                </Pie>
+                <RTooltip
+                  formatter={(v: any) => [`$${fmtMoney(Number(v))}`, "Amount"]}
+                  contentStyle={{ background: "hsl(var(--popover))", border: "1px solid hsl(var(--border))", borderRadius: 8, fontSize: 12 }}
+                />
+                <Legend
+                  verticalAlign="bottom"
+                  height={36}
+                  iconType="circle"
+                  wrapperStyle={{ fontSize: 12 }}
+                  formatter={(value: string) => {
+                    const item = data.find(d => d.name === value);
+                    const pct = item && total > 0 ? ((item.value / total) * 100).toFixed(1) : "0";
+                    return `${value} · ${pct}%`;
+                  }}
+                />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
 }
 
 interface CompanyGroup {
@@ -89,8 +149,25 @@ export default function Dashboard() {
     const distributions = filtered.reduce((s, i) => s + parseFloat(i.distributed || "0"), 0);
     const roi = initial > 0 ? ((current + distributions - initial) / initial) * 100 : 0;
     const moic = initial > 0 ? (current + distributions) / initial : 0;
-    return { initial, current, distributions, roi, moic, count: filtered.length };
+    const tvpi = initial > 0 ? (current + distributions) / initial : 0;
+    const dpi = initial > 0 ? distributions / initial : 0;
+    return { initial, current, distributions, roi, moic, tvpi, dpi, count: filtered.length };
   }, [filtered]);
+
+  const spvBreakdown = useMemo(() => {
+    const map = new Map<string, { name: string; initial: number; current: number }>();
+    for (const inv of filtered) {
+      const key = inv.spvName || "Untitled SPV";
+      const cur = map.get(key) ?? { name: key, initial: 0, current: 0 };
+      cur.initial += parseFloat(inv.totalCalled || "0");
+      cur.current += parseFloat(inv.currentValue || "0");
+      map.set(key, cur);
+    }
+    return Array.from(map.values()).sort((a, b) => b.current - a.current);
+  }, [filtered]);
+
+  const initialPie = spvBreakdown.filter(s => s.initial > 0).map(s => ({ name: s.name, value: s.initial }));
+  const currentPie = spvBreakdown.filter(s => s.current > 0).map(s => ({ name: s.name, value: s.current }));
 
   const groupedByCompany = useMemo<CompanyGroup[]>(() => {
     const map = new Map<string, CompanyGroup>();
@@ -183,7 +260,7 @@ export default function Dashboard() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-6 md:col-span-2">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-6 md:col-span-2">
               <div>
                 <p className="text-xs text-muted-foreground uppercase tracking-wider">ROI</p>
                 {isLoading ? (
@@ -202,6 +279,26 @@ export default function Dashboard() {
                 ) : (
                   <p className="text-2xl font-semibold mt-1" data-testid="text-summary-moic">
                     {summary.moic.toFixed(2)}x
+                  </p>
+                )}
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground uppercase tracking-wider">TVPI</p>
+                {isLoading ? (
+                  <Skeleton className="h-8 w-20 mt-1" />
+                ) : (
+                  <p className="text-2xl font-semibold mt-1" data-testid="text-summary-tvpi">
+                    {summary.tvpi.toFixed(2)}x
+                  </p>
+                )}
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground uppercase tracking-wider">DPI</p>
+                {isLoading ? (
+                  <Skeleton className="h-8 w-20 mt-1" />
+                ) : (
+                  <p className="text-2xl font-semibold mt-1" data-testid="text-summary-dpi">
+                    {summary.dpi.toFixed(2)}x
                   </p>
                 )}
               </div>
@@ -229,6 +326,13 @@ export default function Dashboard() {
           </div>
         </CardContent>
       </Card>
+
+      {!isLoading && spvBreakdown.length > 0 && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <SpvPieCard title="Initial contribution by SPV" subtitle="Capital called at entry" data={initialPie} />
+          <SpvPieCard title="Current value by SPV" subtitle="Most recent valuation" data={currentPie} />
+        </div>
+      )}
 
       <Card>
         <CardHeader className="space-y-3">
