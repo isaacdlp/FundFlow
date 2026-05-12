@@ -4,6 +4,15 @@ dist
 server/public
 vite.config.ts.*
 *.tar.gz
+
+# Secrets & local config
+.env
+.env.*
+!.env.example
+
+# Uploaded files
+uploads/
+
 # Test artifacts
 test-results/
 playwright-report/
