@@ -32,7 +32,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, Pencil, Save, X, Loader2, Mail, KeyRound, Briefcase, Trash2 } from "lucide-react";
+import { ArrowLeft, Pencil, Save, X, Loader2, Mail, KeyRound, Trash2, Eye } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
@@ -56,7 +56,7 @@ export default function AccountDetail() {
   const [, params] = useRoute(ROUTE_PATTERNS.accountDetail[locale]);
   const accountId = params?.id;
   const { toast } = useToast();
-  const { user, isAdmin } = useAuth();
+  const { user, isAdmin, isImpersonating, showAsMutation } = useAuth();
   const [, navigate] = useLocation();
   const [editing, setEditing] = useState(false);
   const [activeTab, setActiveTab] = useState("personal");
@@ -254,12 +254,18 @@ export default function AccountDetail() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Link href={`${lp("dashboard")}?accountId=${account.id}`}>
-            <Button variant="outline" className="gap-2" data-testid="button-view-portfolio">
-              <Briefcase className="h-4 w-4" />
-              {t("accountDetail.viewPortfolio")}
+          {isAdmin && !isOwnAccount && !isImpersonating && (
+            <Button
+              variant="outline"
+              className="gap-2"
+              onClick={() => showAsMutation.mutate(account.id)}
+              disabled={showAsMutation.isPending}
+              data-testid="button-show-as"
+            >
+              <Eye className="h-4 w-4" />
+              {t("impersonation.showAs")}
             </Button>
-          </Link>
+          )}
           {isAdmin && !isOwnAccount && (
             <AlertDialog>
               <AlertDialogTrigger asChild>

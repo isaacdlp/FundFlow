@@ -88,9 +88,7 @@ export default function Spvs() {
                     <TableHead>{t("spvs.tableName")}</TableHead>
                     <TableHead>{t("spvs.tableOrg")}</TableHead>
                     <TableHead>{t("spvs.tableEntityType")}</TableHead>
-                    <TableHead className="text-center">{t("spvs.tableMembers")}</TableHead>
                     <TableHead>{t("spvs.tableManager")}</TableHead>
-                    <TableHead>{t("spvs.tableTotalRaising")}</TableHead>
                     <TableHead className="text-right">{t("common.actions")}</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -120,21 +118,11 @@ export default function Spvs() {
                         )}
                       </TableCell>
                       <TableCell><Badge variant="outline">{spv.entityType || "LLC"}</Badge></TableCell>
-                      <TableCell className="text-center">{spv.memberCount}</TableCell>
                       <TableCell>
                         {spv.manager ? (
                           <span className="text-sm">{spv.manager.firstName} {spv.manager.lastName}</span>
                         ) : (
                           <span className="text-sm text-muted-foreground">{t("spvs.notAssigned")}</span>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {parseFloat(spv.totalBeingRaised || "0") > 0 ? (
-                          <span className="text-sm font-medium">
-                            ${parseFloat(spv.totalBeingRaised || "0").toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </span>
-                        ) : (
-                          <span className="text-sm text-muted-foreground">$0.00</span>
                         )}
                       </TableCell>
                       <TableCell className="text-right">

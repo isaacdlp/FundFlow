@@ -790,6 +790,11 @@
     "errorAccountExistsDescription": "Un compte avec cet e-mail existe déjà. Veuillez vous connecter à la place.",
     "errorTitle": "Erreur"
   },
+  "impersonation": {
+    "showAs": "Voir en tant que",
+    "banner": "Vue en tant que {{name}}",
+    "returnToSelf": "Retour à moi ({{name}})"
+  },
   "notFound": {
     "title": "404 Page introuvable",
     "description": "Avez-vous oublié d'ajouter la page au routeur ?"

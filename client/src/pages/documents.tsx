@@ -313,7 +313,7 @@ export default function DocumentsPage() {
         {isAdmin && <UploadDialog accounts={accounts} entities={entities} />}
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-[260px_1fr] gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-[320px_1fr] gap-6">
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-sm">{t("documents.foldersTitle")}</CardTitle>
@@ -350,11 +350,6 @@ export default function DocumentsPage() {
                         {doc.folderPath && <span>{doc.folderPath}/</span>}
                         <span>{doc.fileName}</span>
                         <span>· {formatBytes(doc.sizeBytes)}</span>
-                        {doc.owner && (
-                          <Badge variant="secondary" className="text-xs">
-                            {doc.owner.type === "account" ? t("documents.account") : t("documents.entity")}: {doc.owner.name}
-                          </Badge>
-                        )}
                       </div>
                     </div>
                     <Button variant="ghost" size="sm" asChild data-testid={`button-download-${doc.id}`}>

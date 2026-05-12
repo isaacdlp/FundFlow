@@ -790,6 +790,11 @@
     "errorAccountExistsDescription": "Ya existe una cuenta con este correo. Por favor inicia sesión.",
     "errorTitle": "Error"
   },
+  "impersonation": {
+    "showAs": "Ver como",
+    "banner": "Viendo como {{name}}",
+    "returnToSelf": "Volver a mí ({{name}})"
+  },
   "notFound": {
     "title": "404 Página no encontrada",
     "description": "¿Olvidaste añadir la página al enrutador?"

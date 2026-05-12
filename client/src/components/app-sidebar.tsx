@@ -9,6 +9,7 @@ import {
   FileText,
   Files,
   TrendingUp,
+  ArrowLeftRight,
 } from "lucide-react";
 import {
   Sidebar,
@@ -23,6 +24,7 @@ import {
   SidebarFooter,
 } from "@/components/ui/sidebar";
 import { useAuth } from "@/hooks/use-auth";
+import { Button } from "@/components/ui/button";
 import { useLocalePath } from "@/i18n/hooks";
 import type { RouteKey } from "@/i18n/routes";
 
@@ -49,7 +51,7 @@ const managementNav: NavItem[] = [
 
 export function AppSidebar() {
   const [location] = useLocation();
-  const { user, isAdmin } = useAuth();
+  const { user, isAdmin, isImpersonating, realAdmin, returnToSelfMutation } = useAuth();
   const { t } = useTranslation();
   const lp = useLocalePath();
 
@@ -67,6 +69,24 @@ export function AppSidebar() {
 
   return (
     <Sidebar>
+      {isImpersonating && realAdmin && (
+        <div className="bg-blue-100 text-blue-900 px-3 py-2 text-xs">
+          <p className="font-semibold truncate">
+            {t("impersonation.banner", { name: `${user?.firstName} ${user?.lastName}` })}
+          </p>
+          <Button
+            variant="ghost"
+            size="sm"
+            className="mt-1 h-6 px-2 text-xs font-medium text-blue-900 hover:bg-blue-200 hover:text-blue-900 w-full justify-start"
+            onClick={() => returnToSelfMutation.mutate()}
+            disabled={returnToSelfMutation.isPending}
+            data-testid="button-return-to-self"
+          >
+            <ArrowLeftRight className="h-3 w-3 mr-1.5" />
+            {t("impersonation.returnToSelf", { name: `${realAdmin.firstName} ${realAdmin.lastName}` })}
+          </Button>
+        </div>
+      )}
       <SidebarHeader className="p-4">
         <Link href={lp("dashboard")} data-testid="link-home">
           <div className="flex items-center gap-2">

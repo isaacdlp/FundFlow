@@ -39,6 +39,10 @@ const upload = multer({
 });
 
 function getAuthAccountId(req: Request): number | undefined {
+  return (req.session as any).impersonatedAccountId ?? (req.session as any).accountId ?? (req as any).apiAccountId;
+}
+
+function getRealAccountId(req: Request): number | undefined {
   return (req.session as any).accountId ?? (req as any).apiAccountId;
 }
 
@@ -47,7 +51,7 @@ function isAdminAccount(roles: { name: string }[]): boolean {
 }
 
 async function requireAdmin(req: Request, res: Response, next: NextFunction) {
-  const id = getAuthAccountId(req);
+  const id = getRealAccountId(req);
   if (!id) return res.status(401).json({ message: "Authentication required" });
   const acc = await storage.getAccount(id);
   if (!acc || !isAdminAccount(acc.roles)) return res.status(403).json({ message: "Admin access required" });

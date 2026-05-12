@@ -23,7 +23,7 @@ function stripPasswordHash(account: any) {
  * via the `bearerAuth` middleware mounted at the top of the route stack.
  */
 function getAuthAccountId(req: Request): number | undefined {
-  return req.session.accountId ?? (req as any).apiAccountId;
+  return req.session.impersonatedAccountId ?? req.session.accountId ?? (req as any).apiAccountId;
 }
 
 /**
@@ -192,6 +192,21 @@ export async function registerRoutes(
     });
   });
 
+  app.post("/api/auth/impersonate/stop", requireSession, (req, res) => {
+    delete req.session.impersonatedAccountId;
+    res.json({ message: "Returned to self" });
+  });
+
+  app.post("/api/auth/impersonate/:accountId", requireSessionAdmin, async (req, res) => {
+    const targetId = parseInt(req.params.accountId, 10);
+    if (isNaN(targetId)) return res.status(400).json({ message: "Invalid account id" });
+    if (targetId === req.session.accountId) return res.status(400).json({ message: "Cannot impersonate yourself" });
+    const target = await storage.getAccount(targetId);
+    if (!target) return res.status(404).json({ message: "Account not found" });
+    req.session.impersonatedAccountId = targetId;
+    res.json({ message: "Now impersonating", accountId: targetId });
+  });
+
   app.get("/api/auth/me", async (req, res) => {
     const id = getAuthAccountId(req);
     if (!id) {
@@ -203,7 +218,14 @@ export async function registerRoutes(
       if (req.session.accountId) req.session.destroy(() => {});
       return res.status(401).json({ message: "Account not found" });
     }
-    res.json(stripPasswordHash(account));
+    const base = stripPasswordHash(account);
+    if (req.session.impersonatedAccountId && req.session.accountId) {
+      const realAccount = await storage.getAccount(req.session.accountId);
+      if (realAccount) {
+        base.impersonatedBy = { id: realAccount.id, firstName: realAccount.firstName, lastName: realAccount.lastName };
+      }
+    }
+    res.json(base);
   });
 
   app.get("/api/organizations/by-slug/:slug", async (req, res) => {
