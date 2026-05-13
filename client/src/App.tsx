@@ -40,6 +40,7 @@ import {
   type Locale,
 } from "@/i18n/routes";
 import { useLocalePath, useLocale } from "@/i18n/hooks";
+import { getLangCookie } from "@/i18n/config";
 
 function AdminRouter({ locale }: { locale: Locale }) {
   const r = ROUTE_PATTERNS;
@@ -142,11 +143,18 @@ function ProtectedApp() {
   );
 }
 
-/** Detect target locale on bare paths and redirect to /<lang>/... once at startup. */
+/** Detect target locale on bare paths and redirect to /<lang>/... once at startup.
+ *
+ * Priority: lang cookie → logged-in user's account language → browser language → default
+ */
 function LocalePrefixGuard({ children }: { children: React.ReactNode }) {
   const { i18n } = useTranslation();
+  const { user, isLoading } = useAuth();
 
   useEffect(() => {
+    // Wait for auth to resolve so we can check the user's account language.
+    if (isLoading) return;
+
     const path = window.location.pathname;
     const fromUrl = getLocaleFromPath(path);
     if (fromUrl) {
@@ -155,27 +163,32 @@ function LocalePrefixGuard({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    // Determine preferred locale: localStorage → navigator → DEFAULT_LOCALE
+    // Bare path: determine preferred locale.
+    // 1) lang cookie (explicit UI override)
+    // 2) logged-in user's account language
+    // 3) browser navigator language
+    // 4) platform default
+    const cookie = getLangCookie();
     let target: Locale = DEFAULT_LOCALE;
-    try {
-      const stored = window.localStorage.getItem("fundflow:lang");
-      if (stored && (LOCALES as readonly string[]).includes(stored)) {
-        target = stored as Locale;
-      } else if (typeof navigator !== "undefined") {
+    if (cookie) {
+      target = cookie;
+    } else if (user?.language && (LOCALES as readonly string[]).includes(user.language as string)) {
+      target = user.language as Locale;
+    } else {
+      try {
         const nav = navigator.language?.slice(0, 2);
         if (nav && (LOCALES as readonly string[]).includes(nav)) target = nav as Locale;
+      } catch {
+        // ignore
       }
-    } catch {
-      // ignore
     }
 
     const search = window.location.search;
     const newPath = path === "/" ? `/${target}` : `/${target}${path}`;
     window.history.replaceState({}, "", newPath + search);
     if (i18n.language !== target) i18n.changeLanguage(target);
-    // Trigger wouter to pick up the new path.
     window.dispatchEvent(new PopStateEvent("popstate"));
-  }, [i18n]);
+  }, [i18n, user, isLoading]);
 
   return <>{children}</>;
 }

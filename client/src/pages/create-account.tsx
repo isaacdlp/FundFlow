@@ -46,12 +46,14 @@ export default function CreateAccount() {
     city: "",
     stateProvince: "",
     zipPostalCode: "",
+    language: "en",
     roles: [] as string[],
   });
+  const [sendWelcomeEmail, setSendWelcomeEmail] = useState(false);
 
   const createMutation = useMutation({
     mutationFn: async (data: typeof formData) => {
-      const res = await apiRequest("POST", "/api/accounts", data);
+      const res = await apiRequest("POST", "/api/accounts", { ...data, welcome_email: sendWelcomeEmail });
       return res.json();
     },
     onSuccess: (data) => {
@@ -140,15 +142,33 @@ export default function CreateAccount() {
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="birthdate">{t("createAccount.birthdate")}</Label>
-                <Input
-                  id="birthdate"
-                  type="date"
-                  value={formData.birthdate}
-                  onChange={(e) => updateField("birthdate", e.target.value)}
-                  data-testid="input-birthdate"
-                />
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="birthdate">{t("createAccount.birthdate")}</Label>
+                  <Input
+                    id="birthdate"
+                    type="date"
+                    value={formData.birthdate}
+                    onChange={(e) => updateField("birthdate", e.target.value)}
+                    data-testid="input-birthdate"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="language">{t("common.language")}</Label>
+                  <Select
+                    value={formData.language}
+                    onValueChange={(val) => updateField("language", val)}
+                  >
+                    <SelectTrigger id="language" data-testid="select-language">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="en">{t("common.english")}</SelectItem>
+                      <SelectItem value="es">{t("common.spanish")}</SelectItem>
+                      <SelectItem value="fr">{t("common.french")}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -308,6 +328,23 @@ export default function CreateAccount() {
               </div>
             </CardContent>
           </Card>
+
+          <div className="flex items-center gap-3 justify-end">
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="send-welcome-email"
+                checked={sendWelcomeEmail}
+                onCheckedChange={(v) => setSendWelcomeEmail(!!v)}
+                data-testid="checkbox-send-welcome-email"
+              />
+              <div>
+                <label htmlFor="send-welcome-email" className="text-sm font-medium cursor-pointer">
+                  {t("createAccount.sendWelcomeEmail")}
+                </label>
+                <p className="text-xs text-muted-foreground">{t("createAccount.sendWelcomeEmailHint")}</p>
+              </div>
+            </div>
+          </div>
 
           <div className="flex justify-end">
             <Button

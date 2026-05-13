@@ -230,7 +230,7 @@ export default function CreateSpv() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="dateEstablished">{t("createSpv.dateEstablished")}</Label>
+              <Label htmlFor="dateEstablished">{t("createSpv.dateEstablished")} *</Label>
               <Input
                 id="dateEstablished"
                 type="date"
@@ -517,7 +517,7 @@ export default function CreateSpv() {
         </Link>
         <Button
           onClick={() => createMutation.mutate()}
-          disabled={createMutation.isPending || !form.legalName || !form.displayName}
+          disabled={createMutation.isPending || !form.legalName || !form.displayName || !form.dateEstablished}
           data-testid="button-create-spv"
         >
           {createMutation.isPending ? t("common.creating") : t("createSpv.createBtn")}

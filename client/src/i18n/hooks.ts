@@ -10,6 +10,7 @@ import {
   type Locale,
   type RouteKey,
 } from "./routes";
+import { setLangCookie } from "./config";
 
 /** Returns the active locale. URL is authoritative; falls back to i18n state. */
 export function useLocale(): Locale {
@@ -57,7 +58,7 @@ export function useSwitchLanguage() {
       const current = window.location.pathname + window.location.search;
       const newFull = translatePath(current, target);
       i18n.changeLanguage(target);
-      try { window.localStorage.setItem("fundflow:lang", target); } catch {}
+      setLangCookie(target);
       // Navigate using the absolute browser path (bypass wouter's base, which is the OLD locale).
       window.history.pushState({}, "", newFull);
       // Force a re-render: wouter listens to popstate; trigger one.

@@ -8,7 +8,7 @@ import { insertAccountSchema, updateAccountSchema, insertOrganizationSchema, upd
 import { ZodError } from "zod";
 import { fromZodError } from "zod-validation-error";
 import type { AccountWithRoles } from "./storage";
-import { sendPasswordResetEmail } from "./email";
+import { sendPasswordResetEmail, sendWelcomeEmail } from "./email";
 import { generateApiToken, hashApiToken, parseBearerToken } from "./api-tokens";
 import { registerDocumentRoutes } from "./documents";
 
@@ -262,6 +262,7 @@ export async function registerRoutes(
           password: req.body.password,
           firstName: req.body.firstName,
           lastName: req.body.lastName,
+          language: "en",
         });
         accountId = newAccount.id;
       } catch (e) {
@@ -300,8 +301,13 @@ export async function registerRoutes(
 
   app.post("/api/accounts", async (req, res) => {
     try {
+      const welcome_email = !!req.body.welcome_email;
+      const plainPassword = req.body.password as string | undefined;
       const data = insertAccountSchema.parse(req.body);
       const account = await storage.createAccount(data);
+      if (welcome_email && plainPassword) {
+        await sendWelcomeEmail(account.email, account.firstName, plainPassword, account.language);
+      }
       res.status(201).json(stripPasswordHash(account));
     } catch (e) {
       if (e instanceof ZodError) {
@@ -323,7 +329,7 @@ export async function registerRoutes(
     const account = await storage.getAccountByEmail(email);
     if (account) {
       const token = await storage.createPasswordResetToken(account.id);
-      await sendPasswordResetEmail(account.email, account.firstName, token);
+      await sendPasswordResetEmail(account.email, account.firstName, token, account.language);
     }
     res.json({ message: "If an account with that email exists, a password reset link has been sent." });
   });
@@ -458,13 +464,31 @@ export async function registerRoutes(
       return res.status(403).json({ message: "Access denied" });
     }
 
+    const setPassword = req.body.password as string | undefined;
+    const welcome_email = !!req.body.welcome_email;
+
+    if (setPassword !== undefined && !isAdmin(me)) {
+      return res.status(403).json({ message: "Only admins can set passwords directly" });
+    }
+    if (setPassword !== undefined && setPassword.length < 6) {
+      return res.status(400).json({ message: "Password must be at least 6 characters" });
+    }
+
     try {
       const data = updateAccountSchema.parse(req.body);
-      if (!isAdmin(me) && data.roles) {
-        return res.status(403).json({ message: "Only admins can change roles" });
+      if (!isAdmin(me)) {
+        delete data.roles;
       }
       const account = await storage.updateAccount(id, data);
       if (!account) return res.status(404).json({ message: "Account not found" });
+
+      if (setPassword) {
+        await storage.updatePassword(id, setPassword);
+      }
+      if (welcome_email && setPassword) {
+        await sendWelcomeEmail(account.email, account.firstName, setPassword, account.language);
+      }
+
       res.json(stripPasswordHash(account));
     } catch (e) {
       if (e instanceof ZodError) {
@@ -912,6 +936,7 @@ export async function registerRoutes(
 
     const validation = validateInvestmentFields(req.body);
     if (!validation.ok) return res.status(400).json({ message: validation.error });
+    if (!validation.data.date) return res.status(400).json({ message: "date is required" });
 
     const spv = await storage.getSpv(id);
     if (!spv) return res.status(404).json({ message: "SPV not found" });

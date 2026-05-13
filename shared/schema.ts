@@ -24,6 +24,7 @@ export const accounts = pgTable("accounts", {
   city: varchar("city", { length: 100 }).default(""),
   stateProvince: varchar("state_province", { length: 100 }).default(""),
   zipPostalCode: varchar("zip_postal_code", { length: 20 }).default(""),
+  language: varchar("language", { length: 10 }).default("en").notNull(),
   profileComplete: boolean("profile_complete").default(false),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -265,6 +266,7 @@ export const insertAccountSchema = createInsertSchema(accounts).omit({
 }).extend({
   password: z.string().min(1),
   roles: z.array(z.string()).optional(),
+  language: z.enum(["en", "es", "fr"]).optional().default("en"),
 });
 
 export const updateAccountSchema = createInsertSchema(accounts).omit({
@@ -274,6 +276,7 @@ export const updateAccountSchema = createInsertSchema(accounts).omit({
   updatedAt: true,
 }).partial().extend({
   roles: z.array(z.string()).optional(),
+  language: z.enum(["en", "es", "fr"]).optional(),
 });
 
 export const insertOrganizationSchema = createInsertSchema(organizations).omit({
@@ -294,6 +297,8 @@ export const insertSpvSchema = createInsertSchema(spvs).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
+}).extend({
+  dateEstablished: z.string().min(1, "Date established is required"),
 });
 
 export const updateSpvSchema = createInsertSchema(spvs).omit({

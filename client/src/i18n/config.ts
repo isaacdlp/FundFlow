@@ -12,6 +12,25 @@ const resources = {
   fr: { translation: fr },
 };
 
+const LANG_COOKIE = "fundflow:lang";
+
+export function getLangCookie(): Locale | null {
+  if (typeof document === "undefined") return null;
+  const match = document.cookie.split("; ").find(c => c.startsWith(LANG_COOKIE + "="));
+  if (!match) return null;
+  const val = match.split("=")[1];
+  return (LOCALES as readonly string[]).includes(val) ? (val as Locale) : null;
+}
+
+export function setLangCookie(locale: Locale) {
+  const expires = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toUTCString();
+  document.cookie = `${LANG_COOKIE}=${locale}; expires=${expires}; path=/; SameSite=Lax`;
+}
+
+export function expireLangCookie() {
+  document.cookie = `${LANG_COOKIE}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; SameSite=Lax`;
+}
+
 const urlLocale = getLocaleFromPath(typeof window !== "undefined" ? window.location.pathname : "/");
 
 i18n
@@ -24,11 +43,12 @@ i18n
     supportedLngs: LOCALES as unknown as string[],
     nonExplicitSupportedLngs: true,
     interpolation: { escapeValue: false },
+    // Detection is read-only here (no caching) — language persistence is managed
+    // manually via the lang cookie so we control exactly when it is written/cleared.
     detection: {
-      order: ["path", "localStorage", "navigator", "htmlTag"],
+      order: ["path", "navigator", "htmlTag"],
       lookupFromPathIndex: 0,
-      caches: ["localStorage"],
-      lookupLocalStorage: "fundflow:lang",
+      caches: [],
     },
   });
 

@@ -166,7 +166,7 @@ function SpvMembersTab({ spvId, orgId, canEdit, allocationMethod }: { spvId: str
     });
   };
 
-  const canSubmit = investorType === "account" ? !!selectedAccountId : !!selectedEntityId;
+  const canSubmit = (investorType === "account" ? !!selectedAccountId : !!selectedEntityId) && !!newDate;
 
   const ownershipPercentsMap = computeOwnershipPercents(spvMembers || [], allocationMethod);
 
@@ -237,7 +237,7 @@ function SpvMembersTab({ spvId, orgId, canEdit, allocationMethod }: { spvId: str
           </div>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
             <div className="space-y-1">
-              <Label className="text-xs">{t("common.date")}</Label>
+              <Label className="text-xs">{t("common.date")} *</Label>
               <Input type="date" value={newDate} onChange={e => setNewDate(e.target.value)} data-testid="input-new-date" />
             </div>
             <div className="space-y-1">

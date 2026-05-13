@@ -2,7 +2,8 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useRoute, Link, useLocation } from "wouter";
 import { Trans, useTranslation } from "react-i18next";
 import { useLocalePath, useLocale } from "@/i18n/hooks";
-import { ROUTE_PATTERNS } from "@/i18n/routes";
+import { ROUTE_PATTERNS, LOCALES, translatePath, type Locale } from "@/i18n/routes";
+import { expireLangCookie } from "@/i18n/config";
 import type { AccountWithRoles } from "@shared/types";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
@@ -47,7 +48,7 @@ const COUNTRIES = [
 export default function AccountDetail() {
   const locale = useLocale();
   const lp = useLocalePath();
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const ACCOUNT_TABS = [
     { value: "personal", label: t("accountDetail.personalInfo") },
     { value: "login", label: t("accountDetail.loginInfo") },
@@ -63,6 +64,9 @@ export default function AccountDetail() {
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [adminNewPassword, setAdminNewPassword] = useState("");
+  const [adminConfirmPassword, setAdminConfirmPassword] = useState("");
+  const [adminSendWelcome, setAdminSendWelcome] = useState(false);
   const isOwnAccount = user && accountId && String(user.id) === String(accountId);
 
   const { data: account, isLoading } = useQuery<AccountWithRoles>({
@@ -87,6 +91,7 @@ export default function AccountDetail() {
         city: account.city || "",
         stateProvince: account.stateProvince || "",
         zipPostalCode: account.zipPostalCode || "",
+        language: account.language || "en",
         roles: account.roles.map((r) => r.name),
       });
     }
@@ -102,6 +107,20 @@ export default function AccountDetail() {
       queryClient.invalidateQueries({ queryKey: ["/api/accounts"] });
       setEditing(false);
       toast({ title: t("accountDetail.profileUpdated") });
+
+      // When the user updates their own account language, expire the cookie override
+      // so the account language takes effect immediately (requirement: cookie → account lang).
+      if (isOwnAccount) {
+        const newLang = formData.language as string;
+        if (newLang && newLang !== account?.language && (LOCALES as readonly string[]).includes(newLang)) {
+          queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+          expireLangCookie();
+          i18n.changeLanguage(newLang);
+          const newPath = translatePath(window.location.pathname + window.location.search, newLang as Locale);
+          window.history.pushState({}, "", newPath);
+          window.dispatchEvent(new PopStateEvent("popstate"));
+        }
+      }
     },
     onError: (error: Error) => {
       toast({ title: t("accountDetail.profileUpdateFailed"), description: error.message, variant: "destructive" });
@@ -153,6 +172,22 @@ export default function AccountDetail() {
     },
   });
 
+  const setPasswordMutation = useMutation({
+    mutationFn: async ({ password, welcome_email }: { password: string; welcome_email: boolean }) => {
+      const res = await apiRequest("PATCH", `/api/accounts/${accountId}`, { password, welcome_email });
+      return res.json();
+    },
+    onSuccess: () => {
+      setAdminNewPassword("");
+      setAdminConfirmPassword("");
+      setAdminSendWelcome(false);
+      toast({ title: t("accountDetail.passwordSetSuccess") });
+    },
+    onError: (error: Error) => {
+      toast({ title: t("accountDetail.passwordSetFailed"), description: error.message, variant: "destructive" });
+    },
+  });
+
   const handleChangePassword = () => {
     if (newPassword !== confirmPassword) {
       toast({ title: t("auth.passwordsDoNotMatch"), variant: "destructive" });
@@ -184,6 +219,7 @@ export default function AccountDetail() {
         city: account.city || "",
         stateProvince: account.stateProvince || "",
         zipPostalCode: account.zipPostalCode || "",
+        language: account.language || "en",
         roles: account.roles.map((r) => r.name),
       });
     }
@@ -360,16 +396,48 @@ export default function AccountDetail() {
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="birthdate">{t("createAccount.birthdate")}</Label>
-                <Input
-                  id="birthdate"
-                  type="date"
-                  value={(formData.birthdate as string) || ""}
-                  onChange={(e) => updateField("birthdate", e.target.value)}
-                  disabled={!editing}
-                  data-testid="input-birthdate"
-                />
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="birthdate">{t("createAccount.birthdate")}</Label>
+                  <Input
+                    id="birthdate"
+                    type="date"
+                    value={(formData.birthdate as string) || ""}
+                    onChange={(e) => updateField("birthdate", e.target.value)}
+                    disabled={!editing}
+                    data-testid="input-birthdate"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="language">{t("common.language")}</Label>
+                  {editing ? (
+                    <Select
+                      value={(formData.language as string) || "en"}
+                      onValueChange={(val) => updateField("language", val)}
+                    >
+                      <SelectTrigger id="language" data-testid="select-language">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="en">{t("common.english")}</SelectItem>
+                        <SelectItem value="es">{t("common.spanish")}</SelectItem>
+                        <SelectItem value="fr">{t("common.french")}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <Input
+                      value={
+                        (formData.language as string) === "es"
+                          ? t("common.spanish")
+                          : (formData.language as string) === "fr"
+                          ? t("common.french")
+                          : t("common.english")
+                      }
+                      disabled
+                      data-testid="input-language"
+                    />
+                  )}
+                </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -566,28 +634,102 @@ export default function AccountDetail() {
                     </Button>
                   </div>
                 ) : (
-                  <div className="space-y-3">
-                    <p className="text-sm text-muted-foreground">
-                      {t("accountDetail.sendResetDescription")}
-                    </p>
-                    <Button
-                      variant="outline"
-                      onClick={() => account && sendResetMutation.mutate(account.email)}
-                      disabled={sendResetMutation.isPending}
-                      data-testid="button-send-reset-email"
-                    >
-                      {sendResetMutation.isPending ? (
-                        <>
-                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                          {t("auth.sending")}
-                        </>
-                      ) : (
-                        <>
-                          <Mail className="h-4 w-4 mr-2" />
-                          {t("accountDetail.sendResetEmail")}
-                        </>
-                      )}
-                    </Button>
+                  <div className="space-y-4">
+                    <div className="space-y-3">
+                      <p className="text-sm text-muted-foreground">
+                        {t("accountDetail.sendResetDescription")}
+                      </p>
+                      <Button
+                        variant="outline"
+                        onClick={() => account && sendResetMutation.mutate(account.email)}
+                        disabled={sendResetMutation.isPending}
+                        data-testid="button-send-reset-email"
+                      >
+                        {sendResetMutation.isPending ? (
+                          <>
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            {t("auth.sending")}
+                          </>
+                        ) : (
+                          <>
+                            <Mail className="h-4 w-4 mr-2" />
+                            {t("accountDetail.sendResetEmail")}
+                          </>
+                        )}
+                      </Button>
+                    </div>
+
+                    <Separator />
+
+                    <div className="space-y-3">
+                      <div>
+                        <p className="text-sm font-medium">{t("accountDetail.setPasswordTitle")}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">{t("accountDetail.setPasswordDescription")}</p>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="admin-new-password">{t("common.newPassword")}</Label>
+                        <Input
+                          id="admin-new-password"
+                          type="password"
+                          value={adminNewPassword}
+                          onChange={(e) => setAdminNewPassword(e.target.value)}
+                          placeholder={t("accountDetail.enterNewPassword")}
+                          data-testid="input-admin-new-password"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="admin-confirm-password">{t("common.confirmPassword")}</Label>
+                        <Input
+                          id="admin-confirm-password"
+                          type="password"
+                          value={adminConfirmPassword}
+                          onChange={(e) => setAdminConfirmPassword(e.target.value)}
+                          placeholder={t("accountDetail.confirmNewPasswordPlaceholder")}
+                          data-testid="input-admin-confirm-password"
+                        />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Checkbox
+                          id="admin-send-welcome"
+                          checked={adminSendWelcome}
+                          onCheckedChange={(v) => setAdminSendWelcome(!!v)}
+                          data-testid="checkbox-admin-send-welcome"
+                        />
+                        <div>
+                          <label htmlFor="admin-send-welcome" className="text-sm font-medium cursor-pointer">
+                            {t("accountDetail.sendWelcomeEmail")}
+                          </label>
+                          <p className="text-xs text-muted-foreground">{t("accountDetail.sendWelcomeEmailHint")}</p>
+                        </div>
+                      </div>
+                      <Button
+                        onClick={() => {
+                          if (adminNewPassword !== adminConfirmPassword) {
+                            toast({ title: t("auth.passwordsDoNotMatch"), variant: "destructive" });
+                            return;
+                          }
+                          if (adminNewPassword.length < 6) {
+                            toast({ title: t("auth.passwordTooShort"), variant: "destructive" });
+                            return;
+                          }
+                          setPasswordMutation.mutate({ password: adminNewPassword, welcome_email: adminSendWelcome });
+                        }}
+                        disabled={setPasswordMutation.isPending || !adminNewPassword || !adminConfirmPassword}
+                        data-testid="button-set-password"
+                      >
+                        {setPasswordMutation.isPending ? (
+                          <>
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            {t("accountDetail.settingPassword")}
+                          </>
+                        ) : (
+                          <>
+                            <KeyRound className="h-4 w-4 mr-2" />
+                            {t("accountDetail.setPasswordBtn")}
+                          </>
+                        )}
+                      </Button>
+                    </div>
                   </div>
                 )}
               </div>

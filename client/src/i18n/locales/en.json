@@ -58,6 +58,9 @@
     "noResults": "No results.",
     "unknown": "Unknown",
     "language": "Language",
+    "english": "English",
+    "spanish": "Spanish",
+    "french": "French",
     "signOut": "Sign Out",
     "user": "User",
     "admin": "Admin",
@@ -199,7 +202,9 @@
     "zipPostalCode": "Zip / Postal Code",
     "adminRoleDescription": "Platform administrator with full access to all features and settings",
     "missingRequiredTitle": "Missing required fields",
-    "missingRequiredDescription": "Please fill in first name, last name, email, and password."
+    "missingRequiredDescription": "Please fill in first name, last name, email, and password.",
+    "sendWelcomeEmail": "Send welcome email",
+    "sendWelcomeEmailHint": "Email the user their username and password"
   },
   "accountDetail": {
     "tabPersonal": "Personal Info",
@@ -237,7 +242,15 @@
     "confirmNewPasswordPlaceholder": "Confirm new password",
     "sendResetDescription": "Send a password reset link to this user's email address.",
     "sendResetEmail": "Send Password Reset Email",
-    "accountCreated": "Account Created"
+    "accountCreated": "Account Created",
+    "setPasswordTitle": "Set New Password",
+    "setPasswordDescription": "Directly set a new password for this user (admin only)",
+    "setPasswordBtn": "Set Password",
+    "settingPassword": "Setting...",
+    "passwordSetSuccess": "Password set successfully",
+    "passwordSetFailed": "Failed to set password",
+    "sendWelcomeEmail": "Send welcome email",
+    "sendWelcomeEmailHint": "Email the user their username and new password"
   },
   "organizations": {
     "title": "Organizations",

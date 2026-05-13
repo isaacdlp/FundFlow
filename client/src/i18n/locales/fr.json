@@ -58,6 +58,9 @@
     "noResults": "Aucun résultat.",
     "unknown": "Inconnu",
     "language": "Langue",
+    "english": "Anglais",
+    "spanish": "Espagnol",
+    "french": "Français",
     "signOut": "Se déconnecter",
     "user": "Utilisateur",
     "admin": "Administrateur",
@@ -199,7 +202,9 @@
     "zipPostalCode": "Code postal",
     "adminRoleDescription": "Administrateur de la plateforme avec accès complet à toutes les fonctionnalités et paramètres",
     "missingRequiredTitle": "Champs obligatoires manquants",
-    "missingRequiredDescription": "Veuillez renseigner le prénom, le nom, l'e-mail et le mot de passe."
+    "missingRequiredDescription": "Veuillez renseigner le prénom, le nom, l'e-mail et le mot de passe.",
+    "sendWelcomeEmail": "Envoyer un e-mail de bienvenue",
+    "sendWelcomeEmailHint": "Envoie à l'utilisateur son nom d'utilisateur et son mot de passe"
   },
   "accountDetail": {
     "tabPersonal": "Infos personnelles",
@@ -237,7 +242,15 @@
     "confirmNewPasswordPlaceholder": "Confirmer le nouveau mot de passe",
     "sendResetDescription": "Envoyer un lien de réinitialisation à l'adresse e-mail de cet utilisateur.",
     "sendResetEmail": "Envoyer l'e-mail de réinitialisation",
-    "accountCreated": "Compte créé"
+    "accountCreated": "Compte créé",
+    "setPasswordTitle": "Définir un nouveau mot de passe",
+    "setPasswordDescription": "Définir directement un mot de passe pour cet utilisateur (admin uniquement)",
+    "setPasswordBtn": "Définir le mot de passe",
+    "settingPassword": "Enregistrement...",
+    "passwordSetSuccess": "Mot de passe défini avec succès",
+    "passwordSetFailed": "Échec de la définition du mot de passe",
+    "sendWelcomeEmail": "Envoyer un e-mail de bienvenue",
+    "sendWelcomeEmailHint": "Envoie à l'utilisateur son nom d'utilisateur et son nouveau mot de passe"
   },
   "organizations": {
     "title": "Organisations",

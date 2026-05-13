@@ -13,22 +13,22 @@ import { PieChart, Pie, Cell, Tooltip as RTooltip, ResponsiveContainer } from "r
 import { useLocale, useLocalePath } from "@/i18n/hooks";
 
 const PIE_GRADIENTS: { id: string; from: string; to: string }[] = [
-  { id: "grad-brand",      from: "#93c5fd", to: "#1e3a8a" },
-  { id: "grad-sky",        from: "#7dd3fc", to: "#075985" },
-  { id: "grad-indigo",     from: "#a5b4fc", to: "#312e81" },
-  { id: "grad-cyan",       from: "#67e8f9", to: "#0e7490" },
-  { id: "grad-blueSlate",  from: "#cbd5e1", to: "#1e293b" },
-  { id: "grad-royal",      from: "#bfdbfe", to: "#1d4ed8" },
-  { id: "grad-teal",       from: "#5eead4", to: "#115e59" },
-  { id: "grad-violet",     from: "#c4b5fd", to: "#4338ca" },
-  { id: "grad-azure",      from: "#a5f3fc", to: "#155e75" },
-  { id: "grad-cobalt",     from: "#60a5fa", to: "#1e40af" },
-  { id: "grad-periwinkle", from: "#dbeafe", to: "#3730a3" },
-  { id: "grad-deepSea",    from: "#7dd3fc", to: "#0c4a6e" },
-  { id: "grad-lagoon",     from: "#5eead4", to: "#0e7490" },
-  { id: "grad-midnight",   from: "#94a3b8", to: "#0f172a" },
-  { id: "grad-iris",       from: "#a5b4fc", to: "#1e1b4b" },
-  { id: "grad-aqua",       from: "#a5f3fc", to: "#0369a1" },
+  { id: "grad-blue",       from: "#93c5fd", to: "#1e40af" },
+  { id: "grad-emerald",    from: "#6ee7b7", to: "#065f46" },
+  { id: "grad-violet",     from: "#c4b5fd", to: "#4c1d95" },
+  { id: "grad-amber",      from: "#fcd34d", to: "#92400e" },
+  { id: "grad-rose",       from: "#fda4af", to: "#9f1239" },
+  { id: "grad-cyan",       from: "#67e8f9", to: "#164e63" },
+  { id: "grad-orange",     from: "#fdba74", to: "#7c2d12" },
+  { id: "grad-teal",       from: "#5eead4", to: "#134e4a" },
+  { id: "grad-fuchsia",    from: "#f0abfc", to: "#701a75" },
+  { id: "grad-lime",       from: "#bef264", to: "#365314" },
+  { id: "grad-indigo",     from: "#a5b4fc", to: "#1e1b4b" },
+  { id: "grad-yellow",     from: "#fef08a", to: "#713f12" },
+  { id: "grad-pink",       from: "#f9a8d4", to: "#831843" },
+  { id: "grad-sky",        from: "#7dd3fc", to: "#0c4a6e" },
+  { id: "grad-green",      from: "#86efac", to: "#14532d" },
+  { id: "grad-red",        from: "#fca5a5", to: "#7f1d1d" },
 ];
 
 const LOCALE_TO_BCP: Record<string, string> = { en: "en-US", es: "es-ES", fr: "fr-FR" };
@@ -52,7 +52,7 @@ function SpvPieCard({
 }: {
   title: string;
   subtitle: string;
-  data: { name: string; value: number }[];
+  data: { name: string; value: number; gradientId: string }[];
   valueFormatter?: (v: number) => string;
   legendFormatter?: (v: number) => string;
 }) {
@@ -89,8 +89,8 @@ function SpvPieCard({
                   stroke="hsl(var(--background))" strokeWidth={2}
                   filter="url(#pie-shadow)"
                 >
-                  {data.map((_, i) => (
-                    <Cell key={i} fill={`url(#${PIE_GRADIENTS[i % PIE_GRADIENTS.length].id})`} />
+                  {data.map((d, i) => (
+                    <Cell key={i} fill={`url(#${d.gradientId})`} />
                   ))}
                 </Pie>
                 <RTooltip
@@ -195,11 +195,15 @@ export default function Dashboard() {
     return Array.from(map.values()).sort((a, b) => b.current - a.current);
   }, [filtered, t]);
 
-  const initialPie = spvBreakdown.filter(s => s.initial > 0).map(s => ({ name: s.name, value: s.initial }));
-  const currentPie = spvBreakdown.filter(s => s.current > 0).map(s => ({ name: s.name, value: s.current }));
+  const spvGradientId = useMemo(() =>
+    new Map(spvBreakdown.map((s, i) => [s.name, PIE_GRADIENTS[i % PIE_GRADIENTS.length].id])),
+    [spvBreakdown]);
+
+  const initialPie = spvBreakdown.filter(s => s.initial > 0).map(s => ({ name: s.name, value: s.initial, gradientId: spvGradientId.get(s.name)! }));
+  const currentPie = spvBreakdown.filter(s => s.current > 0).map(s => ({ name: s.name, value: s.current, gradientId: spvGradientId.get(s.name)! }));
   const growthPie = spvBreakdown
     .filter(s => s.initial > 0 && s.current > s.initial)
-    .map(s => ({ name: s.name, value: ((s.current - s.initial) / s.initial) * 100 }))
+    .map(s => ({ name: s.name, value: ((s.current - s.initial) / s.initial) * 100, gradientId: spvGradientId.get(s.name)! }))
     .sort((a, b) => b.value - a.value);
 
   const groupedByCompany = useMemo<CompanyGroup[]>(() => {

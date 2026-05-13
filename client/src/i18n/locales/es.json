@@ -58,6 +58,9 @@
     "noResults": "Sin resultados.",
     "unknown": "Desconocido",
     "language": "Idioma",
+    "english": "Inglés",
+    "spanish": "Español",
+    "french": "Francés",
     "signOut": "Cerrar sesión",
     "user": "Usuario",
     "admin": "Administrador",
@@ -199,7 +202,9 @@
     "zipPostalCode": "Código postal",
     "adminRoleDescription": "Administrador de la plataforma con acceso completo a todas las funciones y ajustes",
     "missingRequiredTitle": "Faltan campos obligatorios",
-    "missingRequiredDescription": "Por favor completa nombre, apellido, correo electrónico y contraseña."
+    "missingRequiredDescription": "Por favor completa nombre, apellido, correo electrónico y contraseña.",
+    "sendWelcomeEmail": "Enviar correo de bienvenida",
+    "sendWelcomeEmailHint": "Envía al usuario su nombre de usuario y contraseña"
   },
   "accountDetail": {
     "tabPersonal": "Información personal",
@@ -237,7 +242,15 @@
     "confirmNewPasswordPlaceholder": "Confirma la nueva contraseña",
     "sendResetDescription": "Envía un enlace de restablecimiento al correo de este usuario.",
     "sendResetEmail": "Enviar correo de restablecimiento",
-    "accountCreated": "Cuenta creada"
+    "accountCreated": "Cuenta creada",
+    "setPasswordTitle": "Establecer nueva contraseña",
+    "setPasswordDescription": "Establecer una contraseña directamente para este usuario (solo administradores)",
+    "setPasswordBtn": "Establecer contraseña",
+    "settingPassword": "Guardando...",
+    "passwordSetSuccess": "Contraseña establecida correctamente",
+    "passwordSetFailed": "Error al establecer la contraseña",
+    "sendWelcomeEmail": "Enviar correo de bienvenida",
+    "sendWelcomeEmailHint": "Envía al usuario su nombre de usuario y nueva contraseña"
   },
   "organizations": {
     "title": "Organizaciones",

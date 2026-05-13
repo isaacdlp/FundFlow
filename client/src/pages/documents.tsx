@@ -98,7 +98,7 @@ function FolderTree({
   onSelect: (path: string) => void;
   rootLabel: string;
 }) {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(depth === 0);
   const isSelected = node.fullPath === selectedPath;
   const children = Array.from(node.children.values()).sort((a, b) => a.name.localeCompare(b.name));
   const isRoot = depth === 0;

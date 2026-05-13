@@ -264,6 +264,7 @@ export interface AccountWithRoles {
   city: string | null;
   stateProvince: string | null;
   zipPostalCode: string | null;
+  language: string;
   profileComplete: boolean | null;
   createdAt: string;
   updatedAt: string;
