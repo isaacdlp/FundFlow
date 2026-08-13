@@ -14,6 +14,7 @@
     "add": "Ajouter",
     "remove": "Retirer",
     "search": "Rechercher",
+    "clear": "Effacer",
     "back": "Retour",
     "next": "Suivant",
     "previous": "Précédent",
@@ -70,7 +71,9 @@
     "untitled": "Sans titre",
     "today": "Aujourd'hui",
     "ssnTaxId": "SSN / N° fiscal",
-    "selectCountry": "Sélectionner un pays"
+    "selectCountry": "Sélectionner un pays",
+    "searchCountry": "Rechercher un pays...",
+    "noCountryFound": "Pays introuvable."
   },
   "nav": {
     "platform": "Plateforme",
@@ -144,7 +147,7 @@
     "distributions": "Distributions",
     "investments": "Investissements",
     "investmentsTitle": "Investissements",
-    "searchPlaceholder": "Rechercher par société, SPV, fonds ou investisseur...",
+    "searchPlaceholder": "Rechercher",
     "noData": "Aucune donnée",
     "pieInitialTitle": "Apport initial par SPV",
     "pieInitialSubtitle": "Capital appelé à l'entrée",
@@ -164,13 +167,20 @@
     "tooltipValue": "Valeur",
     "showingCompanies_one": "{{count}} société · {{invCount}} investissement",
     "showingCompanies_other": "{{count}} sociétés · {{invCount}} investissements",
-    "entityBadge": "Entité"
+    "showingBeneficiaries_one": "{{count}} bénéficiaire · {{invCount}} investissement",
+    "showingBeneficiaries_other": "{{count}} bénéficiaires · {{invCount}} investissements",
+    "entityBadge": "Entité",
+    "groupBy": "Grouper par",
+    "groupBySpv": "SPV",
+    "groupByBeneficiary": "Bénéficiaire",
+    "filterBy": "Bénéficiaires",
+    "filterByActive": "{{count}} sur {{total}}"
   },
   "accounts": {
     "title": "Comptes",
     "subtitle": "Gérer les comptes utilisateurs et les permissions",
     "addAccount": "Ajouter un compte",
-    "searchPlaceholder": "Rechercher par nom ou e-mail...",
+    "searchPlaceholder": "Rechercher",
     "tableName": "Nom",
     "tableEmail": "E-mail",
     "tableRoles": "Rôles",
@@ -256,7 +266,7 @@
     "title": "Organisations",
     "subtitle": "Gérer les organisations qui créent des fonds et des SPVs",
     "addOrganization": "Ajouter une organisation",
-    "searchPlaceholder": "Rechercher des organisations...",
+    "searchPlaceholder": "Rechercher",
     "tableOrg": "Organisation",
     "tableLocation": "Emplacement",
     "tableOrganizers": "Organisateurs",
@@ -362,7 +372,7 @@
   "spvs": {
     "title": "Special Purpose Vehicles",
     "subtitle": "Gérer tous les SPVs de toutes les organisations",
-    "searchPlaceholder": "Rechercher des SPVs...",
+    "searchPlaceholder": "Rechercher",
     "tableName": "Nom",
     "tableOrg": "Organisation",
     "tableEntityType": "Type d'entité",
@@ -555,7 +565,7 @@
     "title": "Entités",
     "subtitle": "Gérer les entités associées (sociétés, fiducies, etc.)",
     "addEntity": "Ajouter une entité",
-    "searchPlaceholder": "Rechercher par n'importe quoi",
+    "searchPlaceholder": "Rechercher",
     "tableName": "Nom",
     "tableType": "Type",
     "tableManagers": "Gestionnaires",
@@ -679,6 +689,8 @@
     "selectedAll": "Tous les documents auxquels vous avez accès.",
     "selectedFolder": "Affichage des documents de ce dossier et de ses sous-dossiers.",
     "noDocuments": "Aucun document dans ce dossier.",
+    "noSearchResults": "Aucun document ne correspond à votre recherche.",
+    "searchPlaceholder": "Rechercher",
     "countLabel": "{{count}}"
   },
   "settings": {

@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { normalizeSearch } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -23,7 +24,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import {
-  FolderOpen, Folder, FileText, Upload, Download, Trash2, ChevronRight, ChevronDown, Files,
+  FolderOpen, Folder, FileText, Upload, Download, Trash2, ChevronRight, ChevronDown, Files, Search,
 } from "lucide-react";
 
 type DocOwner = { id: number; type: "account" | "entity"; name: string } | null;
@@ -267,6 +268,7 @@ export default function DocumentsPage() {
   const { toast } = useToast();
   const { t } = useTranslation();
   const [selectedPath, setSelectedPath] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
 
   const { data: docs = [], isLoading } = useQuery<DocItem[]>({ queryKey: ["/api/documents"] });
   const { data: accounts = [] } = useQuery<AccountLite[]>({
@@ -286,9 +288,16 @@ export default function DocumentsPage() {
   const tree = useMemo(() => buildTree(docs, ownerLabels), [docs, ownerLabels]);
   const selectedNode = useMemo(() => findNode(tree, selectedPath) ?? tree, [tree, selectedPath]);
   const visibleDocs = useMemo(() => {
-    if (!selectedPath) return docs;
-    return collectDocsRecursive(selectedNode);
-  }, [docs, selectedNode, selectedPath]);
+    const base = selectedPath ? collectDocsRecursive(selectedNode) : docs;
+    if (!searchQuery.trim()) return base;
+    const q = normalizeSearch(searchQuery.trim());
+    return base.filter(doc =>
+      normalizeSearch(doc.name).includes(q) ||
+      normalizeSearch(doc.fileName).includes(q) ||
+      normalizeSearch(doc.folderPath || "").includes(q) ||
+      normalizeSearch(doc.owner?.name || "").includes(q),
+    );
+  }, [docs, selectedNode, selectedPath, searchQuery]);
 
   const del = useMutation({
     mutationFn: async (id: number) => apiRequest("DELETE", `/api/documents/${id}`),
@@ -311,6 +320,17 @@ export default function DocumentsPage() {
           </p>
         </div>
         {isAdmin && <UploadDialog accounts={accounts} entities={entities} />}
+      </div>
+
+      <div className="relative max-w-sm">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+          placeholder={t("documents.searchPlaceholder")}
+          className="pl-9"
+          data-testid="input-search-documents"
+        />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-[320px_1fr] gap-6">
@@ -337,7 +357,7 @@ export default function DocumentsPage() {
               <div className="space-y-2"><Skeleton className="h-12 w-full" /><Skeleton className="h-12 w-full" /></div>
             ) : visibleDocs.length === 0 ? (
               <div className="text-center py-12 text-muted-foreground text-sm" data-testid="text-empty-docs">
-                {t("documents.noDocuments")}
+                {searchQuery.trim() ? t("documents.noSearchResults") : t("documents.noDocuments")}
               </div>
             ) : (
               <div className="divide-y">

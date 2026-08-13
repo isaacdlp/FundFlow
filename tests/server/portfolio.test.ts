@@ -34,6 +34,7 @@ describe("GET /api/portfolio", () => {
   it("non-admin (no filter) gets their own + their owned-entity portfolio", async () => {
     const agent = await loginAs(app, mockStorage, fixtures.memberAccount);
     mockStorage.getEntityIdsOwnedByAccount.mockResolvedValue([200]);
+    mockStorage.getEntityIdsForAccount.mockResolvedValue([]);
     mockStorage.getPortfolio.mockResolvedValue([]);
     const res = await agent.get("/api/portfolio");
     expect(res.status).toBe(200);
@@ -41,6 +42,32 @@ describe("GET /api/portfolio", () => {
       accountIds: [fixtures.memberAccount.id],
       entityIds: [200],
     });
+  });
+
+  it("non-admin (no filter) includes their managed-entity portfolio", async () => {
+    const agent = await loginAs(app, mockStorage, fixtures.memberAccount);
+    mockStorage.getEntityIdsOwnedByAccount.mockResolvedValue([]);
+    mockStorage.getEntityIdsForAccount.mockResolvedValue([201]);
+    mockStorage.getPortfolio.mockResolvedValue([]);
+    const res = await agent.get("/api/portfolio");
+    expect(res.status).toBe(200);
+    expect(mockStorage.getPortfolio).toHaveBeenCalledWith({
+      accountIds: [fixtures.memberAccount.id],
+      entityIds: [201],
+    });
+  });
+
+  it("non-admin (no filter) merges owned and managed entity ids", async () => {
+    const agent = await loginAs(app, mockStorage, fixtures.memberAccount);
+    mockStorage.getEntityIdsOwnedByAccount.mockResolvedValue([200]);
+    mockStorage.getEntityIdsForAccount.mockResolvedValue([201]);
+    mockStorage.getPortfolio.mockResolvedValue([]);
+    const res = await agent.get("/api/portfolio");
+    expect(res.status).toBe(200);
+    const call = mockStorage.getPortfolio.mock.calls[0][0];
+    expect(call.accountIds).toEqual([fixtures.memberAccount.id]);
+    expect(call.entityIds).toEqual(expect.arrayContaining([200, 201]));
+    expect(call.entityIds).toHaveLength(2);
   });
 
   describe("?accountId filter", () => {

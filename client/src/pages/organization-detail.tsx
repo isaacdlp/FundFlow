@@ -1,5 +1,5 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useRoute, Link, useLocation } from "wouter";
+import { useRoute, Link, useLocation, useSearch } from "wouter";
 import { useTranslation } from "react-i18next";
 import { useLocalePath, useLocale } from "@/i18n/hooks";
 import { ROUTE_PATTERNS } from "@/i18n/routes";
@@ -473,8 +473,10 @@ export default function OrganizationDetail() {
   const { toast } = useToast();
   const { canManageOrg } = useOrgPermissions();
   const canEdit = canManageOrg(orgId ? parseInt(orgId) : null);
+  const [location, navigate] = useLocation();
+  const search = useSearch();
+  const activeTab = new URLSearchParams(search).get("tab") ?? "settings";
   const [editing, setEditing] = useState(false);
-  const [activeTab, setActiveTab] = useState("settings");
   const [selectedAccountId, setSelectedAccountId] = useState("");
 
   const { data: org, isLoading } = useQuery<OrganizationWithOrganizers>({
@@ -623,7 +625,7 @@ export default function OrganizationDetail() {
         </div>
       </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
+      <Tabs value={activeTab} onValueChange={(t) => navigate(`${location}?tab=${t}`, { replace: true })}>
         <TabsList>
           <TabsTrigger value="settings" data-testid="tab-settings">{t("organizationDetail.tabSettings")}</TabsTrigger>
           <TabsTrigger value="organizers" data-testid="tab-organizers">{t("organizationDetail.organizersTitle")}</TabsTrigger>

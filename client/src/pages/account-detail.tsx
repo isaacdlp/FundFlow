@@ -1,5 +1,5 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useRoute, Link, useLocation } from "wouter";
+import { useRoute, Link, useLocation, useSearch } from "wouter";
 import { Trans, useTranslation } from "react-i18next";
 import { useLocalePath, useLocale } from "@/i18n/hooks";
 import { ROUTE_PATTERNS, LOCALES, translatePath, type Locale } from "@/i18n/routes";
@@ -32,35 +32,31 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { CountrySelect } from "@/components/country-select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ArrowLeft, Pencil, Save, X, Loader2, Mail, KeyRound, Trash2, Eye } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 
-const COUNTRIES = [
-  "United States", "United Kingdom", "Spain", "Germany", "France",
-  "Italy", "Canada", "Australia", "Japan", "South Korea",
-  "Brazil", "Mexico", "India", "China", "Singapore",
-  "Switzerland", "Netherlands", "Sweden", "Ireland", "Portugal",
-];
 
 export default function AccountDetail() {
   const locale = useLocale();
   const lp = useLocalePath();
   const { t, i18n } = useTranslation();
-  const ACCOUNT_TABS = [
-    { value: "personal", label: t("accountDetail.personalInfo") },
-    { value: "login", label: t("accountDetail.loginInfo") },
-    { value: "permissions", label: t("accountDetail.permissions") },
-  ];
   const [, params] = useRoute(ROUTE_PATTERNS.accountDetail[locale]);
   const accountId = params?.id;
   const { toast } = useToast();
   const { user, isAdmin, isImpersonating, showAsMutation } = useAuth();
-  const [, navigate] = useLocation();
+  const ACCOUNT_TABS = [
+    { value: "personal", label: t("accountDetail.personalInfo") },
+    { value: "login", label: t("accountDetail.loginInfo") },
+    ...(isAdmin ? [{ value: "permissions", label: t("accountDetail.permissions") }] : []),
+  ];
+  const [location, navigate] = useLocation();
+  const search = useSearch();
+  const activeTab = new URLSearchParams(search).get("tab") ?? "personal";
   const [editing, setEditing] = useState(false);
-  const [activeTab, setActiveTab] = useState("personal");
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -336,7 +332,7 @@ export default function AccountDetail() {
         </div>
       </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
+      <Tabs value={activeTab} onValueChange={(t) => navigate(`${location}?tab=${t}`, { replace: true })}>
         <TabsList>
           {ACCOUNT_TABS.map((tab) => (
             <TabsTrigger key={tab.value} value={tab.value} data-testid={`tab-${tab.value}`}>
@@ -505,29 +501,12 @@ export default function AccountDetail() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="country">{t("common.country")} *</Label>
-                  {editing ? (
-                    <Select
-                      value={(formData.country as string) || ""}
-                      onValueChange={(val) => updateField("country", val)}
-                    >
-                      <SelectTrigger data-testid="select-country">
-                        <SelectValue placeholder={t("common.selectCountry")} />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {COUNTRIES.map((c) => (
-                          <SelectItem key={c} value={c}>
-                            {c}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  ) : (
-                    <Input
-                      value={(formData.country as string) || ""}
-                      disabled
-                      data-testid="input-country"
-                    />
-                  )}
+                  <CountrySelect
+                    value={(formData.country as string) || ""}
+                    onValueChange={(val) => updateField("country", val)}
+                    disabled={!editing}
+                    data-testid="select-country"
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="city">{t("common.city")} *</Label>

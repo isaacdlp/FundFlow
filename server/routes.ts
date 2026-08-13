@@ -868,9 +868,13 @@ export async function registerRoutes(
     if (!spvIds.includes(id)) {
       return res.status(403).json({ message: "Access denied" });
     }
-    const ownedEntityIds = new Set(await storage.getEntityIdsOwnedByAccount(me.id));
+    const [ownedEntityIds, managedEntityIds] = await Promise.all([
+      storage.getEntityIdsOwnedByAccount(me.id),
+      storage.getEntityIdsForAccount(me.id),
+    ]);
+    const allEntityIds = new Set([...ownedEntityIds, ...managedEntityIds]);
     const visible = members.filter(m =>
-      m.accountId === me.id || (m.entityId !== null && ownedEntityIds.has(m.entityId))
+      m.accountId === me.id || (m.entityId !== null && allEntityIds.has(m.entityId))
     );
     res.json(visible);
   });
@@ -1192,8 +1196,12 @@ export async function registerRoutes(
       const investments = await storage.getPortfolio();
       return res.json(investments);
     }
-    const ownedEntities = await storage.getEntityIdsOwnedByAccount(me.id);
-    const investments = await storage.getPortfolio({ accountIds: [me.id], entityIds: ownedEntities });
+    const [ownedEntities, managedEntities] = await Promise.all([
+      storage.getEntityIdsOwnedByAccount(me.id),
+      storage.getEntityIdsForAccount(me.id),
+    ]);
+    const entityIds = Array.from(new Set([...ownedEntities, ...managedEntities]));
+    const investments = await storage.getPortfolio({ accountIds: [me.id], entityIds });
     res.json(investments);
   });
 

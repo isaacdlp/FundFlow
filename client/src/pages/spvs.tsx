@@ -3,6 +3,7 @@ import { Link, useLocation } from "wouter";
 import { useTranslation } from "react-i18next";
 import type { SpvInfo } from "@shared/types";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { normalizeSearch } from "@/lib/utils";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -43,12 +44,12 @@ export default function Spvs() {
 
   const filtered = spvsList?.filter(spv => {
     if (!search) return true;
-    const q = search.toLowerCase();
+    const q = normalizeSearch(search);
     return (
-      spv.displayName.toLowerCase().includes(q) ||
-      spv.legalName.toLowerCase().includes(q) ||
-      (spv.organization?.name || "").toLowerCase().includes(q) ||
-      (spv.entityType || "").toLowerCase().includes(q)
+      normalizeSearch(spv.displayName).includes(q) ||
+      normalizeSearch(spv.legalName).includes(q) ||
+      normalizeSearch(spv.organization?.name || "").includes(q) ||
+      normalizeSearch(spv.entityType || "").includes(q)
     );
   });
 

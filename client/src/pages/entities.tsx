@@ -3,6 +3,7 @@ import { Link, useLocation } from "wouter";
 import { Trans, useTranslation } from "react-i18next";
 import type { EntityInfo } from "@shared/types";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { normalizeSearch } from "@/lib/utils";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -48,11 +49,11 @@ export default function Entities() {
 
   const filtered = entitiesList?.filter(e => {
     if (!search) return true;
-    const q = search.toLowerCase();
+    const q = normalizeSearch(search);
     return (
-      e.name.toLowerCase().includes(q) ||
-      e.entityType.toLowerCase().includes(q) ||
-      e.managers.some(m => `${m.account.firstName} ${m.account.lastName}`.toLowerCase().includes(q))
+      normalizeSearch(e.name).includes(q) ||
+      normalizeSearch(e.entityType).includes(q) ||
+      e.managers.some(m => normalizeSearch(`${m.account.firstName} ${m.account.lastName}`).includes(q))
     );
   });
 

@@ -3,9 +3,10 @@ import { Link } from "wouter";
 import { useTranslation } from "react-i18next";
 import type { OrganizationWithOrganizers } from "@shared/types";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { normalizeSearch } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
 import { useOrgPermissions } from "@/hooks/use-org-permissions";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -46,8 +47,9 @@ export default function Organizations() {
 
   const filtered = orgs?.filter((org) => {
     if (!search) return true;
-    return org.name.toLowerCase().includes(search.toLowerCase()) ||
-      (org.description || "").toLowerCase().includes(search.toLowerCase());
+    const q = normalizeSearch(search);
+    return normalizeSearch(org.name).includes(q) ||
+      normalizeSearch(org.description || "").includes(q);
   });
 
   return (
@@ -67,22 +69,18 @@ export default function Organizations() {
         )}
       </div>
 
+      <div className="relative max-w-sm">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          placeholder={t("organizations.searchPlaceholder")}
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="pl-9"
+          data-testid="input-search"
+        />
+      </div>
+
       <Card>
-        <CardHeader>
-          <div className="flex items-center gap-3">
-            <div className="relative flex-1 min-w-[200px]">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder={t("organizations.searchPlaceholder")}
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-9"
-                data-testid="input-search"
-              />
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
           {isLoading ? (
             <div className="space-y-3">{[1,2,3].map(i => <Skeleton key={i} className="h-14 w-full" />)}</div>
           ) : filtered && filtered.length > 0 ? (
@@ -178,7 +176,6 @@ export default function Organizations() {
               </p>
             </div>
           )}
-        </CardContent>
       </Card>
     </div>
   );

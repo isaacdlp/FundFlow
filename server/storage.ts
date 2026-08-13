@@ -278,9 +278,9 @@ export class DatabaseStorage implements IStorage {
       const pattern = `%${search}%`;
       accountList = await db.select().from(accounts)
         .where(or(
-          ilike(accounts.firstName, pattern),
-          ilike(accounts.lastName, pattern),
-          ilike(accounts.email, pattern)
+          sql`unaccent(${accounts.firstName}) ilike unaccent(${pattern})`,
+          sql`unaccent(${accounts.lastName}) ilike unaccent(${pattern})`,
+          sql`unaccent(${accounts.email}) ilike unaccent(${pattern})`
         ))
         .orderBy(sql`${accounts.createdAt} DESC`);
     } else {
@@ -609,7 +609,7 @@ export class DatabaseStorage implements IStorage {
       return out;
     }
     if (method === "By Capital Invested") {
-      const nets = members.map(m => Math.max(0, parseFloat(m.committed || "0") - parseFloat(m.managementFee || "0") - parseFloat(m.otherFee || "0")));
+      const nets = members.map(m => Math.max(0, parseFloat(m.committed || "0") - parseFloat(m.managementFee || "0")));
       const total = nets.reduce((a, b) => a + b, 0);
       members.forEach((m, i) => { out[m.id] = total > 0 ? nets[i] / total : 0; });
       return out;
@@ -725,12 +725,11 @@ export class DatabaseStorage implements IStorage {
 
     const member = await db.transaction(async (tx) => {
       const [spvRow] = await tx.select().from(spvs).where(eq(spvs.id, spvId));
-      // AutoDeploy: auto-call the net capital (committed − fees) and deploy it into the default asset
+      // AutoDeploy: auto-call the net capital (committed − management fee) and deploy it into the default asset
       if (spvRow?.autoDeploy) {
         const committed = parseFloat(values.committed ?? "0");
         const mgmtFee = parseFloat(values.managementFee ?? "0");
-        const otherFee = parseFloat(values.otherFee ?? "0");
-        const capital = Math.max(0, committed - mgmtFee - otherFee);
+        const capital = Math.max(0, committed - mgmtFee);
         // AutoDeploy always overrides totalCalled to match the net capital, even when zero.
         values.totalCalled = capital.toFixed(2);
         if (capital > 0) {
@@ -1032,16 +1031,14 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getAllEntities(search?: string): Promise<EntityWithDetails[]> {
-    let query = db.select().from(entities).orderBy(sql`${entities.name} ASC`);
-    if (search) {
-      query = db.select().from(entities)
-        .where(or(
-          ilike(entities.name, `%${search}%`),
-          ilike(entities.entityType, `%${search}%`),
-        ))
-        .orderBy(sql`${entities.name} ASC`);
-    }
-    const list = await query;
+    const list = search
+      ? await db.select().from(entities)
+          .where(or(
+            sql`unaccent(${entities.name}) ilike unaccent(${`%${search}%`})`,
+            sql`unaccent(${entities.entityType}) ilike unaccent(${`%${search}%`})`,
+          ))
+          .orderBy(sql`${entities.name} ASC`)
+      : await db.select().from(entities).orderBy(sql`${entities.name} ASC`);
     return Promise.all(list.map(e => this.enrichEntity(e)));
   }
 
@@ -1254,10 +1251,14 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getSpvIdsForAccount(accountId: number): Promise<number[]> {
-    const ownedEntityIds = await this.getEntityIdsOwnedByAccount(accountId);
+    const [ownedEntityIds, managedEntityIds] = await Promise.all([
+      this.getEntityIdsOwnedByAccount(accountId),
+      this.getEntityIdsForAccount(accountId),
+    ]);
+    const allEntityIds = Array.from(new Set([...ownedEntityIds, ...managedEntityIds]));
     const conds: any[] = [eq(spvMembers.accountId, accountId)];
-    if (ownedEntityIds.length > 0) {
-      conds.push(inArray(spvMembers.entityId, ownedEntityIds));
+    if (allEntityIds.length > 0) {
+      conds.push(inArray(spvMembers.entityId, allEntityIds));
     }
     const memberOf = await db.select({ id: spvMembers.spvId })
       .from(spvMembers)
@@ -1266,6 +1267,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async seedData(): Promise<void> {
+    await db.execute(sql`CREATE EXTENSION IF NOT EXISTS unaccent`);
     const existingRoles = await db.select().from(roles);
     if (existingRoles.length === 0) {
       await db.insert(roles).values([

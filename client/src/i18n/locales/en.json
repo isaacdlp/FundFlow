@@ -14,6 +14,7 @@
     "add": "Add",
     "remove": "Remove",
     "search": "Search",
+    "clear": "Clear",
     "back": "Back",
     "next": "Next",
     "previous": "Previous",
@@ -70,7 +71,9 @@
     "untitled": "Untitled",
     "today": "Today",
     "ssnTaxId": "SSN / Tax ID",
-    "selectCountry": "Select country"
+    "selectCountry": "Select country",
+    "searchCountry": "Search country...",
+    "noCountryFound": "No country found."
   },
   "nav": {
     "platform": "Platform",
@@ -144,7 +147,7 @@
     "distributions": "Distributions",
     "investments": "Investments",
     "investmentsTitle": "Investments",
-    "searchPlaceholder": "Search by company, SPV, fund or investor...",
+    "searchPlaceholder": "Search",
     "noData": "No data",
     "pieInitialTitle": "Initial contribution by SPV",
     "pieInitialSubtitle": "Capital called at entry",
@@ -164,13 +167,20 @@
     "tooltipValue": "Value",
     "showingCompanies_one": "Showing {{count}} company · {{invCount}} investment",
     "showingCompanies_other": "Showing {{count}} companies · {{invCount}} investments",
-    "entityBadge": "Entity"
+    "showingBeneficiaries_one": "Showing {{count}} beneficiary · {{invCount}} investment",
+    "showingBeneficiaries_other": "Showing {{count}} beneficiaries · {{invCount}} investments",
+    "entityBadge": "Entity",
+    "groupBy": "Group by",
+    "groupBySpv": "SPV",
+    "groupByBeneficiary": "Beneficiary",
+    "filterBy": "Beneficiaries",
+    "filterByActive": "{{count}} of {{total}}"
   },
   "accounts": {
     "title": "Accounts",
     "subtitle": "Manage user accounts and permissions",
     "addAccount": "Add Account",
-    "searchPlaceholder": "Search by name or email...",
+    "searchPlaceholder": "Search",
     "tableName": "Name",
     "tableEmail": "Email",
     "tableRoles": "Roles",
@@ -256,7 +266,7 @@
     "title": "Organizations",
     "subtitle": "Manage organizations that create funds and SPVs",
     "addOrganization": "Add Organization",
-    "searchPlaceholder": "Search organizations...",
+    "searchPlaceholder": "Search",
     "tableOrg": "Organization",
     "tableLocation": "Location",
     "tableOrganizers": "Organizers",
@@ -362,7 +372,7 @@
   "spvs": {
     "title": "Special Purpose Vehicles",
     "subtitle": "Manage all SPVs across organizations",
-    "searchPlaceholder": "Search SPVs...",
+    "searchPlaceholder": "Search",
     "tableName": "Name",
     "tableOrg": "Organization",
     "tableEntityType": "Entity Type",
@@ -555,7 +565,7 @@
     "title": "Entities",
     "subtitle": "Manage associated entities (companies, trusts, etc.)",
     "addEntity": "Add Entity",
-    "searchPlaceholder": "Search by anything",
+    "searchPlaceholder": "Search",
     "tableName": "Name",
     "tableType": "Type",
     "tableManagers": "Managers",
@@ -679,6 +689,8 @@
     "selectedAll": "All documents you can access.",
     "selectedFolder": "Showing documents in this folder and its sub-folders.",
     "noDocuments": "No documents in this folder.",
+    "noSearchResults": "No documents match your search.",
+    "searchPlaceholder": "Search",
     "countLabel": "{{count}}"
   },
   "settings": {

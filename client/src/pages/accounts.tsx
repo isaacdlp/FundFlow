@@ -4,7 +4,8 @@ import { Trans, useTranslation } from "react-i18next";
 import type { AccountWithRoles } from "@shared/types";
 import { useAuth } from "@/hooks/use-auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { normalizeSearch } from "@/lib/utils";
+import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,11 +45,12 @@ export default function Accounts() {
     },
   });
 
-  const filtered = accounts?.filter((account) => (
-    !search ||
-    `${account.firstName} ${account.lastName}`.toLowerCase().includes(search.toLowerCase()) ||
-    account.email.toLowerCase().includes(search.toLowerCase())
-  ));
+  const filtered = accounts?.filter((account) => {
+    if (!search) return true;
+    const q = normalizeSearch(search);
+    return normalizeSearch(`${account.firstName} ${account.lastName}`).includes(q) ||
+      normalizeSearch(account.email).includes(q);
+  });
 
   return (
     <div className="p-6 space-y-6">
@@ -67,22 +69,18 @@ export default function Accounts() {
         )}
       </div>
 
+      <div className="relative max-w-sm">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+        <Input
+          placeholder={t("accounts.searchPlaceholder")}
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="pl-9"
+          data-testid="input-search"
+        />
+      </div>
+
       <Card>
-        <CardHeader>
-          <div className="flex items-center gap-3 flex-wrap">
-            <div className="relative flex-1 min-w-[200px]">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder={t("accounts.searchPlaceholder")}
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-9"
-                data-testid="input-search"
-              />
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
           {isLoading ? (
             <div className="space-y-3">
               {[1,2,3,4,5].map(i => <Skeleton key={i} className="h-14 w-full" />)}
@@ -175,7 +173,6 @@ export default function Accounts() {
               </p>
             </div>
           )}
-        </CardContent>
       </Card>
     </div>
   );

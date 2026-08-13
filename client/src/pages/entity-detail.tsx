@@ -1,5 +1,5 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useRoute, Link, useLocation } from "wouter";
+import { useRoute, Link, useLocation, useSearch } from "wouter";
 import { useTranslation } from "react-i18next";
 import { useLocalePath, useLocale } from "@/i18n/hooks";
 import { ROUTE_PATTERNS } from "@/i18n/routes";
@@ -26,6 +26,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { CountrySelect } from "@/components/country-select";
 import {
   Select,
   SelectContent,
@@ -357,9 +358,10 @@ export default function EntityDetail() {
   const entityId = params?.id;
   const { toast } = useToast();
   const { isAdmin } = useAuth();
-  const [, navigate] = useLocation();
+  const [location, navigate] = useLocation();
+  const search = useSearch();
+  const activeTab = new URLSearchParams(search).get("tab") ?? "overview";
   const [editing, setEditing] = useState(false);
-  const [activeTab, setActiveTab] = useState("overview");
 
   const { data: entity, isLoading } = useQuery<EntityInfo>({
     queryKey: ["/api/entities", entityId],
@@ -538,7 +540,7 @@ export default function EntityDetail() {
         </div>
       </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
+      <Tabs value={activeTab} onValueChange={(t) => navigate(`${location}?tab=${t}`, { replace: true })}>
         <TabsList>
           <TabsTrigger value="overview" data-testid="tab-overview">{t("entityDetail.tabOverview")}</TabsTrigger>
           <TabsTrigger value="owners" data-testid="tab-owners">{t("entityDetail.tabOwners")}</TabsTrigger>
@@ -631,7 +633,12 @@ export default function EntityDetail() {
             <CardContent className="space-y-4">
               <div className="space-y-2">
                 <Label>{t("common.country")}</Label>
-                <Input value={formData.country || ""} onChange={e => updateField("country", e.target.value)} disabled={!editing} data-testid="input-country" />
+                <CountrySelect
+                  value={formData.country || ""}
+                  onValueChange={(val) => updateField("country", val)}
+                  disabled={!editing}
+                  data-testid="input-country"
+                />
               </div>
               <div className="space-y-2">
                 <Label>{t("createEntity.street")}</Label>

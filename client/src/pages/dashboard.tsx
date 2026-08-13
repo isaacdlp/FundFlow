@@ -5,10 +5,14 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import type { PortfolioInvestment, AccountWithRoles, EntityInfo } from "@shared/types";
-import { Search, TrendingUp, TrendingDown, ArrowRight, ChevronDown, ChevronRight, Briefcase, ArrowLeft } from "lucide-react";
+import { Search, TrendingUp, TrendingDown, ArrowRight, ChevronDown, ChevronRight, Briefcase, ArrowLeft, Filter } from "lucide-react";
 import { PieChart, Pie, Cell, Tooltip as RTooltip, ResponsiveContainer } from "recharts";
 import { useLocale, useLocalePath } from "@/i18n/hooks";
 
@@ -123,10 +127,24 @@ interface CompanyGroup {
   investments: PortfolioInvestment[];
 }
 
+interface BeneficiaryGroup {
+  key: string;
+  name: string;
+  investorType: "account" | "entity";
+  investorId: number;
+  initial: number;
+  current: number;
+  distributions: number;
+  roi: number;
+  investments: PortfolioInvestment[];
+}
+
 export default function Dashboard() {
   const { user, isAdmin } = useAuth();
   const [search, setSearch] = useState("");
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [groupBy, setGroupBy] = useState<"spv" | "beneficiary">("spv");
+  const [selectedBeneficiaryKeys, setSelectedBeneficiaryKeys] = useState<Set<string> | null>(null);
   const { t } = useTranslation();
   const locale = useLocale();
   const lp = useLocalePath();
@@ -156,8 +174,40 @@ export default function Dashboard() {
     enabled: !!entityIdParam,
   });
 
-  const filtered = useMemo(() => {
+  // All unique beneficiaries derived from the raw investment list.
+  const allBeneficiaries = useMemo(() => {
+    const seen = new Map<string, { key: string; name: string; investorType: string }>();
+    for (const inv of investments ?? []) {
+      const key = `${inv.investorType}:${inv.investorId}`;
+      if (!seen.has(key)) seen.set(key, { key, name: inv.investorName, investorType: inv.investorType });
+    }
+    return Array.from(seen.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [investments]);
+
+  const isMultiBeneficiary = allBeneficiaries.length > 1;
+
+  const isBeneficiarySelected = (key: string) =>
+    selectedBeneficiaryKeys === null || selectedBeneficiaryKeys.has(key);
+
+  const toggleBeneficiary = (key: string) => {
+    const allKeys = allBeneficiaries.map(b => b.key);
+    setSelectedBeneficiaryKeys(prev => {
+      const current = prev ?? new Set(allKeys);
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next.size === allKeys.length ? null : next;
+    });
+  };
+
+  // Apply beneficiary filter first, then search.
+  const beneficiaryFiltered = useMemo(() => {
     const items = investments ?? [];
+    if (selectedBeneficiaryKeys === null) return items;
+    return items.filter(i => selectedBeneficiaryKeys.has(`${i.investorType}:${i.investorId}`));
+  }, [investments, selectedBeneficiaryKeys]);
+
+  const filtered = useMemo(() => {
+    const items = beneficiaryFiltered;
     if (!search.trim()) return items;
     const q = search.toLowerCase();
     return items.filter(i =>
@@ -168,7 +218,7 @@ export default function Dashboard() {
       i.investorName.toLowerCase().includes(q) ||
       (i.investorEmail || "").toLowerCase().includes(q)
     );
-  }, [investments, search]);
+  }, [beneficiaryFiltered, search]);
 
   const summary = useMemo(() => {
     const initial = filtered.reduce((s, i) => s + parseFloat(i.totalCalled || "0"), 0);
@@ -233,6 +283,31 @@ export default function Dashboard() {
     return arr;
   }, [filtered, t]);
 
+  const groupedByBeneficiary = useMemo<BeneficiaryGroup[]>(() => {
+    const map = new Map<string, BeneficiaryGroup>();
+    for (const inv of filtered) {
+      const key = `${inv.investorType}:${inv.investorId}`;
+      if (!map.has(key)) {
+        map.set(key, {
+          key, name: inv.investorName,
+          investorType: inv.investorType as "account" | "entity",
+          investorId: inv.investorId,
+          initial: 0, current: 0, distributions: 0, roi: 0,
+          investments: [],
+        });
+      }
+      const g = map.get(key)!;
+      g.initial += parseFloat(inv.totalCalled || "0");
+      g.current += parseFloat(inv.currentValue || "0");
+      g.distributions += parseFloat(inv.distributed || "0");
+      g.investments.push(inv);
+    }
+    return Array.from(map.values()).map(g => ({
+      ...g,
+      roi: g.initial > 0 ? ((g.current + g.distributions - g.initial) / g.initial) * 100 : 0,
+    })).sort((a, b) => a.name.localeCompare(b.name));
+  }, [filtered]);
+
   const toggle = (key: string) => setExpanded(e => ({ ...e, [key]: !e[key] }));
 
   const titleText =
@@ -252,6 +327,9 @@ export default function Dashboard() {
           : user
             ? t("dashboard.subtitleUser", { name: user.firstName })
             : t("dashboard.subtitleUserAnonymous");
+
+  const activeFilterCount = selectedBeneficiaryKeys?.size ?? null;
+  const totalBeneficiaryCount = allBeneficiaries.length;
 
   return (
     <div className="p-6 space-y-6">
@@ -346,29 +424,80 @@ export default function Dashboard() {
         <CardHeader className="space-y-3">
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <h2 className="text-lg font-semibold">{t("dashboard.investmentsTitle")}</h2>
-            <div className="relative w-full sm:w-80">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder={t("dashboard.searchPlaceholder")}
-                className="pl-9"
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                data-testid="input-search-portfolio"
-              />
+            <div className="flex items-center gap-2 flex-wrap">
+              {isMultiBeneficiary && (
+                <>
+                  <Select value={groupBy} onValueChange={v => setGroupBy(v as "spv" | "beneficiary")}>
+                    <SelectTrigger className="h-9 w-auto gap-1" data-testid="select-group-by">
+                      <span className="text-muted-foreground text-xs mr-0.5">{t("dashboard.groupBy")}:</span>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="spv">{t("dashboard.groupBySpv")}</SelectItem>
+                      <SelectItem value="beneficiary">{t("dashboard.groupByBeneficiary")}</SelectItem>
+                    </SelectContent>
+                  </Select>
+
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" className="h-9 gap-2" data-testid="button-filter-beneficiaries">
+                        <Filter className="h-3.5 w-3.5" />
+                        {activeFilterCount !== null
+                          ? t("dashboard.filterByActive", { count: activeFilterCount, total: totalBeneficiaryCount })
+                          : t("dashboard.filterBy")}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-64 p-2" align="end">
+                      <div className="space-y-0.5" data-testid="popover-filter-beneficiaries">
+                        {allBeneficiaries.map(b => (
+                          <div
+                            key={b.key}
+                            className="flex items-center gap-2.5 px-2 py-1.5 rounded-md hover:bg-muted cursor-pointer"
+                            onClick={() => toggleBeneficiary(b.key)}
+                          >
+                            <Checkbox
+                              checked={isBeneficiarySelected(b.key)}
+                              onCheckedChange={() => toggleBeneficiary(b.key)}
+                              onClick={e => e.stopPropagation()}
+                            />
+                            <span className="text-sm flex items-center gap-1.5 min-w-0">
+                              {b.investorType === "entity" && (
+                                <Badge variant="outline" className="text-[10px] px-1 py-0 flex-shrink-0">{t("dashboard.entityBadge")}</Badge>
+                              )}
+                              <span className="truncate">{b.name}</span>
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                </>
+              )}
+
+              <div className="relative w-full sm:w-80">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder={t("dashboard.searchPlaceholder")}
+                  className="pl-9"
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  data-testid="input-search-portfolio"
+                />
+              </div>
             </div>
           </div>
         </CardHeader>
         <CardContent>
           {isLoading ? (
             <div className="space-y-2">{[1,2,3,4].map(i => <Skeleton key={i} className="h-12 w-full" />)}</div>
-          ) : groupedByCompany.length === 0 ? (
+          ) : (groupBy === "spv" ? groupedByCompany.length : groupedByBeneficiary.length) === 0 ? (
             <div className="text-center py-12">
               <Briefcase className="h-12 w-12 mx-auto text-muted-foreground mb-3" />
               <p className="text-sm text-muted-foreground">
                 {search ? t("dashboard.noInvestmentsSearch") : isAdmin ? t("dashboard.noInvestmentsAdmin") : t("dashboard.noInvestmentsUser")}
               </p>
             </div>
-          ) : (
+          ) : groupBy === "spv" ? (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
@@ -454,6 +583,99 @@ export default function Dashboard() {
               </table>
               <p className="mt-3 text-xs text-muted-foreground" data-testid="text-results-count">
                 {t("dashboard.showingCompanies", { count: groupedByCompany.length, invCount: filtered.length })}
+              </p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-left text-xs uppercase tracking-wider text-muted-foreground">
+                    <th className="py-2 pr-3 font-medium w-8"></th>
+                    <th className="py-2 pr-3 font-medium">{t("dashboard.tableName")}</th>
+                    <th className="py-2 pr-3 font-medium text-right">{t("dashboard.tableTotalCalled")}</th>
+                    <th className="py-2 pr-3 font-medium text-right">{t("dashboard.tableCurrentValue")}</th>
+                    <th className="py-2 pr-3 font-medium text-right">{t("dashboard.tableDistributed")}</th>
+                    <th className="py-2 pr-3 font-medium text-right">{t("dashboard.tableRoi")}</th>
+                    <th className="py-2 pr-3 font-medium text-right">{t("dashboard.tableDate")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {groupedByBeneficiary.flatMap(group => {
+                    const isOpen = expanded[group.key] ?? false;
+                    const rows: JSX.Element[] = [];
+                    rows.push(
+                      <tr
+                        key={`bgroup-${group.key}`}
+                        className="border-b hover-elevate cursor-pointer"
+                        onClick={() => toggle(group.key)}
+                        data-testid={`row-beneficiary-${group.key}`}
+                      >
+                        <td className="py-3 pr-3">
+                          {isOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                        </td>
+                        <td className="py-3 pr-3">
+                          <div className="flex items-center gap-2">
+                            <div className="h-7 w-7 rounded-full bg-primary/10 flex items-center justify-center text-primary text-xs font-semibold flex-shrink-0">
+                              {group.name[0]?.toUpperCase()}
+                            </div>
+                            <div>
+                              <p className="font-semibold flex items-center gap-1.5">
+                                {group.investorType === "entity" && (
+                                  <Badge variant="outline" className="text-[10px] px-1 py-0">{t("dashboard.entityBadge")}</Badge>
+                                )}
+                                {group.name}
+                              </p>
+                              <p className="text-xs text-muted-foreground">{group.investments.length} {group.investments.length === 1 ? t("dashboard.investments").toLowerCase().replace(/s$/, "") : t("dashboard.investments").toLowerCase()}</p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-3 pr-3 text-right font-medium">${fmtMoney(group.initial, locale)}</td>
+                        <td className="py-3 pr-3 text-right font-medium">${fmtMoney(group.current, locale)}</td>
+                        <td className="py-3 pr-3 text-right font-medium">${fmtMoney(group.distributions, locale)}</td>
+                        <td className={`py-3 pr-3 text-right font-medium ${group.roi >= 0 ? "text-emerald-600" : "text-red-600"}`}>
+                          {fmtPct(group.roi)}
+                        </td>
+                        <td className="py-3 pr-3 text-right text-muted-foreground">—</td>
+                      </tr>
+                    );
+                    if (isOpen) {
+                      group.investments.forEach(inv => {
+                        const initial = parseFloat(inv.totalCalled || "0");
+                        const current = parseFloat(inv.currentValue || "0");
+                        const distributions = parseFloat(inv.distributed || "0");
+                        const roi = initial > 0 ? ((current + distributions - initial) / initial) * 100 : 0;
+                        rows.push(
+                          <tr
+                            key={`binv-${inv.memberId}`}
+                            className="border-b bg-muted/20 hover-elevate"
+                            data-testid={`row-investment-${inv.memberId}`}
+                          >
+                            <td className="py-2 pr-3"></td>
+                            <td className="py-2 pr-3 pl-10">
+                              <Link href={lp("spvDetail", { id: inv.spvId })}>
+                                <span className="text-muted-foreground hover:text-foreground cursor-pointer" data-testid={`text-spv-${inv.memberId}`}>
+                                  {inv.spvName}
+                                  <span className="ml-1.5 text-xs opacity-60">{inv.organizationName}</span>
+                                </span>
+                              </Link>
+                            </td>
+                            <td className="py-2 pr-3 text-right">${fmtMoney(initial, locale)}</td>
+                            <td className="py-2 pr-3 text-right">${fmtMoney(current, locale)}</td>
+                            <td className="py-2 pr-3 text-right">${fmtMoney(distributions, locale)}</td>
+                            <td className={`py-2 pr-3 text-right ${roi >= 0 ? "text-emerald-600" : "text-red-600"}`}>
+                              {fmtPct(roi)}
+                            </td>
+                            <td className="py-2 pr-3 text-right text-muted-foreground">{fmtDate(inv.date, locale)}</td>
+                          </tr>
+                        );
+                      });
+                    }
+                    return rows;
+                  })}
+                </tbody>
+              </table>
+              <p className="mt-3 text-xs text-muted-foreground" data-testid="text-results-count">
+                {t("dashboard.showingBeneficiaries", { count: groupedByBeneficiary.length, invCount: filtered.length })}
               </p>
             </div>
           )}

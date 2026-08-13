@@ -38,6 +38,19 @@ describe("/api/spvs", () => {
       expect(res.body).toHaveLength(1);
       expect(res.body[0].id).toBe(spvA.id);
     });
+
+    it("entity manager sees SPVs their managed entity is invested in", async () => {
+      // storage.getSpvIdsForAccount now includes managed-entity memberships;
+      // this test verifies the route filters by whatever it returns.
+      const agent = await loginAs(app, mockStorage, fixtures.memberAccount);
+      mockStorage.getAllSpvs.mockResolvedValue([spvA, spvB]);
+      mockStorage.getOrganizationIdsAsOrganizer.mockResolvedValue([]);
+      mockStorage.getSpvIdsForAccount.mockResolvedValue([spvB.id]);
+      const res = await agent.get("/api/spvs");
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveLength(1);
+      expect(res.body[0].id).toBe(spvB.id);
+    });
   });
 
   describe("GET /api/organizations/:id/spvs", () => {
@@ -53,6 +66,21 @@ describe("/api/spvs", () => {
       const spvA2 = fixtures.spv({ id: 102, organizationId: 10 });
       mockStorage.getOrganizationIdsForAccount.mockResolvedValue([orgA.id]);
       mockStorage.getSpvs.mockResolvedValue([spvA, spvA2]);
+      mockStorage.getSpvIdsForAccount.mockResolvedValue([spvA.id]);
+      const res = await agent.get(`/api/organizations/${orgA.id}/spvs`);
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveLength(1);
+      expect(res.body[0].id).toBe(spvA.id);
+    });
+
+    it("entity manager sees SPVs their managed entity is invested in", async () => {
+      // getSpvIdsForAccount (storage layer) includes managed entities' SPVs —
+      // this test verifies the route honours whatever that method returns.
+      const agent = await loginAs(app, mockStorage, fixtures.memberAccount);
+      const spvA2 = fixtures.spv({ id: 102, organizationId: 10 });
+      mockStorage.getOrganizationIdsForAccount.mockResolvedValue([orgA.id]);
+      mockStorage.getSpvs.mockResolvedValue([spvA, spvA2]);
+      // Storage returns spvA because the managed entity is a member there.
       mockStorage.getSpvIdsForAccount.mockResolvedValue([spvA.id]);
       const res = await agent.get(`/api/organizations/${orgA.id}/spvs`);
       expect(res.status).toBe(200);
@@ -126,7 +154,7 @@ describe("/api/spvs", () => {
       mockStorage.createSpv.mockResolvedValue(spvA);
       const res = await agent
         .post(`/api/organizations/${orgA.id}/spvs`)
-        .send({ legalName: "Test SPV LLC", displayName: "Test SPV" });
+        .send({ legalName: "Test SPV LLC", displayName: "Test SPV", dateEstablished: "2024-01-01" });
       expect(res.status).toBe(201);
       expect(mockStorage.createSpv).toHaveBeenCalledWith(
         expect.objectContaining({ organizationId: orgA.id }),

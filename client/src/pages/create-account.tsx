@@ -15,17 +15,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { CountrySelect } from "@/components/country-select";
 import { ArrowLeft, Save } from "lucide-react";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
 
-const COUNTRIES = [
-  "United States", "United Kingdom", "Spain", "Germany", "France",
-  "Italy", "Canada", "Australia", "Japan", "South Korea",
-  "Brazil", "Mexico", "India", "China", "Singapore",
-  "Switzerland", "Netherlands", "Sweden", "Ireland", "Portugal",
-];
 
 export default function CreateAccount() {
   const [, navigate] = useLocation();
@@ -254,21 +249,11 @@ export default function CreateAccount() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="country">{t("common.country")}</Label>
-                  <Select
+                  <CountrySelect
                     value={formData.country}
                     onValueChange={(val) => updateField("country", val)}
-                  >
-                    <SelectTrigger data-testid="select-country">
-                      <SelectValue placeholder={t("common.selectCountry")} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {COUNTRIES.map((c) => (
-                        <SelectItem key={c} value={c}>
-                          {c}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                    data-testid="select-country"
+                  />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="city">{t("common.city")}</Label>

@@ -1,5 +1,5 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useRoute, Link } from "wouter";
+import { useRoute, Link, useLocation, useSearch } from "wouter";
 import { useTranslation } from "react-i18next";
 import { useLocalePath, useLocale } from "@/i18n/hooks";
 import { ROUTE_PATTERNS } from "@/i18n/routes";
@@ -30,8 +30,8 @@ const ENTITY_TYPES = ["LLC", "LP", "Corporation", "Trust", "Other"];
 const ALLOCATION_METHODS = ["By Commitment", "By Capital Invested", "Custom"] as const;
 const INSTRUMENT_TYPES = ["Equity", "Convertible Note", "SAFE", "Preferred Stock", "Common Stock", "Warrant", "Debt", "Other"] as const;
 
-function capitalOf(m: { committed: string | null; managementFee: string | null; otherFee: string | null }): number {
-  return Math.max(0, parseFloat(m.committed || "0") - parseFloat(m.managementFee || "0") - parseFloat(m.otherFee || "0"));
+function capitalOf(m: { committed: string | null; managementFee: string | null }): number {
+  return Math.max(0, parseFloat(m.committed || "0") - parseFloat(m.managementFee || "0"));
 }
 
 function computeOwnershipPercents(
@@ -312,8 +312,7 @@ function SpvMembersTab({ spvId, orgId, canEdit, allocationMethod }: { spvId: str
               const isEditing = editingMemberId === member.id;
               const committed = parseFloat(member.committed || "0");
               const mgmtFee = parseFloat(member.managementFee || "0");
-              const otherFee = parseFloat(member.otherFee || "0");
-              const capital = Math.max(0, committed - mgmtFee - otherFee);
+              const capital = Math.max(0, committed - mgmtFee);
               const totalCalled = parseFloat(member.totalCalled || "0");
               const commitmentRemaining = capital - totalCalled;
               const current = parseFloat(member.currentValue || "0");
@@ -667,24 +666,16 @@ function SpvAssetsTab({ spvId, canEdit, spvCash }: { spvId: string; canEdit: boo
               return (
                 <div
                   key={a.id}
-                  className={`p-3 rounded-md border ${a.isDefault ? "border-amber-400 ring-2 ring-amber-300/60 bg-amber-50/40 dark:bg-amber-500/5" : ""}`}
+                  className={`p-3 rounded-md border ${a.isDefault ? "border-primary ring-2 ring-primary/30 bg-primary/5" : ""}`}
                   data-testid={`asset-${a.id}`}
                 >
                   <div className="flex items-center gap-3">
-                    <div className={`h-10 w-10 rounded-md flex items-center justify-center flex-shrink-0 ${a.isDefault ? "bg-amber-100 text-amber-600 dark:bg-amber-500/20 dark:text-amber-400" : "bg-primary/10 text-primary"}`}>
+                    <div className="h-10 w-10 rounded-md flex items-center justify-center flex-shrink-0 bg-primary/10 text-primary">
                       {a.isDefault ? <Star className="h-5 w-5 fill-current" /> : <Briefcase className="h-5 w-5" />}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate flex items-center gap-2" data-testid={`text-asset-name-${a.id}`}>
+                      <p className="text-sm font-medium truncate" data-testid={`text-asset-name-${a.id}`}>
                         {a.companyName}
-                        {a.isDefault && (
-                          <Badge
-                            className="text-[10px] gap-1 bg-amber-500 hover:bg-amber-500 text-white border-transparent"
-                            data-testid={`badge-default-${a.id}`}
-                          >
-                            <Star className="h-3 w-3 fill-current" /> {t("spvDetail.defaultBadge")}
-                          </Badge>
-                        )}
                       </p>
                       <p className="text-xs text-muted-foreground">
                         <Badge variant="secondary" className="mr-2 text-[10px]">{instrumentLabel(a.instrumentType)}</Badge>
@@ -830,8 +821,10 @@ export default function SpvDetail() {
   const spvId = params?.id;
   const { toast } = useToast();
   const { canManageOrg } = useOrgPermissions();
+  const [location, navigate] = useLocation();
+  const search = useSearch();
+  const activeTab = new URLSearchParams(search).get("tab") ?? "configuration";
   const [editing, setEditing] = useState(false);
-  const [activeTab, setActiveTab] = useState("configuration");
 
   const { data: spv, isLoading } = useQuery<SpvInfo>({
     queryKey: ["/api/spvs", spvId],
@@ -1052,7 +1045,7 @@ export default function SpvDetail() {
         </Card>
       </div>
 
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
+      <Tabs value={activeTab} onValueChange={(t) => navigate(`${location}?tab=${t}`, { replace: true })}>
         <TabsList>
           <TabsTrigger value="configuration" data-testid="tab-configuration">{t("spvDetail.configuration")}</TabsTrigger>
           <TabsTrigger value="assets" data-testid="tab-spv-assets">{t("spvDetail.assets")}</TabsTrigger>

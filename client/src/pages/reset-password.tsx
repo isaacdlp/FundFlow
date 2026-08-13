@@ -12,6 +12,15 @@ import { Loader2, KeyRound, CheckCircle } from "lucide-react";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { useLocalePath } from "@/i18n/hooks";
 
+const Wrapper: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <div className="min-h-screen flex items-center justify-center bg-muted/30 p-4 relative">
+    <div className="absolute top-4 right-4">
+      <LanguageSwitcher variant="outline" />
+    </div>
+    <Card className="w-full max-w-md">{children}</Card>
+  </div>
+);
+
 export default function ResetPassword() {
   const searchString = useSearch();
   const params = new URLSearchParams(searchString);
@@ -36,15 +45,6 @@ export default function ResetPassword() {
     if (password.length < 6) return;
     mutation.mutate();
   };
-
-  const Wrapper: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-    <div className="min-h-screen flex items-center justify-center bg-muted/30 p-4 relative">
-      <div className="absolute top-4 right-4">
-        <LanguageSwitcher variant="outline" />
-      </div>
-      <Card className="w-full max-w-md">{children}</Card>
-    </div>
-  );
 
   if (!token) {
     return (
