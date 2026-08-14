@@ -1,5 +1,6 @@
 import nodemailer from "nodemailer";
 import { log } from "./index";
+import { RESET_PASSWORD_PATHS, type Locale as Lang } from "@shared/i18n";
 
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST || "smtp.ionos.com",
@@ -20,8 +21,6 @@ function getBaseUrl(): string {
   }
   return `http://localhost:${process.env.PORT || 5000}`;
 }
-
-type Lang = "en" | "es" | "fr";
 
 function normalizeLang(language?: string): Lang {
   if (language === "es" || language === "fr") return language;
@@ -196,7 +195,7 @@ export async function sendPasswordResetEmail(
 ): Promise<boolean> {
   const lang = normalizeLang(language);
   const s = resetStrings[lang];
-  const resetUrl = `${getBaseUrl()}/reset-password?token=${token}`;
+  const resetUrl = `${getBaseUrl()}/${lang}${RESET_PASSWORD_PATHS[lang]}?token=${token}`;
   const fromAddress = process.env.SMTP_FROM || process.env.SMTP_USER || "noreply@example.com";
 
   try {

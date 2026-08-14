@@ -1,6 +1,5 @@
-export const LOCALES = ["en", "es", "fr"] as const;
-export type Locale = (typeof LOCALES)[number];
-export const DEFAULT_LOCALE: Locale = "en";
+import { LOCALES, DEFAULT_LOCALE, RESET_PASSWORD_PATHS, type Locale } from "@shared/i18n";
+export { LOCALES, DEFAULT_LOCALE, type Locale };
 
 export const LOCALE_LABELS: Record<Locale, { native: string; short: string }> = {
   en: { native: "English", short: "EN" },
@@ -58,7 +57,7 @@ export const ROUTE_PATTERNS: Record<RouteKey, Record<Locale, string>> = {
   settingsManagement:  { en: "/settings/management",             es: "/configuracion/administracion",    fr: "/parametres/administration" },
   settingsApiTokens:   { en: "/settings/api-tokens",             es: "/configuracion/api-tokens",        fr: "/parametres/api-tokens" },
   forgotPassword:      { en: "/forgot-password",                 es: "/olvide-contrasena",               fr: "/mot-de-passe-oublie" },
-  resetPassword:       { en: "/reset-password",                  es: "/restablecer-contrasena",          fr: "/reinitialiser-mot-de-passe" },
+  resetPassword:       RESET_PASSWORD_PATHS,
   orgLanding:          { en: "/org/:slug",                       es: "/organizacion/:slug",              fr: "/organisation/:slug" },
 };
 /** Returns the locale prefix in a pathname like "/en/foo" → "en", or null if missing/invalid. */

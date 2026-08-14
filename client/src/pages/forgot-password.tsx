@@ -10,17 +10,18 @@ import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ArrowLeft, Loader2, Mail, CheckCircle } from "lucide-react";
 import { LanguageSwitcher } from "@/components/language-switcher";
-import { useLocalePath } from "@/i18n/hooks";
+import { useLocalePath, useLocale } from "@/i18n/hooks";
 
 export default function ForgotPassword() {
   const [email, setEmail] = useState("");
   const [sent, setSent] = useState(false);
   const { t } = useTranslation();
   const lp = useLocalePath();
+  const locale = useLocale();
 
   const mutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/auth/forgot-password", { email });
+      const res = await apiRequest("POST", "/api/auth/forgot-password", { email, language: locale });
       return res.json();
     },
     onSuccess: () => setSent(true),

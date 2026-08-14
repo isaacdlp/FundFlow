@@ -196,6 +196,10 @@ paths:
               required: [email]
               properties:
                 email: { type: string, format: email }
+                language:
+                  type: string
+                  enum: [en, es, fr]
+                  description: Locale of the page the request was made from. The reset email is sent in this language; falls back to the account's saved language if omitted.
       responses:
         '200': { description: Always returns 200 (does not leak account existence) }
 

@@ -5,6 +5,7 @@ import path from "path";
 import yaml from "js-yaml";
 import { storage } from "./storage";
 import { insertAccountSchema, updateAccountSchema, insertOrganizationSchema, updateOrganizationSchema, insertSpvSchema, updateSpvSchema, insertEntitySchema, updateEntitySchema, createApiTokenSchema } from "@shared/schema";
+import { isLocale } from "@shared/i18n";
 import { ZodError } from "zod";
 import { fromZodError } from "zod-validation-error";
 import type { AccountWithRoles } from "./storage";
@@ -322,14 +323,17 @@ export async function registerRoutes(
   });
 
   app.post("/api/auth/forgot-password", async (req, res) => {
-    const { email } = req.body;
+    const { email, language } = req.body;
     if (!email) {
       return res.status(400).json({ message: "Email is required" });
     }
     const account = await storage.getAccountByEmail(email);
     if (account) {
       const token = await storage.createPasswordResetToken(account.id);
-      await sendPasswordResetEmail(account.email, account.firstName, token, account.language);
+      // Use the language of the page the request came from, not the account's saved
+      // preference, so the email matches what the user is currently looking at.
+      const requestLanguage = isLocale(language) ? language : account.language;
+      await sendPasswordResetEmail(account.email, account.firstName, token, requestLanguage);
     }
     res.json({ message: "If an account with that email exists, a password reset link has been sent." });
   });
