@@ -2,6 +2,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useRoute, Link, useLocation, useSearch } from "wouter";
 import { useTranslation } from "react-i18next";
 import { useLocalePath, useLocale } from "@/i18n/hooks";
+import { fmtMoney } from "@/lib/format";
 import { ROUTE_PATTERNS } from "@/i18n/routes";
 import type { SpvInfo, SpvMemberInfo, MemberInfo, OrganizerAccount, EntityInfo, SpvAssetInfo, SpvAssetValuationInfo, CurrencyInfo } from "@shared/types";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -58,14 +59,15 @@ function computeOwnershipPercents(
   members.forEach((m, i) => { out[m.id] = total > 0 ? (committeds[i] / total) * 100 : null; });
   return out;
 }
-function formatCurrency(value: string | null): string {
-  const num = parseFloat(value || "0");
-  return num.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+function formatCurrency(value: string | number | null, symbol: string, locale: string): string {
+  const num = typeof value === "number" ? value : parseFloat(value || "0");
+  return symbol + fmtMoney(num, locale);
 }
 
-function SpvMembersTab({ spvId, orgId, canEdit, allocationMethod }: { spvId: string; orgId: number; canEdit: boolean; allocationMethod: string }) {
+function SpvMembersTab({ spvId, orgId, canEdit, allocationMethod, currencySymbol }: { spvId: string; orgId: number; canEdit: boolean; allocationMethod: string; currencySymbol: string }) {
   const { toast } = useToast();
   const { t } = useTranslation();
+  const locale = useLocale();
   const lp = useLocalePath();
   const [investorType, setInvestorType] = useState<"account" | "entity">("account");
   const [selectedAccountId, setSelectedAccountId] = useState("");
@@ -440,15 +442,15 @@ function SpvMembersTab({ spvId, orgId, canEdit, allocationMethod }: { spvId: str
                       </div>
                       <div>
                         <p className="text-muted-foreground">{t("spvDetail.committed")}</p>
-                        <p className="font-medium" data-testid={`text-committed-${member.id}`}>${formatCurrency(member.committed)}</p>
+                        <p className="font-medium" data-testid={`text-committed-${member.id}`}>{formatCurrency(member.committed, currencySymbol, locale)}</p>
                       </div>
                       <div>
                         <p className="text-muted-foreground">{t("spvDetail.managementFee")}</p>
-                        <p className="font-medium" data-testid={`text-management-fee-${member.id}`}>${formatCurrency(member.managementFee)}</p>
+                        <p className="font-medium" data-testid={`text-management-fee-${member.id}`}>{formatCurrency(member.managementFee, currencySymbol, locale)}</p>
                       </div>
                       <div>
                         <p className="text-muted-foreground">{t("spvDetail.otherFee")}</p>
-                        <p className="font-medium" data-testid={`text-other-fee-${member.id}`}>${formatCurrency(member.otherFee)}</p>
+                        <p className="font-medium" data-testid={`text-other-fee-${member.id}`}>{formatCurrency(member.otherFee, currencySymbol, locale)}</p>
                       </div>
                       <div>
                         <p className="text-muted-foreground">{t("spvDetail.carryPercent")}</p>
@@ -456,23 +458,23 @@ function SpvMembersTab({ spvId, orgId, canEdit, allocationMethod }: { spvId: str
                       </div>
                       <div>
                         <p className="text-muted-foreground">{t("spvDetail.capital")}</p>
-                        <p className="font-medium" data-testid={`text-capital-${member.id}`}>${capital.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                        <p className="font-medium" data-testid={`text-capital-${member.id}`}>{formatCurrency(capital, currencySymbol, locale)}</p>
                       </div>
                       <div>
                         <p className="text-muted-foreground">{t("spvDetail.totalCalled")}</p>
-                        <p className="font-medium" data-testid={`text-total-called-${member.id}`}>${formatCurrency(member.totalCalled)}</p>
+                        <p className="font-medium" data-testid={`text-total-called-${member.id}`}>{formatCurrency(member.totalCalled, currencySymbol, locale)}</p>
                       </div>
                       <div>
                         <p className="text-muted-foreground">{t("spvDetail.commitmentRemaining")}</p>
-                        <p className="font-medium" data-testid={`text-commitment-remaining-${member.id}`}>${commitmentRemaining.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                        <p className="font-medium" data-testid={`text-commitment-remaining-${member.id}`}>{formatCurrency(commitmentRemaining, currencySymbol, locale)}</p>
                       </div>
                       <div>
                         <p className="text-muted-foreground">{t("spvDetail.distributed")}</p>
-                        <p className="font-medium" data-testid={`text-distributed-${member.id}`}>${formatCurrency(member.distributed)}</p>
+                        <p className="font-medium" data-testid={`text-distributed-${member.id}`}>{formatCurrency(member.distributed, currencySymbol, locale)}</p>
                       </div>
                       <div>
                         <p className="text-muted-foreground">{t("spvDetail.currentValue")}</p>
-                        <p className="font-medium" data-testid={`text-current-${member.id}`}>${formatCurrency(member.currentValue)}</p>
+                        <p className="font-medium" data-testid={`text-current-${member.id}`}>{formatCurrency(member.currentValue, currencySymbol, locale)}</p>
                       </div>
                       <div>
                         <p className="text-muted-foreground">{t("spvDetail.ownership")}</p>
@@ -503,9 +505,10 @@ function SpvMembersTab({ spvId, orgId, canEdit, allocationMethod }: { spvId: str
   );
 }
 
-function SpvAssetsTab({ spvId, canEdit, spvCash }: { spvId: string; canEdit: boolean; spvCash: string }) {
+function SpvAssetsTab({ spvId, canEdit, spvCash, currencyCode, currencySymbol }: { spvId: string; canEdit: boolean; spvCash: string; currencyCode: string; currencySymbol: string }) {
   const { toast } = useToast();
   const { t } = useTranslation();
+  const locale = useLocale();
   const instrumentLabel = (it: string) => {
     const map: Record<string, string> = {
       "Equity": t("spvDetail.instrumentEquity"),
@@ -611,7 +614,7 @@ function SpvAssetsTab({ spvId, canEdit, spvCash }: { spvId: string; canEdit: boo
                 <Input type="date" value={purchaseDate} onChange={e => setPurchaseDate(e.target.value)} data-testid="input-asset-date" />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">{t("spvDetail.costUsd")}</Label>
+                <Label className="text-xs">{t("spvDetail.costIn", { currency: currencyCode })}</Label>
                 <Input type="number" step="0.01" placeholder="0.00" value={cost} onChange={e => setCost(e.target.value)} data-testid="input-asset-cost" />
               </div>
             </div>
@@ -631,7 +634,7 @@ function SpvAssetsTab({ spvId, canEdit, spvCash }: { spvId: string; canEdit: boo
                 {t("spvDetail.setAsDefaultLabel")}
               </Label>
             </div>
-            <p className="text-xs text-muted-foreground">{t("spvDetail.spvCashAvailable", { cash: formatCurrency(spvCash) })}</p>
+            <p className="text-xs text-muted-foreground">{t("spvDetail.spvCashAvailable", { cash: formatCurrency(spvCash, currencySymbol, locale) })}</p>
             <div className="flex justify-end">
               <Button
                 onClick={() => createMutation.mutate({
@@ -678,7 +681,7 @@ function SpvAssetsTab({ spvId, canEdit, spvCash }: { spvId: string; canEdit: boo
                       <p className="text-xs text-muted-foreground">
                         <Badge variant="secondary" className="mr-2 text-[10px]">{instrumentLabel(a.instrumentType)}</Badge>
                         {a.purchaseDate && <>{t("spvDetail.purchasedOn", { date: a.purchaseDate })} </>}
-                        {t("spvDetail.costLabel", { cost: formatCurrency(a.cost) })} · {t("spvDetail.currentLabel", { value: formatCurrency(a.currentValue) })}
+                        {t("spvDetail.costLabel", { cost: formatCurrency(a.cost, currencySymbol, locale) })} · {t("spvDetail.currentLabel", { value: formatCurrency(a.currentValue, currencySymbol, locale) })}
                         {c > 0 && (
                           <span className={change >= 0 ? "ml-2 text-emerald-600" : "ml-2 text-red-600"}>
                             {change >= 0 ? "+" : ""}{change.toFixed(2)}%
@@ -701,7 +704,7 @@ function SpvAssetsTab({ spvId, canEdit, spvCash }: { spvId: string; canEdit: boo
                       </Button>
                     )}
                   </div>
-                  {isOpen && <AssetValuations spvId={spvId} assetId={a.id} canEdit={canEdit} valDate={valDate} setValDate={setValDate} valValue={valValue} setValValue={setValValue} valNote={valNote} setValNote={setValNote} />}
+                  {isOpen && <AssetValuations spvId={spvId} assetId={a.id} canEdit={canEdit} currencyCode={currencyCode} currencySymbol={currencySymbol} valDate={valDate} setValDate={setValDate} valValue={valValue} setValValue={setValValue} valNote={valNote} setValNote={setValNote} />}
                   {a.notes && <p className="text-xs text-muted-foreground mt-2 whitespace-pre-wrap">{a.notes}</p>}
                 </div>
               );
@@ -718,14 +721,15 @@ function SpvAssetsTab({ spvId, canEdit, spvCash }: { spvId: string; canEdit: boo
   );
 }
 
-function AssetValuations({ spvId, assetId, canEdit, valDate, setValDate, valValue, setValValue, valNote, setValNote }: {
-  spvId: string; assetId: number; canEdit: boolean;
+function AssetValuations({ spvId, assetId, canEdit, currencyCode, currencySymbol, valDate, setValDate, valValue, setValValue, valNote, setValNote }: {
+  spvId: string; assetId: number; canEdit: boolean; currencyCode: string; currencySymbol: string;
   valDate: string; setValDate: (s: string) => void;
   valValue: string; setValValue: (s: string) => void;
   valNote: string; setValNote: (s: string) => void;
 }) {
   const { toast } = useToast();
   const { t } = useTranslation();
+  const locale = useLocale();
   const { data: vals, isLoading } = useQuery<SpvAssetValuationInfo[]>({
     queryKey: ["/api/spvs", spvId, "assets", assetId, "valuations"],
   });
@@ -770,7 +774,7 @@ function AssetValuations({ spvId, assetId, canEdit, valDate, setValDate, valValu
             <Input type="date" value={valDate} onChange={e => setValDate(e.target.value)} data-testid={`input-valuation-date-${assetId}`} />
           </div>
           <div className="space-y-1">
-            <Label className="text-xs">{t("spvDetail.valueUsd")}</Label>
+            <Label className="text-xs">{t("spvDetail.valueIn", { currency: currencyCode })}</Label>
             <Input type="number" step="0.01" placeholder="0.00" value={valValue} onChange={e => setValValue(e.target.value)} data-testid={`input-valuation-value-${assetId}`} />
           </div>
           <div className="space-y-1 md:col-span-1">
@@ -794,7 +798,7 @@ function AssetValuations({ spvId, assetId, canEdit, valDate, setValDate, valValu
           {vals.map(v => (
             <div key={v.id} className="flex items-center gap-3 py-1 border-t" data-testid={`valuation-${v.id}`}>
               <span className="font-mono w-24">{v.date}</span>
-              <span className="font-medium">${formatCurrency(v.value)}</span>
+              <span className="font-medium">{formatCurrency(v.value, currencySymbol, locale)}</span>
               {v.note && <span className="text-muted-foreground truncate flex-1">{v.note}</span>}
               {canEdit && (
                 <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => removeMutation.mutate(v.id)} data-testid={`button-remove-valuation-${v.id}`}>
@@ -832,7 +836,10 @@ export default function SpvDetail() {
   const { data: currencies } = useQuery<CurrencyInfo[]>({
     queryKey: ["/api/currencies"],
   });
-  const currencyInfo = currencies?.find(c => c.code === (spv?.currency || "USD"));
+  const currencyCode = spv?.currency || "USD";
+  const currencyInfo = currencies?.find(c => c.code === currencyCode);
+  // Fall back to the code itself (e.g. "EUR ") rather than a misleading "$".
+  const currencySymbol = currencyInfo?.symbol ?? (currencyCode === "USD" ? "$" : `${currencyCode} `);
 
   const orgId = spv?.organizationId;
 
@@ -1022,7 +1029,7 @@ export default function SpvDetail() {
             <Wallet className="h-5 w-5 text-muted-foreground" />
             <div>
               <p className="text-xs text-muted-foreground">{t("spvDetail.cash")}</p>
-              <p className="text-lg font-semibold" data-testid="text-spv-cash">${formatCurrency(spv.cash)}</p>
+              <p className="text-lg font-semibold" data-testid="text-spv-cash">{formatCurrency(spv.cash, currencySymbol, locale)}</p>
             </div>
           </CardContent>
         </Card>
@@ -1031,7 +1038,7 @@ export default function SpvDetail() {
             <Briefcase className="h-5 w-5 text-muted-foreground" />
             <div>
               <p className="text-xs text-muted-foreground">{t("spvDetail.assetValue")}</p>
-              <p className="text-lg font-semibold" data-testid="text-spv-asset-value">${formatCurrency(spv.assetValue)}</p>
+              <p className="text-lg font-semibold" data-testid="text-spv-asset-value">{formatCurrency(spv.assetValue, currencySymbol, locale)}</p>
             </div>
           </CardContent>
         </Card>
@@ -1040,7 +1047,7 @@ export default function SpvDetail() {
             <TrendingUp className="h-5 w-5 text-muted-foreground" />
             <div>
               <p className="text-xs text-muted-foreground">{t("spvDetail.currentValue")}</p>
-              <p className="text-lg font-semibold" data-testid="text-spv-current-value">${formatCurrency(spv.currentValue)}</p>
+              <p className="text-lg font-semibold" data-testid="text-spv-current-value">{formatCurrency(spv.currentValue, currencySymbol, locale)}</p>
             </div>
           </CardContent>
         </Card>
@@ -1336,11 +1343,11 @@ export default function SpvDetail() {
         </TabsContent>
 
         <TabsContent value="assets" className="mt-6">
-          <SpvAssetsTab spvId={spvId!} canEdit={canManageOrg(spv.organizationId)} spvCash={spv.cash} />
+          <SpvAssetsTab spvId={spvId!} canEdit={canManageOrg(spv.organizationId)} spvCash={spv.cash} currencyCode={currencyCode} currencySymbol={currencySymbol} />
         </TabsContent>
 
         <TabsContent value="members" className="mt-6">
-          <SpvMembersTab spvId={spvId!} orgId={spv.organizationId} canEdit={canManageOrg(spv.organizationId)} allocationMethod={spv.allocationMethod || "By Commitment"} />
+          <SpvMembersTab spvId={spvId!} orgId={spv.organizationId} canEdit={canManageOrg(spv.organizationId)} allocationMethod={spv.allocationMethod || "By Commitment"} currencySymbol={currencySymbol} />
         </TabsContent>
       </Tabs>
     </div>

@@ -15,6 +15,7 @@ import type { PortfolioInvestment, AccountWithRoles, EntityInfo, CurrencyInfo, E
 import { Search, TrendingUp, TrendingDown, ArrowRight, ChevronDown, ChevronRight, Briefcase, ArrowLeft, Filter } from "lucide-react";
 import { PieChart, Pie, Cell, Tooltip as RTooltip, ResponsiveContainer } from "recharts";
 import { useLocale, useLocalePath } from "@/i18n/hooks";
+import { LOCALE_TO_BCP, fmtMoney } from "@/lib/format";
 
 const PIE_GRADIENTS: { id: string; from: string; to: string }[] = [
   { id: "grad-blue",       from: "#93c5fd", to: "#1e40af" },
@@ -35,11 +36,6 @@ const PIE_GRADIENTS: { id: string; from: string; to: string }[] = [
   { id: "grad-red",        from: "#fca5a5", to: "#7f1d1d" },
 ];
 
-const LOCALE_TO_BCP: Record<string, string> = { en: "en-US", es: "es-ES", fr: "fr-FR" };
-
-function fmtMoney(n: number, locale: string): string {
-  return n.toLocaleString(LOCALE_TO_BCP[locale] || locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
 function fmtPct(n: number): string {
   if (!isFinite(n)) return "0.00%";
   return `${n >= 0 ? "+" : ""}${n.toFixed(2)}%`;
