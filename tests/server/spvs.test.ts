@@ -160,6 +160,44 @@ describe("/api/spvs", () => {
         expect.objectContaining({ organizationId: orgA.id }),
       );
     });
+
+    it("defaults currency to USD when none is given", async () => {
+      const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
+      mockStorage.getOrganization.mockResolvedValue(orgA);
+      mockStorage.createSpv.mockResolvedValue(spvA);
+      const res = await agent
+        .post(`/api/organizations/${orgA.id}/spvs`)
+        .send({ legalName: "Test SPV LLC", displayName: "Test SPV", dateEstablished: "2024-01-01" });
+      expect(res.status).toBe(201);
+      expect(mockStorage.createSpv).toHaveBeenCalledWith(
+        expect.objectContaining({ currency: "USD" }),
+      );
+    });
+
+    it("accepts an explicit active currency", async () => {
+      const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
+      mockStorage.getOrganization.mockResolvedValue(orgA);
+      mockStorage.createSpv.mockResolvedValue({ ...spvA, currency: "EUR" });
+      mockStorage.getActiveCurrencyCodes.mockResolvedValue(["USD", "EUR"]);
+      const res = await agent
+        .post(`/api/organizations/${orgA.id}/spvs`)
+        .send({ legalName: "Test SPV LLC", displayName: "Test SPV", dateEstablished: "2024-01-01", currency: "eur" });
+      expect(res.status).toBe(201);
+      expect(mockStorage.createSpv).toHaveBeenCalledWith(
+        expect.objectContaining({ currency: "EUR" }),
+      );
+    });
+
+    it("rejects a currency that isn't active", async () => {
+      const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
+      mockStorage.getOrganization.mockResolvedValue(orgA);
+      mockStorage.getActiveCurrencyCodes.mockResolvedValue(["USD", "EUR"]);
+      const res = await agent
+        .post(`/api/organizations/${orgA.id}/spvs`)
+        .send({ legalName: "Test SPV LLC", displayName: "Test SPV", dateEstablished: "2024-01-01", currency: "GBP" });
+      expect(res.status).toBe(400);
+      expect(mockStorage.createSpv).not.toHaveBeenCalled();
+    });
   });
 
   describe("GET /api/spvs/:id/members", () => {
@@ -232,6 +270,17 @@ describe("/api/spvs", () => {
       mockStorage.updateSpv.mockResolvedValue(undefined);
       const res = await agent.patch(`/api/spvs/9999`).send({ displayName: "X" });
       expect(res.status).toBe(404);
+    });
+
+    it("silently ignores an attempt to change currency — it's fixed at creation", async () => {
+      const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
+      mockStorage.updateSpv.mockResolvedValue({ ...spvA, displayName: "Renamed" });
+      const res = await agent.patch(`/api/spvs/${spvA.id}`).send({ displayName: "Renamed", currency: "EUR" });
+      expect(res.status).toBe(200);
+      expect(mockStorage.updateSpv).toHaveBeenCalledWith(
+        spvA.id,
+        expect.not.objectContaining({ currency: expect.anything() }),
+      );
     });
   });
 

@@ -174,7 +174,9 @@
     "groupBySpv": "SPV",
     "groupByBeneficiary": "Bénéficiaire",
     "filterBy": "Bénéficiaires",
-    "filterByActive": "{{count}} sur {{total}}"
+    "filterByActive": "{{count}} sur {{total}}",
+    "viewCurrency": "Afficher en",
+    "fxUpdated": "Taux de change au {{date}}"
   },
   "accounts": {
     "title": "Comptes",
@@ -413,6 +415,7 @@
     "allocationHelpByCapital": "La propriété est calculée à partir du capital net investi par chaque membre (engagé moins frais).",
     "allocationHelpCustom": "Les pourcentages de propriété sont saisis manuellement pour chaque membre.",
     "currency": "Devise",
+    "currencyHelp": "Seules les devises actives (configurées dans les Paramètres) peuvent être sélectionnées. Ce choix ne peut plus être modifié une fois le SPV créé.",
     "managementFeePercent": "% frais de gestion",
     "carriedInterestPercent": "% intéressement (carry)",
     "preferredReturnPercent": "% rendement préférentiel",
@@ -484,6 +487,7 @@
     "managerLabel": "Gestionnaire : {{name}}",
     "autoDeploy": "Déployer automatiquement le capital sur l'actif par défaut",
     "autoDeployHelp": "Lorsqu'activé, le nouveau capital appelé est automatiquement déployé sur l'actif par défaut.",
+    "currencyLockedHelp": "Définie à la création et ne peut plus être modifiée, car tous les investissements dans ce SPV sont libellés dans cette devise.",
     "notFound": "SPV introuvable.",
     "spvUpdated": "SPV mis à jour",
     "spvUpdateFailed": "Échec de la mise à jour du SPV",
@@ -700,6 +704,7 @@
     "tabDocuments": "Documents",
     "tabManagement": "Administration",
     "tabApiTokens": "Jetons d'API",
+    "tabCurrencies": "Devises",
     "documentsPathTitle": "Chemin de stockage des documents",
     "documentsPathDescription": "Chemin du système de fichiers utilisé pour les documents téléversés. Laissez vide pour utiliser le chemin par défaut.",
     "effectivePath": "Chemin effectif",
@@ -728,7 +733,10 @@
     "documentsStorageDescription": "Chemin du système de fichiers où sont stockés les documents importés. Laisser vide pour utiliser l'emplacement par défaut.",
     "storagePath": "Chemin de stockage",
     "storagePathUpdated": "Chemin de stockage mis à jour",
-    "updateFailed": "Échec de la mise à jour"
+    "updateFailed": "Échec de la mise à jour",
+    "currenciesTitle": "Devises actives",
+    "currenciesDescription": "Devises disponibles lors de la création d'un nouveau SPV et dans le sélecteur « afficher en » du tableau de bord. USD et EUR sont actives par défaut.",
+    "currenciesUsdHint": "L'USD est la devise de référence de la plateforme et ne peut pas être désactivée."
   },
   "apiTokens": {
     "title": "Jetons d'API",

@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
-import type { PortfolioInvestment, AccountWithRoles, EntityInfo } from "@shared/types";
+import type { PortfolioInvestment, AccountWithRoles, EntityInfo, CurrencyInfo, ExchangeRatesInfo } from "@shared/types";
 import { Search, TrendingUp, TrendingDown, ArrowRight, ChevronDown, ChevronRight, Briefcase, ArrowLeft, Filter } from "lucide-react";
 import { PieChart, Pie, Cell, Tooltip as RTooltip, ResponsiveContainer } from "recharts";
 import { useLocale, useLocalePath } from "@/i18n/hooks";
@@ -145,9 +145,33 @@ export default function Dashboard() {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [groupBy, setGroupBy] = useState<"spv" | "beneficiary">("spv");
   const [selectedBeneficiaryKeys, setSelectedBeneficiaryKeys] = useState<Set<string> | null>(null);
+  const [displayCurrency, setDisplayCurrency] = useState("USD");
   const { t } = useTranslation();
   const locale = useLocale();
   const lp = useLocalePath();
+
+  const { data: currencies } = useQuery<CurrencyInfo[]>({
+    queryKey: ["/api/currencies"],
+  });
+  const activeCurrencies = useMemo(() => (currencies ?? []).filter(c => c.active), [currencies]);
+  const currencySymbol = currencies?.find(c => c.code === displayCurrency)?.symbol ?? "$";
+
+  const { data: exchangeRates } = useQuery<ExchangeRatesInfo>({
+    queryKey: ["/api/exchange-rates"],
+  });
+  // USD per unit of each currency; USD itself is always 1.
+  const rates = exchangeRates?.rates ?? { USD: 1 };
+  // Converts an amount denominated in `fromCurrency` into the selected
+  // display currency, bridging through USD (every stored rate is "USD per
+  // unit of X"). Falls back to a 1:1 rate if one is momentarily missing
+  // (e.g. a currency was just activated and hasn't been refreshed yet)
+  // rather than hiding the amount entirely.
+  const convertAmount = (amount: number, fromCurrency: string): number => {
+    const fromRate = rates[fromCurrency] ?? 1;
+    const toRate = rates[displayCurrency] ?? 1;
+    return (amount * fromRate) / toRate;
+  };
+  const fmtAmt = (n: number) => `${currencySymbol}${fmtMoney(n, locale)}`;
 
   const searchString = useSearch();
   const params = new URLSearchParams(searchString);
@@ -220,22 +244,43 @@ export default function Dashboard() {
     );
   }, [beneficiaryFiltered, search]);
 
+  // Every investment carries its own SPV's currency (fixed at SPV creation),
+  // so amounts can't be summed across investments directly. This converts
+  // each investment's monetary fields into the selected display currency
+  // before any aggregation below touches them.
+  const convertedFiltered = useMemo(() => {
+    return filtered.map(inv => {
+      const fromCurrency = inv.currency || "USD";
+      const conv = (v: string | null) => String(convertAmount(parseFloat(v || "0"), fromCurrency));
+      return {
+        ...inv,
+        committed: conv(inv.committed),
+        managementFee: conv(inv.managementFee),
+        otherFee: conv(inv.otherFee),
+        totalCalled: conv(inv.totalCalled),
+        distributed: conv(inv.distributed),
+        currentValue: conv(inv.currentValue),
+        currency: displayCurrency,
+      };
+    });
+  }, [filtered, rates, displayCurrency]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const summary = useMemo(() => {
-    const initial = filtered.reduce((s, i) => s + parseFloat(i.totalCalled || "0"), 0);
-    const fees = filtered.reduce((s, i) => s + parseFloat(i.managementFee || "0") + parseFloat(i.otherFee || "0"), 0);
+    const initial = convertedFiltered.reduce((s, i) => s + parseFloat(i.totalCalled || "0"), 0);
+    const fees = convertedFiltered.reduce((s, i) => s + parseFloat(i.managementFee || "0") + parseFloat(i.otherFee || "0"), 0);
     const paidIn = initial + fees;
-    const current = filtered.reduce((s, i) => s + parseFloat(i.currentValue || "0"), 0);
-    const distributions = filtered.reduce((s, i) => s + parseFloat(i.distributed || "0"), 0);
+    const current = convertedFiltered.reduce((s, i) => s + parseFloat(i.currentValue || "0"), 0);
+    const distributions = convertedFiltered.reduce((s, i) => s + parseFloat(i.distributed || "0"), 0);
     const roi = initial > 0 ? ((current + distributions - initial) / initial) * 100 : 0;
     const moic = initial > 0 ? (current + distributions) / initial : 0;
     const tvpi = paidIn > 0 ? (current + distributions) / paidIn : 0;
     const dpi = paidIn > 0 ? distributions / paidIn : 0;
-    return { initial, current, distributions, roi, moic, tvpi, dpi, count: filtered.length };
-  }, [filtered]);
+    return { initial, current, distributions, roi, moic, tvpi, dpi, count: convertedFiltered.length };
+  }, [convertedFiltered]);
 
   const spvBreakdown = useMemo(() => {
     const map = new Map<string, { name: string; initial: number; current: number }>();
-    for (const inv of filtered) {
+    for (const inv of convertedFiltered) {
       const key = inv.spvName || t("common.untitled");
       const cur = map.get(key) ?? { name: key, initial: 0, current: 0 };
       cur.initial += parseFloat(inv.totalCalled || "0");
@@ -243,7 +288,7 @@ export default function Dashboard() {
       map.set(key, cur);
     }
     return Array.from(map.values()).sort((a, b) => b.current - a.current);
-  }, [filtered, t]);
+  }, [convertedFiltered, t]);
 
   const spvGradientId = useMemo(() =>
     new Map(spvBreakdown.map((s, i) => [s.name, PIE_GRADIENTS[i % PIE_GRADIENTS.length].id])),
@@ -258,7 +303,7 @@ export default function Dashboard() {
 
   const groupedByCompany = useMemo<CompanyGroup[]>(() => {
     const map = new Map<string, CompanyGroup>();
-    for (const inv of filtered) {
+    for (const inv of convertedFiltered) {
       const key = (inv.investmentCompanyName || inv.spvName).trim() || t("common.untitled");
       if (!map.has(key)) {
         map.set(key, {
@@ -281,11 +326,11 @@ export default function Dashboard() {
     }));
     arr.sort((a, b) => a.name.localeCompare(b.name));
     return arr;
-  }, [filtered, t]);
+  }, [convertedFiltered, t]);
 
   const groupedByBeneficiary = useMemo<BeneficiaryGroup[]>(() => {
     const map = new Map<string, BeneficiaryGroup>();
-    for (const inv of filtered) {
+    for (const inv of convertedFiltered) {
       const key = `${inv.investorType}:${inv.investorId}`;
       if (!map.has(key)) {
         map.set(key, {
@@ -306,7 +351,7 @@ export default function Dashboard() {
       ...g,
       roi: g.initial > 0 ? ((g.current + g.distributions - g.initial) / g.initial) * 100 : 0,
     })).sort((a, b) => a.name.localeCompare(b.name));
-  }, [filtered]);
+  }, [convertedFiltered]);
 
   const toggle = (key: string) => setExpanded(e => ({ ...e, [key]: !e[key] }));
 
@@ -346,6 +391,27 @@ export default function Dashboard() {
           <h1 className="text-2xl font-semibold" data-testid="text-page-title">{titleText}</h1>
           <p className="text-muted-foreground mt-1">{subtitleText}</p>
         </div>
+
+        {activeCurrencies.length > 1 && (
+          <div className="flex flex-col items-end gap-1">
+            <Select value={displayCurrency} onValueChange={setDisplayCurrency}>
+              <SelectTrigger className="h-9 w-auto gap-1" data-testid="select-display-currency">
+                <span className="text-muted-foreground text-xs mr-0.5">{t("dashboard.viewCurrency")}:</span>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {activeCurrencies.map(c => (
+                  <SelectItem key={c.code} value={c.code}>{c.code} ({c.symbol})</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {exchangeRates?.updatedAt && (
+              <p className="text-xs text-muted-foreground" data-testid="text-fx-updated">
+                {t("dashboard.fxUpdated", { date: fmtDate(exchangeRates.updatedAt, locale) })}
+              </p>
+            )}
+          </div>
+        )}
       </div>
 
       <Card>
@@ -355,14 +421,14 @@ export default function Dashboard() {
               <div className="flex-1">
                 <p className="text-xs text-muted-foreground uppercase tracking-wider">{t("dashboard.totalCalled")}</p>
                 {isLoading ? <Skeleton className="h-8 w-32 mt-1" /> : (
-                  <p className="text-2xl font-semibold mt-1" data-testid="text-summary-initial">${fmtMoney(summary.initial, locale)}</p>
+                  <p className="text-2xl font-semibold mt-1" data-testid="text-summary-initial">{fmtAmt(summary.initial)}</p>
                 )}
               </div>
               <ArrowRight className="h-6 w-6 text-muted-foreground flex-shrink-0" />
               <div className="flex-1">
                 <p className="text-xs text-muted-foreground uppercase tracking-wider">{t("dashboard.currentValue")}</p>
                 {isLoading ? <Skeleton className="h-8 w-32 mt-1" /> : (
-                  <p className="text-2xl font-semibold mt-1" data-testid="text-summary-current">${fmtMoney(summary.current, locale)}</p>
+                  <p className="text-2xl font-semibold mt-1" data-testid="text-summary-current">{fmtAmt(summary.current)}</p>
                 )}
               </div>
             </div>
@@ -398,7 +464,7 @@ export default function Dashboard() {
               <div>
                 <p className="text-xs text-muted-foreground uppercase tracking-wider">{t("dashboard.distributions")}</p>
                 {isLoading ? <Skeleton className="h-8 w-24 mt-1" /> : (
-                  <p className="text-2xl font-semibold mt-1" data-testid="text-summary-distributions">${fmtMoney(summary.distributions, locale)}</p>
+                  <p className="text-2xl font-semibold mt-1" data-testid="text-summary-distributions">{fmtAmt(summary.distributions)}</p>
                 )}
               </div>
               <div>
@@ -414,8 +480,8 @@ export default function Dashboard() {
 
       {!isLoading && spvBreakdown.length > 0 && (
         <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-          <SpvPieCard title={t("dashboard.pieInitialTitle")} subtitle={t("dashboard.pieInitialSubtitle")} data={initialPie} valueFormatter={(v) => `$${fmtMoney(v, locale)}`} />
-          <SpvPieCard title={t("dashboard.pieCurrentTitle")} subtitle={t("dashboard.pieCurrentSubtitle")} data={currentPie} valueFormatter={(v) => `$${fmtMoney(v, locale)}`} />
+          <SpvPieCard title={t("dashboard.pieInitialTitle")} subtitle={t("dashboard.pieInitialSubtitle")} data={initialPie} valueFormatter={fmtAmt} />
+          <SpvPieCard title={t("dashboard.pieCurrentTitle")} subtitle={t("dashboard.pieCurrentSubtitle")} data={currentPie} valueFormatter={fmtAmt} />
           <SpvPieCard title={t("dashboard.pieGrowthTitle")} subtitle={t("dashboard.pieGrowthSubtitle")} data={growthPie} valueFormatter={(v) => fmtPct(v)} legendFormatter={(v) => fmtPct(v)} />
         </div>
       )}
@@ -536,9 +602,9 @@ export default function Dashboard() {
                             </div>
                           </div>
                         </td>
-                        <td className="py-3 pr-3 text-right font-medium">${fmtMoney(group.initial, locale)}</td>
-                        <td className="py-3 pr-3 text-right font-medium">${fmtMoney(group.current, locale)}</td>
-                        <td className="py-3 pr-3 text-right font-medium">${fmtMoney(group.distributions, locale)}</td>
+                        <td className="py-3 pr-3 text-right font-medium">{fmtAmt(group.initial)}</td>
+                        <td className="py-3 pr-3 text-right font-medium">{fmtAmt(group.current)}</td>
+                        <td className="py-3 pr-3 text-right font-medium">{fmtAmt(group.distributions)}</td>
                         <td className={`py-3 pr-3 text-right font-medium ${group.roi >= 0 ? "text-emerald-600" : "text-red-600"}`}>
                           {fmtPct(group.roi)}
                         </td>
@@ -566,9 +632,9 @@ export default function Dashboard() {
                                 </span>
                               </Link>
                             </td>
-                            <td className="py-2 pr-3 text-right">${fmtMoney(initial, locale)}</td>
-                            <td className="py-2 pr-3 text-right">${fmtMoney(current, locale)}</td>
-                            <td className="py-2 pr-3 text-right">${fmtMoney(distributions, locale)}</td>
+                            <td className="py-2 pr-3 text-right">{fmtAmt(initial)}</td>
+                            <td className="py-2 pr-3 text-right">{fmtAmt(current)}</td>
+                            <td className="py-2 pr-3 text-right">{fmtAmt(distributions)}</td>
                             <td className={`py-2 pr-3 text-right ${roi >= 0 ? "text-emerald-600" : "text-red-600"}`}>
                               {fmtPct(roi)}
                             </td>
@@ -629,9 +695,9 @@ export default function Dashboard() {
                             </div>
                           </div>
                         </td>
-                        <td className="py-3 pr-3 text-right font-medium">${fmtMoney(group.initial, locale)}</td>
-                        <td className="py-3 pr-3 text-right font-medium">${fmtMoney(group.current, locale)}</td>
-                        <td className="py-3 pr-3 text-right font-medium">${fmtMoney(group.distributions, locale)}</td>
+                        <td className="py-3 pr-3 text-right font-medium">{fmtAmt(group.initial)}</td>
+                        <td className="py-3 pr-3 text-right font-medium">{fmtAmt(group.current)}</td>
+                        <td className="py-3 pr-3 text-right font-medium">{fmtAmt(group.distributions)}</td>
                         <td className={`py-3 pr-3 text-right font-medium ${group.roi >= 0 ? "text-emerald-600" : "text-red-600"}`}>
                           {fmtPct(group.roi)}
                         </td>
@@ -659,9 +725,9 @@ export default function Dashboard() {
                                 </span>
                               </Link>
                             </td>
-                            <td className="py-2 pr-3 text-right">${fmtMoney(initial, locale)}</td>
-                            <td className="py-2 pr-3 text-right">${fmtMoney(current, locale)}</td>
-                            <td className="py-2 pr-3 text-right">${fmtMoney(distributions, locale)}</td>
+                            <td className="py-2 pr-3 text-right">{fmtAmt(initial)}</td>
+                            <td className="py-2 pr-3 text-right">{fmtAmt(current)}</td>
+                            <td className="py-2 pr-3 text-right">{fmtAmt(distributions)}</td>
                             <td className={`py-2 pr-3 text-right ${roi >= 0 ? "text-emerald-600" : "text-red-600"}`}>
                               {fmtPct(roi)}
                             </td>

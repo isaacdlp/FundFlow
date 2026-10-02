@@ -33,6 +33,7 @@ export type RouteKey =
   | "settingsDocuments"
   | "settingsManagement"
   | "settingsApiTokens"
+  | "settingsCurrencies"
   | "forgotPassword"
   | "resetPassword"
   | "orgLanding";
@@ -56,6 +57,7 @@ export const ROUTE_PATTERNS: Record<RouteKey, Record<Locale, string>> = {
   settingsDocuments:   { en: "/settings/documents",              es: "/configuracion/documentos",        fr: "/parametres/documents" },
   settingsManagement:  { en: "/settings/management",             es: "/configuracion/administracion",    fr: "/parametres/administration" },
   settingsApiTokens:   { en: "/settings/api-tokens",             es: "/configuracion/api-tokens",        fr: "/parametres/api-tokens" },
+  settingsCurrencies:  { en: "/settings/currencies",              es: "/configuracion/monedas",           fr: "/parametres/devises" },
   forgotPassword:      { en: "/forgot-password",                 es: "/olvide-contrasena",               fr: "/mot-de-passe-oublie" },
   resetPassword:       RESET_PASSWORD_PATHS,
   orgLanding:          { en: "/org/:slug",                       es: "/organizacion/:slug",              fr: "/organisation/:slug" },

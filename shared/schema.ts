@@ -92,7 +92,13 @@ export const spvs = pgTable("spvs", {
   dateEstablished: date("date_established"),
   dateEnded: date("date_ended"),
   allocationMethod: varchar("allocation_method", { length: 100 }).default("By Commitment"),
-  currency: varchar("currency", { length: 10 }).default("USD ($)"),
+  // ISO 4217 currency code (e.g. "USD", "EUR"). Set once at SPV creation and
+  // never changed afterward — every investment into the SPV is denominated
+  // in this currency. See updateSpvSchema, which omits this field. Column
+  // width is kept generous (rather than shrunk to 3) so existing legacy
+  // values (e.g. "USD ($)") don't fail a width-reducing migration; they're
+  // normalized to ISO codes in code (see server/currency.ts) instead.
+  currency: varchar("currency", { length: 10 }).notNull().default("USD"),
   managementFeePercent: numeric("management_fee_percent", { precision: 5, scale: 2 }).default("0"),
   carriedInterestPercent: numeric("carried_interest_percent", { precision: 5, scale: 2 }).default("0"),
   preferredReturnPercent: numeric("preferred_return_percent", { precision: 5, scale: 2 }).default("0"),
@@ -241,6 +247,26 @@ export const appSettings = pgTable("app_settings", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// Catalog of currencies the platform knows about. `active` currencies are
+// the ones selectable when creating an SPV and offered in the dashboard's
+// "view in" dropdown. USD is the pivot currency for exchange rates and can
+// never be deactivated (enforced in the route handler).
+export const currencies = pgTable("currencies", {
+  code: varchar("code", { length: 3 }).primaryKey(),
+  name: varchar("name", { length: 100 }).notNull(),
+  symbol: varchar("symbol", { length: 10 }).notNull().default(""),
+  active: boolean("active").default(false).notNull(),
+});
+
+// Latest known exchange rate for each non-USD currency, expressed as "how
+// many USD is 1 unit of this currency worth". Only the latest rate is kept
+// (no history) and it's refreshed at most once a day — see server/currency.ts.
+export const exchangeRates = pgTable("exchange_rates", {
+  currency: varchar("currency", { length: 3 }).primaryKey(),
+  rateToUsd: numeric("rate_to_usd", { precision: 18, scale: 8 }).notNull(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 export const apiTokens = pgTable("api_tokens", {
   id: serial("id").primaryKey(),
   accountId: integer("account_id").notNull().references(() => accounts.id, { onDelete: "cascade" }),
@@ -299,11 +325,18 @@ export const insertSpvSchema = createInsertSchema(spvs).omit({
   updatedAt: true,
 }).extend({
   dateEstablished: z.string().min(1, "Date established is required"),
+  currency: z.string().trim().toUpperCase().length(3, "Currency must be a 3-letter code").optional(),
 });
 
+// `currency` is intentionally omitted here (not just made optional): it is
+// fixed at SPV creation time and can never change afterward, since every
+// investment into the SPV is denominated in it. Any `currency` sent in a
+// PATCH body is silently ignored, same as `roles` on non-admin account
+// updates.
 export const updateSpvSchema = createInsertSchema(spvs).omit({
   id: true,
   organizationId: true,
+  currency: true,
   createdAt: true,
   updatedAt: true,
 }).partial();
@@ -348,6 +381,13 @@ export type CreateApiTokenInput = z.infer<typeof createApiTokenSchema>;
 export type PublicApiToken = Omit<ApiToken, "tokenHash">;
 export type Document = typeof documents.$inferSelect;
 export type AppSetting = typeof appSettings.$inferSelect;
+export type Currency = typeof currencies.$inferSelect;
+export type ExchangeRate = typeof exchangeRates.$inferSelect;
+
+export const updateCurrencySchema = z.object({
+  active: z.boolean(),
+});
+export type UpdateCurrencyInput = z.infer<typeof updateCurrencySchema>;
 
 export const createDocumentSchema = z.object({
   name: z.string().min(1).max(255),

@@ -62,6 +62,7 @@ function AdminRouter({ locale }: { locale: Locale }) {
       <Route path={r.settingsDocuments[locale]} component={Settings} />
       <Route path={r.settingsManagement[locale]} component={Settings} />
       <Route path={r.settingsApiTokens[locale]} component={Settings} />
+      <Route path={r.settingsCurrencies[locale]} component={Settings} />
       <Route path={r.settings[locale]} component={Settings} />
       <Route path={r.dashboard[locale]} component={Dashboard} />
       <Route component={NotFound} />

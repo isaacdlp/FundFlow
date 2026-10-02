@@ -5,7 +5,7 @@ import {
   organizationMembers, organizationInvites, spvs, spvMembers,
   spvAssets, spvAssetValuations,
   entities, entityOwners, entityManagers, passwordResetTokens,
-  apiTokens,
+  apiTokens, currencies,
   type Account, type Role, type InsertAccount, type UpdateAccount,
   type Organization, type InsertOrganization, type UpdateOrganization,
   type OrganizationMember, type OrganizationInvite,
@@ -112,6 +112,7 @@ export interface PortfolioInvestment {
   distributed: string;
   currentValue: string;
   date: string | null;
+  currency: string;
 }
 
 export interface EntityWithDetails extends Entity {
@@ -206,6 +207,8 @@ export interface IStorage {
   listApiTokensForAccount(accountId: number): Promise<PublicApiToken[]>;
   revokeApiToken(id: number, accountId: number): Promise<boolean>;
   touchApiTokenLastUsed(id: number): Promise<void>;
+
+  getActiveCurrencyCodes(): Promise<string[]>;
 
   seedData(): Promise<void>;
 }
@@ -844,6 +847,7 @@ export class DatabaseStorage implements IStorage {
         ownershipPercent: spvMembers.ownershipPercent,
         date: spvMembers.date,
         allocationMethod: spvs.allocationMethod,
+        currency: spvs.currency,
       })
       .from(spvMembers)
       .innerJoin(spvs, eq(spvs.id, spvMembers.spvId))
@@ -891,6 +895,7 @@ export class DatabaseStorage implements IStorage {
         distributed: r.distributed ?? "0",
         currentValue,
         date: r.date ?? null,
+        currency: r.currency ?? "USD",
       });
     }
     return out;
@@ -1264,6 +1269,11 @@ export class DatabaseStorage implements IStorage {
       .from(spvMembers)
       .where(or(...conds));
     return Array.from(new Set(memberOf.map(r => r.id)));
+  }
+
+  async getActiveCurrencyCodes(): Promise<string[]> {
+    const rows = await db.select({ code: currencies.code }).from(currencies).where(eq(currencies.active, true));
+    return rows.map(r => r.code);
   }
 
   async seedData(): Promise<void> {

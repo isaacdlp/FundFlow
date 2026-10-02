@@ -3,7 +3,7 @@ import { useRoute, Link, useLocation } from "wouter";
 import { useTranslation } from "react-i18next";
 import { useLocalePath, useLocale } from "@/i18n/hooks";
 import { ROUTE_PATTERNS } from "@/i18n/routes";
-import type { OrganizationWithOrganizers, OrganizerAccount } from "@shared/types";
+import type { OrganizationWithOrganizers, OrganizerAccount, CurrencyInfo } from "@shared/types";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -25,7 +25,6 @@ import { useToast } from "@/hooks/use-toast";
 
 const ENTITY_TYPES = ["LLC", "LP", "Corporation", "Trust", "Other"];
 const ALLOCATION_METHODS = ["By Commitment", "By Capital Invested", "Custom"] as const;
-const CURRENCIES = ["USD ($)", "EUR (\u20ac)", "GBP (\u00a3)", "CHF", "JPY (\u00a5)", "CAD ($)", "AUD ($)"];
 const US_STATES = [
   "Alabama", "Alaska", "Arizona", "Arkansas", "California", "Colorado", "Connecticut",
   "Delaware", "Florida", "Georgia", "Hawaii", "Idaho", "Illinois", "Indiana", "Iowa",
@@ -63,6 +62,11 @@ export default function CreateSpv() {
     enabled: !!orgId,
   });
 
+  const { data: currencies } = useQuery<CurrencyInfo[]>({
+    queryKey: ["/api/currencies"],
+  });
+  const activeCurrencies = (currencies ?? []).filter(c => c.active);
+
   const [form, setForm] = useState({
     legalName: "",
     displayName: "",
@@ -72,7 +76,7 @@ export default function CreateSpv() {
     dateEstablished: "",
     dateEnded: "",
     allocationMethod: "By Commitment",
-    currency: "USD ($)",
+    currency: "USD",
     managementFeePercent: "0",
     carriedInterestPercent: "0",
     preferredReturnPercent: "0",
@@ -277,11 +281,14 @@ export default function CreateSpv() {
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {CURRENCIES.map(c => (
-                  <SelectItem key={c} value={c}>{c}</SelectItem>
+                {activeCurrencies.map(c => (
+                  <SelectItem key={c.code} value={c.code}>{c.code} ({c.symbol}) &ndash; {c.name}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
+            <p className="text-xs text-muted-foreground" data-testid="text-currency-help">
+              {t("createSpv.currencyHelp")}
+            </p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

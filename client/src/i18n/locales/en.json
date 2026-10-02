@@ -174,7 +174,9 @@
     "groupBySpv": "SPV",
     "groupByBeneficiary": "Beneficiary",
     "filterBy": "Beneficiaries",
-    "filterByActive": "{{count}} of {{total}}"
+    "filterByActive": "{{count}} of {{total}}",
+    "viewCurrency": "View in",
+    "fxUpdated": "Exchange rates as of {{date}}"
   },
   "accounts": {
     "title": "Accounts",
@@ -413,6 +415,7 @@
     "allocationHelpByCapital": "Ownership is computed from each member's net capital invested (committed minus fees).",
     "allocationHelpCustom": "Ownership percentages are entered manually for each member.",
     "currency": "Currency",
+    "currencyHelp": "Only active currencies (configured in Settings) can be selected. This cannot be changed after the SPV is created.",
     "managementFeePercent": "Management Fee %",
     "carriedInterestPercent": "Carried Interest %",
     "preferredReturnPercent": "Preferred Return %",
@@ -484,6 +487,7 @@
     "managerLabel": "Manager: {{name}}",
     "autoDeploy": "Auto-deploy capital to default asset",
     "autoDeployHelp": "When enabled, new capital called by investors is automatically deployed into the default asset.",
+    "currencyLockedHelp": "Set at creation and cannot be changed afterward, since every investment into this SPV is denominated in it.",
     "notFound": "SPV not found.",
     "spvUpdated": "SPV updated",
     "spvUpdateFailed": "Failed to update SPV",
@@ -700,6 +704,7 @@
     "tabDocuments": "Documents",
     "tabManagement": "Management",
     "tabApiTokens": "API Tokens",
+    "tabCurrencies": "Currencies",
     "documentsPathTitle": "Documents Storage Path",
     "documentsPathDescription": "Filesystem path used for uploaded documents. Leave empty to use the default.",
     "effectivePath": "Effective path",
@@ -728,7 +733,10 @@
     "documentsStorageDescription": "Filesystem path where uploaded documents are stored. Leave empty to use the default location.",
     "storagePath": "Storage Path",
     "storagePathUpdated": "Storage path updated",
-    "updateFailed": "Update failed"
+    "updateFailed": "Update failed",
+    "currenciesTitle": "Active Currencies",
+    "currenciesDescription": "Currencies available when creating a new SPV and in the dashboard's \"view in\" selector. USD and EUR are active by default.",
+    "currenciesUsdHint": "USD is the platform's base reporting currency and cannot be deactivated."
   },
   "apiTokens": {
     "title": "API Tokens",

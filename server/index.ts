@@ -94,6 +94,9 @@ app.use((req, res, next) => {
 (async () => {
   const { storage } = await import("./storage");
   await storage.seedData();
+  const { initCurrencies, startExchangeRateScheduler } = await import("./currency");
+  await initCurrencies();
+  startExchangeRateScheduler();
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {

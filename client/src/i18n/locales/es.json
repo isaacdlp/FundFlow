@@ -174,7 +174,9 @@
     "groupBySpv": "SPV",
     "groupByBeneficiary": "Beneficiario",
     "filterBy": "Beneficiarios",
-    "filterByActive": "{{count}} de {{total}}"
+    "filterByActive": "{{count}} de {{total}}",
+    "viewCurrency": "Ver en",
+    "fxUpdated": "Tipos de cambio al {{date}}"
   },
   "accounts": {
     "title": "Cuentas",
@@ -413,6 +415,7 @@
     "allocationHelpByCapital": "La propiedad se calcula a partir del capital neto invertido por cada miembro (comprometido menos comisiones).",
     "allocationHelpCustom": "Los porcentajes de propiedad se introducen manualmente para cada miembro.",
     "currency": "Moneda",
+    "currencyHelp": "Solo se pueden seleccionar monedas activas (configuradas en Configuración). No se puede cambiar una vez creado el SPV.",
     "managementFeePercent": "% comisión de gestión",
     "carriedInterestPercent": "% interés acumulado",
     "preferredReturnPercent": "% rentabilidad preferente",
@@ -484,6 +487,7 @@
     "managerLabel": "Gestor: {{name}}",
     "autoDeploy": "Desplegar capital automáticamente al activo predeterminado",
     "autoDeployHelp": "Cuando está activado, el nuevo capital llamado a los inversores se despliega automáticamente al activo predeterminado.",
+    "currencyLockedHelp": "Se establece al crear el SPV y no se puede modificar después, ya que todas las inversiones en este SPV se denominan en esta moneda.",
     "notFound": "SPV no encontrado.",
     "spvUpdated": "SPV actualizado",
     "spvUpdateFailed": "Error al actualizar el SPV",
@@ -700,6 +704,7 @@
     "tabDocuments": "Documentos",
     "tabManagement": "Administración",
     "tabApiTokens": "Tokens de API",
+    "tabCurrencies": "Monedas",
     "documentsPathTitle": "Ruta de almacenamiento de documentos",
     "documentsPathDescription": "Ruta del sistema de archivos para los documentos subidos. Déjala vacía para usar la predeterminada.",
     "effectivePath": "Ruta efectiva",
@@ -728,7 +733,10 @@
     "documentsStorageDescription": "Ruta del sistema de archivos donde se almacenan los documentos subidos. Déjala en blanco para usar la ubicación predeterminada.",
     "storagePath": "Ruta de almacenamiento",
     "storagePathUpdated": "Ruta de almacenamiento actualizada",
-    "updateFailed": "Error al actualizar"
+    "updateFailed": "Error al actualizar",
+    "currenciesTitle": "Monedas activas",
+    "currenciesDescription": "Monedas disponibles al crear un nuevo SPV y en el selector \"ver en\" del panel. USD y EUR están activas de forma predeterminada.",
+    "currenciesUsdHint": "USD es la moneda base de referencia de la plataforma y no se puede desactivar."
   },
   "apiTokens": {
     "title": "Tokens de API",

@@ -64,6 +64,14 @@ tags:
       Upload, delete, and storage settings are admin-only.
   - name: Settings
     description: Platform-wide settings (admin-only)
+  - name: Currencies
+    description: |
+      The platform's currency catalog and daily FX rates. SPVs are
+      denominated in one of the *active* currencies (USD and EUR by
+      default); the dashboard uses the rates here to consolidate
+      multi-currency investments into a single selected display currency.
+      Reading is open to any authenticated user; activating/deactivating a
+      currency and forcing a refresh are admin-only.
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Reusable security
@@ -1025,6 +1033,86 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
+  # ──── Currencies ──────────────────────────────────────────────────────────
+  /api/currencies:
+    get:
+      tags: [Currencies]
+      summary: List the currency catalog
+      description: |
+        Returns every known currency (active and inactive). `active`
+        currencies are the ones selectable as an SPV's currency on creation
+        and offered in the dashboard's "view in" dropdown.
+      responses:
+        '200':
+          description: Currency catalog
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Currency' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/currencies/{code}:
+    patch:
+      tags: [Currencies]
+      summary: Activate or deactivate a currency (admin-only)
+      description: |
+        USD is the platform's base reporting currency and the exchange-rate
+        pivot — it can never be deactivated. Activating a currency triggers
+        an immediate best-effort exchange-rate fetch rather than waiting for
+        the next scheduled refresh.
+      parameters:
+        - { name: code, in: path, required: true, schema: { type: string }, example: EUR }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [active]
+              properties:
+                active: { type: boolean }
+      responses:
+        '200':
+          description: Updated currency
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Currency' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/exchange-rates:
+    get:
+      tags: [Currencies]
+      summary: Latest known exchange rates
+      description: |
+        Rates are expressed as "USD per 1 unit of the currency" (USD itself
+        is always 1) and refreshed at most once a day from a public FX feed.
+        No history is kept — only the latest rate per currency.
+      responses:
+        '200':
+          description: Exchange rates
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ExchangeRates' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /api/exchange-rates/refresh:
+    post:
+      tags: [Currencies]
+      summary: Force an immediate exchange-rate refresh (admin-only)
+      description: Mainly for troubleshooting a stale or missing rate; the daily refresh otherwise runs automatically.
+      responses:
+        '200':
+          description: Refreshed exchange rates
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ExchangeRates' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
   # ──── Portfolio ───────────────────────────────────────────────────────────
   /api/portfolio:
     get:
@@ -1182,7 +1270,7 @@ components:
         legalName: { type: string }
         displayName: { type: string }
         entityType: { type: string }
-        currency: { type: string }
+        currency: { type: string, example: "USD", description: "ISO 4217 code. Set once at creation (see SpvCreate) and immutable afterward — every investment into the SPV is denominated in it. PATCH /api/spvs/:id silently ignores this field." }
         allocationMethod: { type: string }
         managementFeePercent: { type: string }
         carriedInterestPercent: { type: string }
@@ -1229,7 +1317,7 @@ components:
         legalName: { type: string }
         displayName: { type: string }
         entityType: { type: string, example: LLC }
-        currency: { type: string, example: "USD ($)" }
+        currency: { type: string, example: "USD", default: "USD", description: "ISO 4217 code; must be one of the platform's active currencies (GET /api/currencies). Defaults to USD. Cannot be changed after creation." }
         allocationMethod:
           type: string
           enum: ["By Commitment", "By Capital Invested", "Custom"]
@@ -1349,6 +1437,25 @@ components:
         default:
           type: string
           description: Default path used when `configured` is empty.
+
+    Currency:
+      type: object
+      properties:
+        code: { type: string, example: "EUR", description: "ISO 4217 code." }
+        name: { type: string, example: "Euro" }
+        symbol: { type: string, example: "€" }
+        active: { type: boolean, description: "Whether this currency is selectable for new SPVs and in the dashboard's currency dropdown. USD is always active." }
+
+    ExchangeRates:
+      type: object
+      properties:
+        base: { type: string, example: "USD", description: "Pivot currency — always USD." }
+        rates:
+          type: object
+          additionalProperties: { type: number }
+          example: { USD: 1, EUR: 1.0825 }
+          description: "USD per 1 unit of each active currency's code (USD itself is always 1)."
+        updatedAt: { type: string, format: date-time, nullable: true, description: "Most recent refresh timestamp across all stored rates; null if none have been fetched yet." }
 
     PublicApiToken:
       type: object

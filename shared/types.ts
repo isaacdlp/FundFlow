@@ -196,6 +196,20 @@ export interface PortfolioInvestment {
   distributed: string;
   currentValue: string;
   date: string | null;
+  currency: string;
+}
+
+export interface CurrencyInfo {
+  code: string;
+  name: string;
+  symbol: string;
+  active: boolean;
+}
+
+export interface ExchangeRatesInfo {
+  base: "USD";
+  rates: Record<string, number>;
+  updatedAt: string | null;
 }
 
 export interface EntityInfo {

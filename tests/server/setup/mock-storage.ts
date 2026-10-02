@@ -114,6 +114,9 @@ export function makeMockStorage(overrides: Partial<Record<string, any>> = {}) {
     listApiTokensForAccount: vi.fn().mockResolvedValue([]),
     revokeApiToken: vi.fn().mockResolvedValue(true),
     touchApiTokenLastUsed: vi.fn().mockResolvedValue(undefined),
+
+    // Currencies
+    getActiveCurrencyCodes: vi.fn().mockResolvedValue(["USD", "EUR"]),
   };
 
   return { ...defaults, ...overrides } as any;

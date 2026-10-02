@@ -3,7 +3,7 @@ import { useRoute, Link, useLocation, useSearch } from "wouter";
 import { useTranslation } from "react-i18next";
 import { useLocalePath, useLocale } from "@/i18n/hooks";
 import { ROUTE_PATTERNS } from "@/i18n/routes";
-import type { SpvInfo, SpvMemberInfo, MemberInfo, OrganizerAccount, EntityInfo, SpvAssetInfo, SpvAssetValuationInfo } from "@shared/types";
+import type { SpvInfo, SpvMemberInfo, MemberInfo, OrganizerAccount, EntityInfo, SpvAssetInfo, SpvAssetValuationInfo, CurrencyInfo } from "@shared/types";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -21,7 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ArrowLeft, Pencil, Save, X, UserPlus, Trash2, FileText, Users, Plus, TrendingUp, Wallet, Briefcase, Star } from "lucide-react";
+import { ArrowLeft, Pencil, Save, X, UserPlus, Trash2, FileText, Users, Plus, TrendingUp, Wallet, Briefcase, Star, Lock } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useOrgPermissions } from "@/hooks/use-org-permissions";
@@ -58,8 +58,6 @@ function computeOwnershipPercents(
   members.forEach((m, i) => { out[m.id] = total > 0 ? (committeds[i] / total) * 100 : null; });
   return out;
 }
-const CURRENCIES = ["USD ($)", "EUR (\u20ac)", "GBP (\u00a3)", "CHF", "JPY (\u00a5)", "CAD ($)", "AUD ($)"];
-
 function formatCurrency(value: string | null): string {
   const num = parseFloat(value || "0");
   return num.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -831,6 +829,11 @@ export default function SpvDetail() {
     enabled: !!spvId,
   });
 
+  const { data: currencies } = useQuery<CurrencyInfo[]>({
+    queryKey: ["/api/currencies"],
+  });
+  const currencyInfo = currencies?.find(c => c.code === (spv?.currency || "USD"));
+
   const orgId = spv?.organizationId;
 
   const { data: org } = useQuery<{ organizers: OrganizerAccount[] }>({
@@ -854,7 +857,6 @@ export default function SpvDetail() {
         dateEnded: spv.dateEnded || "",
         allocationMethod: spv.allocationMethod || "By Commitment",
         autoDeploy: !!spv.autoDeploy,
-        currency: spv.currency || "USD ($)",
         managementFeePercent: spv.managementFeePercent || "0",
         carriedInterestPercent: spv.carriedInterestPercent || "0",
         preferredReturnPercent: spv.preferredReturnPercent || "0",
@@ -923,7 +925,6 @@ export default function SpvDetail() {
         dateEnded: spv.dateEnded || "",
         allocationMethod: spv.allocationMethod || "By Commitment",
         autoDeploy: !!spv.autoDeploy,
-        currency: spv.currency || "USD ($)",
         managementFeePercent: spv.managementFeePercent || "0",
         carriedInterestPercent: spv.carriedInterestPercent || "0",
         preferredReturnPercent: spv.preferredReturnPercent || "0",
@@ -1154,15 +1155,15 @@ export default function SpvDetail() {
                 </div>
               </div>
               <div className="space-y-2">
-                <Label>{t("createSpv.currency")}</Label>
-                <Select value={formData.currency || "USD ($)"} onValueChange={v => updateField("currency", v)} disabled={!editing}>
-                  <SelectTrigger data-testid="select-currency">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {CURRENCIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+                <Label className="flex items-center gap-1.5">
+                  {t("createSpv.currency")}
+                  <Lock className="h-3 w-3 text-muted-foreground" />
+                </Label>
+                <div className="flex h-10 items-center rounded-md border border-input bg-muted px-3 text-sm" data-testid="text-currency">
+                  {spv?.currency || "USD"}
+                  {currencyInfo ? ` (${currencyInfo.symbol}) – ${currencyInfo.name}` : ""}
+                </div>
+                <p className="text-xs text-muted-foreground">{t("spvDetail.currencyLockedHelp")}</p>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-2">

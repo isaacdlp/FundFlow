@@ -6,7 +6,7 @@ import { ROUTE_PATTERNS } from "@/i18n/routes";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { ShieldAlert, Settings as SettingsIcon, FolderKanban, Key, Files } from "lucide-react";
+import { ShieldAlert, Settings as SettingsIcon, FolderKanban, Key, Files, Coins } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { ApiTokensSection } from "./api-tokens";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -15,15 +15,19 @@ import { useToast } from "@/hooks/use-toast";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import { Skeleton } from "@/components/ui/skeleton";
+import type { CurrencyInfo } from "@shared/types";
 
-type TabValue = "general" | "management" | "documents" | "api-tokens";
+type TabValue = "general" | "management" | "documents" | "currencies" | "api-tokens";
 
-type TabRouteKey = "settings" | "settingsManagement" | "settingsDocuments" | "settingsApiTokens";
+type TabRouteKey = "settings" | "settingsManagement" | "settingsDocuments" | "settingsCurrencies" | "settingsApiTokens";
 
 const TABS: { value: TabValue; labelKey: string; icon: typeof SettingsIcon; adminOnly?: boolean; routeKey: TabRouteKey }[] = [
   { value: "general", labelKey: "settings.tabGeneral", icon: SettingsIcon, routeKey: "settings" },
   { value: "management", labelKey: "settings.tabManagement", icon: FolderKanban, adminOnly: true, routeKey: "settingsManagement" },
   { value: "documents", labelKey: "settings.tabDocuments", icon: Files, adminOnly: true, routeKey: "settingsDocuments" },
+  { value: "currencies", labelKey: "settings.tabCurrencies", icon: Coins, adminOnly: true, routeKey: "settingsCurrencies" },
   { value: "api-tokens", labelKey: "settings.tabApiTokens", icon: Key, adminOnly: true, routeKey: "settingsApiTokens" },
 ];
 
@@ -31,10 +35,60 @@ function tabFromPath(pathname: string): TabValue {
   // Match against any locale's settings sub-paths.
   for (const loc of ["en", "es", "fr"] as const) {
     if (pathname.startsWith(ROUTE_PATTERNS.settingsApiTokens[loc])) return "api-tokens";
+    if (pathname.startsWith(ROUTE_PATTERNS.settingsCurrencies[loc])) return "currencies";
     if (pathname.startsWith(ROUTE_PATTERNS.settingsDocuments[loc])) return "documents";
     if (pathname.startsWith(ROUTE_PATTERNS.settingsManagement[loc])) return "management";
   }
   return "general";
+}
+
+function CurrenciesSection() {
+  const { toast } = useToast();
+  const { t } = useTranslation();
+  const { data, isLoading } = useQuery<CurrencyInfo[]>({
+    queryKey: ["/api/currencies"],
+  });
+
+  const toggle = useMutation({
+    mutationFn: async ({ code, active }: { code: string; active: boolean }) =>
+      apiRequest("PATCH", `/api/currencies/${code}`, { active }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/currencies"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/exchange-rates"] });
+    },
+    onError: (e: any) => toast({ title: t("settings.updateFailed"), description: e.message, variant: "destructive" }),
+  });
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{t("settings.currenciesTitle")}</CardTitle>
+        <CardDescription>{t("settings.currenciesDescription")}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-1">
+        {isLoading ? (
+          <div className="space-y-2">{[1, 2, 3].map(i => <Skeleton key={i} className="h-10 w-full" />)}</div>
+        ) : (
+          (data ?? []).map(c => (
+            <div key={c.code} className="flex items-center justify-between py-2 border-b last:border-0" data-testid={`row-currency-${c.code}`}>
+              <div className="flex items-center gap-3">
+                <span className="text-sm font-mono w-10 text-muted-foreground">{c.code}</span>
+                <span className="text-sm">{c.name}</span>
+                <span className="text-sm text-muted-foreground">{c.symbol}</span>
+              </div>
+              <Switch
+                checked={c.active}
+                disabled={c.code === "USD" || toggle.isPending}
+                onCheckedChange={(checked) => toggle.mutate({ code: c.code, active: checked })}
+                data-testid={`switch-currency-active-${c.code}`}
+              />
+            </div>
+          ))
+        )}
+        <p className="text-xs text-muted-foreground pt-3">{t("settings.currenciesUsdHint")}</p>
+      </CardContent>
+    </Card>
+  );
 }
 
 function DocumentsStorageSection() {
@@ -197,6 +251,12 @@ export default function SettingsPage() {
         {isAdmin && (
           <TabsContent value="documents" className="mt-6">
             <DocumentsStorageSection />
+          </TabsContent>
+        )}
+
+        {isAdmin && (
+          <TabsContent value="currencies" className="mt-6">
+            <CurrenciesSection />
           </TabsContent>
         )}
 

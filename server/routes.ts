@@ -12,6 +12,7 @@ import type { AccountWithRoles } from "./storage";
 import { sendPasswordResetEmail, sendWelcomeEmail } from "./email";
 import { generateApiToken, hashApiToken, parseBearerToken } from "./api-tokens";
 import { registerDocumentRoutes } from "./documents";
+import { registerCurrencyRoutes } from "./currency";
 
 function stripPasswordHash(account: any) {
   const { passwordHash, ...rest } = account;
@@ -813,7 +814,12 @@ export async function registerRoutes(
     if (!org) return res.status(404).json({ message: "Organization not found" });
     try {
       const data = insertSpvSchema.parse({ ...req.body, organizationId: orgId });
-      const spv = await storage.createSpv(data);
+      const currency = data.currency || "USD";
+      const activeCodes = await storage.getActiveCurrencyCodes();
+      if (!activeCodes.includes(currency)) {
+        return res.status(400).json({ message: `Currency must be one of the active currencies: ${activeCodes.join(", ")}` });
+      }
+      const spv = await storage.createSpv({ ...data, currency });
       res.status(201).json(spv);
     } catch (e) {
       if (e instanceof ZodError) {
@@ -1418,6 +1424,7 @@ export async function registerRoutes(
   });
 
   registerDocumentRoutes(app);
+  registerCurrencyRoutes(app);
 
   return httpServer;
 }
