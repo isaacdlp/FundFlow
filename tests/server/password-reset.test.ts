@@ -36,16 +36,19 @@ describe("Password reset & change-password", () => {
     });
 
     it("returns 200 and sends email when account exists", async () => {
-      mockStorage.getAccountByEmail.mockResolvedValue(fixtures.memberAccount);
+      mockStorage.getAccountByEmail.mockResolvedValue({ ...fixtures.memberAccount, language: "fr" });
       mockStorage.createPasswordResetToken.mockResolvedValue("tok123");
       const res = await request(app)
         .post("/api/auth/forgot-password")
         .send({ email: fixtures.memberAccount.email });
       expect(res.status).toBe(200);
+      // 4th arg: email language — falls back to the account's saved language
+      // when the request doesn't say which page it came from.
       expect(sendPasswordResetEmail).toHaveBeenCalledWith(
         fixtures.memberAccount.email,
         fixtures.memberAccount.firstName,
         "tok123",
+        "fr",
       );
     });
   });

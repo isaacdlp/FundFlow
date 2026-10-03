@@ -181,7 +181,7 @@ describe("SPV assets", () => {
       mockStorage.getMember.mockResolvedValue({ status: "approved" });
       const res = await agent
         .post(`/api/spvs/${spv.id}/members`)
-        .send({ accountId: fixtures.memberAccount.id, committed: 1000 });
+        .send({ accountId: fixtures.memberAccount.id, committed: 1000, date: "2025-01-15" });
       expect(res.status).toBe(400);
       expect(res.body.message).toMatch(/default asset/i);
     });
@@ -201,7 +201,7 @@ describe("SPV assets", () => {
       });
       const res = await agent
         .post(`/api/spvs/${spv.id}/members`)
-        .send({ accountId: fixtures.memberAccount.id, committed: 1000 });
+        .send({ accountId: fixtures.memberAccount.id, committed: 1000, date: "2025-01-15" });
       expect(res.status).toBe(201);
     });
   });

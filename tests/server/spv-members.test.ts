@@ -96,7 +96,7 @@ describe("SPV members", () => {
       mockStorage.getSpv.mockResolvedValue(null);
       const res = await agent
         .post(`/api/spvs/${spvA.id}/members`)
-        .send({ accountId: 2 });
+        .send({ accountId: 2, date: "2025-01-15" });
       expect(res.status).toBe(404);
     });
 
@@ -111,7 +111,7 @@ describe("SPV members", () => {
       );
       const res = await agent
         .post(`/api/spvs/${spvA.id}/members`)
-        .send({ accountId: fixtures.memberAccount.id });
+        .send({ accountId: fixtures.memberAccount.id, date: "2025-01-15" });
       expect(res.status).toBe(400);
       expect(res.body.message).toMatch(/approved member/i);
     });
@@ -133,7 +133,7 @@ describe("SPV members", () => {
       });
       const res = await agent
         .post(`/api/spvs/${spvA.id}/members`)
-        .send({ accountId: fixtures.memberAccount.id, committed: 5000 });
+        .send({ accountId: fixtures.memberAccount.id, committed: 5000, date: "2025-01-15" });
       expect(res.status).toBe(201);
       expect(mockStorage.addSpvMember).toHaveBeenCalled();
     });
@@ -150,7 +150,7 @@ describe("SPV members", () => {
       });
       const res = await agent
         .post(`/api/spvs/${spvA.id}/members`)
-        .send({ entityId: 200, committed: 2500 });
+        .send({ entityId: 200, committed: 2500, date: "2025-01-15" });
       expect(res.status).toBe(201);
     });
 
@@ -160,7 +160,7 @@ describe("SPV members", () => {
       mockStorage.getEntity.mockResolvedValue(null);
       const res = await agent
         .post(`/api/spvs/${spvA.id}/members`)
-        .send({ entityId: 9999 });
+        .send({ entityId: 9999, date: "2025-01-15" });
       expect(res.status).toBe(404);
     });
   });

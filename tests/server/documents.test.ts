@@ -79,10 +79,9 @@ function makeDbMock(): DbMock {
 const mockStorage = makeMockStorage();
 const dbMock = makeDbMock();
 
-vi.mock("../../server/storage", async () => {
-  const actual: any = await vi.importActual("../../server/storage");
-  return { ...actual, storage: mockStorage, db: dbMock };
-});
+// Don't importActual the real module: it connects to Postgres at import time
+// (throws without DATABASE_URL). documents.ts only needs `db` and `storage`.
+vi.mock("../../server/storage", () => ({ storage: mockStorage, db: dbMock }));
 vi.mock("../../server/email", () => ({ sendPasswordResetEmail: vi.fn() }));
 
 // Stub the filesystem so multer-driven uploads/deletes don't touch disk.
