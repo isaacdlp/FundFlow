@@ -851,13 +851,18 @@ export default function OrganizationDetail() {
           <SpvsTab orgId={orgId!} canEdit={canEdit} />
         </TabsContent>
 
-        <TabsContent value="members" className="mt-6">
-          <MembersTab orgId={orgId!} canEdit={canEdit} />
-        </TabsContent>
+        {/* Member list and invites are organizer/admin-only (the API returns 403 otherwise). */}
+        {canEdit && (
+          <TabsContent value="members" className="mt-6">
+            <MembersTab orgId={orgId!} canEdit={canEdit} />
+          </TabsContent>
+        )}
 
-        <TabsContent value="invites" className="mt-6">
-          <InvitesTab orgId={orgId!} slug={org.slug} canEdit={canEdit} />
-        </TabsContent>
+        {canEdit && (
+          <TabsContent value="invites" className="mt-6">
+            <InvitesTab orgId={orgId!} slug={org.slug} canEdit={canEdit} />
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );

@@ -5,9 +5,15 @@ import { loginAs } from "./setup/auth-helper";
 
 const mockStorage = makeMockStorage();
 vi.mock("../../server/storage", () => ({ storage: mockStorage }));
-vi.mock("../../server/email", () => ({ sendPasswordResetEmail: vi.fn() }));
+vi.mock("../../server/email", () => ({
+  sendPasswordResetEmail: vi.fn(),
+  sendWelcomeEmail: vi.fn().mockResolvedValue(true),
+  sendAccountSetupEmail: vi.fn().mockResolvedValue(true),
+}));
 
 const { createTestApp } = await import("./setup/test-app");
+const { sendWelcomeEmail, sendAccountSetupEmail } = await import("../../server/email");
+const { ACCOUNT_SETUP_TTL_MS } = await import("../../shared/schema");
 
 describe("/api/accounts", () => {
   let app: Awaited<ReturnType<typeof createTestApp>>;
@@ -17,43 +23,171 @@ describe("/api/accounts", () => {
     app = await createTestApp();
   });
 
-  describe("POST /api/accounts (public)", () => {
-    it("creates an account with valid data", async () => {
+  describe("POST /api/accounts (admin-only)", () => {
+    const validBody = {
+      email: "new@test.local",
+      password: "secret123",
+      firstName: "New",
+      lastName: "User",
+    };
+
+    it("returns 401 when unauthenticated (no self-signup)", async () => {
+      const res = await request(app).post("/api/accounts").send(validBody);
+      expect(res.status).toBe(401);
+      expect(mockStorage.createAccount).not.toHaveBeenCalled();
+    });
+
+    it("rejects an anonymous caller trying to self-assign admin", async () => {
+      const res = await request(app)
+        .post("/api/accounts")
+        .send({ ...validBody, roles: ["admin"] });
+      expect(res.status).toBe(401);
+      expect(mockStorage.createAccount).not.toHaveBeenCalled();
+    });
+
+    it("returns 403 for a non-admin", async () => {
+      const agent = await loginAs(app, mockStorage, fixtures.memberAccount);
+      const res = await agent.post("/api/accounts").send({ ...validBody, roles: ["admin"] });
+      expect(res.status).toBe(403);
+      expect(mockStorage.createAccount).not.toHaveBeenCalled();
+    });
+
+    it("admin creates an account with valid data", async () => {
+      const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
       mockStorage.createAccount.mockResolvedValue({
         ...fixtures.memberAccount,
         passwordHash: "hashed-secret",
       });
 
-      const res = await request(app)
-        .post("/api/accounts")
-        .send({
-          email: "new@test.local",
-          password: "secret123",
-          firstName: "New",
-          lastName: "User",
-        });
+      const res = await agent.post("/api/accounts").send(validBody);
 
       expect(res.status).toBe(201);
       expect(res.body.passwordHash).toBeUndefined();
     });
 
+    it("sends a welcome email with credentials by default", async () => {
+      const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
+      mockStorage.createAccount.mockResolvedValue({ ...fixtures.memberAccount, language: "es" });
+      vi.mocked(sendWelcomeEmail).mockClear();
+
+      const res = await agent.post("/api/accounts").send(validBody);
+
+      expect(res.status).toBe(201);
+      expect(res.body.welcomeEmail).toBe("sent");
+      expect(sendWelcomeEmail).toHaveBeenCalledWith(
+        fixtures.memberAccount.email,
+        fixtures.memberAccount.firstName,
+        validBody.password,
+        "es",
+      );
+    });
+
+    it("does not send a welcome email when welcome_email is false", async () => {
+      const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
+      mockStorage.createAccount.mockResolvedValue(fixtures.memberAccount);
+      vi.mocked(sendWelcomeEmail).mockClear();
+
+      const res = await agent.post("/api/accounts").send({ ...validBody, welcome_email: false });
+
+      expect(res.status).toBe(201);
+      expect(res.body.welcomeEmail).toBe("skipped");
+      expect(sendWelcomeEmail).not.toHaveBeenCalled();
+    });
+
+    it("without a password, sends an account-setup link (7-day token) instead of credentials", async () => {
+      const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
+      mockStorage.createAccount.mockResolvedValue({ ...fixtures.memberAccount, language: "fr" });
+      mockStorage.createPasswordResetToken.mockResolvedValue("setup-token");
+      vi.mocked(sendWelcomeEmail).mockClear();
+      vi.mocked(sendAccountSetupEmail).mockClear();
+
+      const { password: _omit, ...noPassword } = validBody;
+      const res = await agent.post("/api/accounts").send(noPassword);
+
+      expect(res.status).toBe(201);
+      expect(mockStorage.createAccount).toHaveBeenCalledWith(
+        expect.not.objectContaining({ password: expect.anything() }),
+      );
+      expect(mockStorage.createPasswordResetToken).toHaveBeenCalledWith(
+        fixtures.memberAccount.id,
+        ACCOUNT_SETUP_TTL_MS,
+      );
+      expect(sendAccountSetupEmail).toHaveBeenCalledWith(
+        fixtures.memberAccount.email,
+        fixtures.memberAccount.firstName,
+        "setup-token",
+        "fr",
+      );
+      expect(res.body.welcomeEmail).toBe("sent");
+      expect(sendWelcomeEmail).not.toHaveBeenCalled();
+    });
+
+    it("with a password, sends credentials and no setup link", async () => {
+      const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
+      mockStorage.createAccount.mockResolvedValue(fixtures.memberAccount);
+      vi.mocked(sendAccountSetupEmail).mockClear();
+
+      const res = await agent.post("/api/accounts").send(validBody);
+
+      expect(res.status).toBe(201);
+      expect(sendAccountSetupEmail).not.toHaveBeenCalled();
+      expect(mockStorage.createPasswordResetToken).not.toHaveBeenCalled();
+    });
+
+    it("reports welcomeEmail 'failed' (still 201) when the credentials email fails", async () => {
+      const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
+      mockStorage.createAccount.mockResolvedValue(fixtures.memberAccount);
+      vi.mocked(sendWelcomeEmail).mockResolvedValueOnce(false);
+
+      const res = await agent.post("/api/accounts").send(validBody);
+
+      expect(res.status).toBe(201);
+      expect(res.body.welcomeEmail).toBe("failed");
+      expect(res.body.id).toBe(fixtures.memberAccount.id);
+    });
+
+    it("reports welcomeEmail 'failed' (still 201) when the setup email fails", async () => {
+      const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
+      mockStorage.createAccount.mockResolvedValue(fixtures.memberAccount);
+      vi.mocked(sendAccountSetupEmail).mockResolvedValueOnce(false);
+      const { password: _omit, ...noPassword } = validBody;
+
+      const res = await agent.post("/api/accounts").send(noPassword);
+
+      expect(res.status).toBe(201);
+      expect(res.body.welcomeEmail).toBe("failed");
+    });
+
+    it("returns 400 when there is no password and welcome_email is false", async () => {
+      const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
+      const { password: _omit, ...noPassword } = validBody;
+
+      const res = await agent.post("/api/accounts").send({ ...noPassword, welcome_email: false });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toMatch(/password/i);
+      expect(mockStorage.createAccount).not.toHaveBeenCalled();
+    });
+
+    it("returns 400 on an empty-string password", async () => {
+      const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
+      const res = await agent.post("/api/accounts").send({ ...validBody, password: "" });
+      expect(res.status).toBe(400);
+      expect(mockStorage.createAccount).not.toHaveBeenCalled();
+    });
+
     it("returns 400 on invalid body (zod)", async () => {
-      const res = await request(app)
+      const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
+      const res = await agent
         .post("/api/accounts")
-        .send({ email: "no-password@test.local" });
+        .send({ email: "no-names@test.local" });
       expect(res.status).toBe(400);
     });
 
     it("returns 409 when email already exists", async () => {
+      const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
       mockStorage.createAccount.mockRejectedValue(new Error("duplicate key value"));
-      const res = await request(app)
-        .post("/api/accounts")
-        .send({
-          email: "dup@test.local",
-          password: "secret123",
-          firstName: "Dup",
-          lastName: "User",
-        });
+      const res = await agent.post("/api/accounts").send(validBody);
       expect(res.status).toBe(409);
     });
   });
@@ -151,13 +285,76 @@ describe("/api/accounts", () => {
       expect(res.status).toBe(403);
     });
 
-    it("non-admin gets 403 trying to change roles", async () => {
+    it("non-admin trying to change roles has them silently stripped", async () => {
+      // Documented behaviour: `roles` is dropped (not rejected) for non-admins,
+      // and the rest of the update still applies.
       const agent = await loginAs(app, mockStorage, fixtures.memberAccount);
+      mockStorage.updateAccount.mockResolvedValue(fixtures.memberAccount);
       const res = await agent
         .patch(`/api/accounts/${fixtures.memberAccount.id}`)
-        .send({ roles: ["admin"] });
-      expect(res.status).toBe(403);
-      expect(res.body.message).toMatch(/admins/i);
+        .send({ roles: ["admin"], firstName: "Still Applied" });
+      expect(res.status).toBe(200);
+      expect(mockStorage.updateAccount).toHaveBeenCalledWith(
+        fixtures.memberAccount.id,
+        expect.objectContaining({ firstName: "Still Applied" }),
+      );
+      const [, data] = mockStorage.updateAccount.mock.calls[0];
+      expect(data).not.toHaveProperty("roles");
+    });
+
+    it("admin setting a password reports welcomeEmail 'sent'", async () => {
+      const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
+      mockStorage.updateAccount.mockResolvedValue(fixtures.memberAccount);
+      vi.mocked(sendWelcomeEmail).mockClear();
+
+      const res = await agent
+        .patch(`/api/accounts/${fixtures.memberAccount.id}`)
+        .send({ password: "newpass123", welcome_email: true });
+
+      expect(res.status).toBe(200);
+      expect(res.body.welcomeEmail).toBe("sent");
+      expect(mockStorage.updatePassword).toHaveBeenCalledWith(fixtures.memberAccount.id, "newpass123");
+      expect(sendWelcomeEmail).toHaveBeenCalled();
+    });
+
+    it("admin setting a password reports welcomeEmail 'failed' when the email fails", async () => {
+      const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
+      mockStorage.updateAccount.mockResolvedValue(fixtures.memberAccount);
+      vi.mocked(sendWelcomeEmail).mockResolvedValueOnce(false);
+
+      const res = await agent
+        .patch(`/api/accounts/${fixtures.memberAccount.id}`)
+        .send({ password: "newpass123", welcome_email: true });
+
+      expect(res.status).toBe(200);
+      expect(res.body.welcomeEmail).toBe("failed");
+      expect(mockStorage.updatePassword).toHaveBeenCalled();
+    });
+
+    it("admin setting a password without welcome_email reports 'skipped'", async () => {
+      const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
+      mockStorage.updateAccount.mockResolvedValue(fixtures.memberAccount);
+      vi.mocked(sendWelcomeEmail).mockClear();
+
+      const res = await agent
+        .patch(`/api/accounts/${fixtures.memberAccount.id}`)
+        .send({ password: "newpass123" });
+
+      expect(res.status).toBe(200);
+      expect(res.body.welcomeEmail).toBe("skipped");
+      expect(sendWelcomeEmail).not.toHaveBeenCalled();
+    });
+
+    it("profile edits without a password omit welcomeEmail", async () => {
+      const agent = await loginAs(app, mockStorage, fixtures.memberAccount);
+      mockStorage.updateAccount.mockResolvedValue(fixtures.memberAccount);
+
+      const res = await agent
+        .patch(`/api/accounts/${fixtures.memberAccount.id}`)
+        .send({ firstName: "Renamed" });
+
+      expect(res.status).toBe(200);
+      expect(res.body).not.toHaveProperty("welcomeEmail");
     });
 
     it("admin can change roles", async () => {

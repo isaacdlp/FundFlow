@@ -51,18 +51,10 @@ export default function OrgLanding() {
 
   const signupRequestMutation = useMutation({
     mutationFn: async () => {
-      if (inviteValid) {
-        const res = await apiRequest("POST", `/api/invites/${inviteToken}/accept`, signupForm);
-        return res.json();
-      }
-      const createRes = await apiRequest("POST", "/api/accounts", {
-        ...signupForm,
-        profileComplete: false,
-      });
-      const account = await createRes.json();
-      const orgData = organization!;
-      const reqRes = await apiRequest("POST", `/api/organizations/${orgData.id}/members/request`, { accountId: account.id });
-      return reqRes.json();
+      // New accounts can only be created through a valid invite; account
+      // creation via POST /api/accounts is admin-only.
+      const res = await apiRequest("POST", `/api/invites/${inviteToken}/accept`, signupForm);
+      return res.json();
     },
     onSuccess: () => {
       setSuccessStatus(inviteValid ? "approved" : "pending");
@@ -87,15 +79,15 @@ export default function OrgLanding() {
 
   const signinRequestMutation = useMutation({
     mutationFn: async () => {
-      const loginRes = await apiRequest("POST", "/api/auth/login", signinForm);
-      const account = await loginRes.json();
+      // Logging in sets the session cookie; the follow-up calls act on that account.
+      await apiRequest("POST", "/api/auth/login", signinForm);
 
       if (inviteValid) {
-        const res = await apiRequest("POST", `/api/invites/${inviteToken}/accept`, { accountId: account.id });
+        const res = await apiRequest("POST", `/api/invites/${inviteToken}/accept`, {});
         return res.json();
       }
       const orgData = organization!;
-      const reqRes = await apiRequest("POST", `/api/organizations/${orgData.id}/members/request`, { accountId: account.id });
+      const reqRes = await apiRequest("POST", `/api/organizations/${orgData.id}/members/request`, {});
       return reqRes.json();
     },
     onSuccess: () => {
@@ -218,9 +210,11 @@ export default function OrgLanding() {
               </h2>
             </CardHeader>
             <CardContent className="space-y-3">
-              <Button className="w-full" size="lg" onClick={() => setMode("signup")} data-testid="button-new-user">
-                {t("landing.newUser")}
-              </Button>
+              {inviteValid && (
+                <Button className="w-full" size="lg" onClick={() => setMode("signup")} data-testid="button-new-user">
+                  {t("landing.newUser")}
+                </Button>
+              )}
               <Button className="w-full" variant="outline" size="lg" onClick={() => setMode("signin")} data-testid="button-existing-user">
                 {t("landing.existingUser")}
               </Button>

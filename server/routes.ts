@@ -4,12 +4,12 @@ import { readFileSync } from "fs";
 import path from "path";
 import yaml from "js-yaml";
 import { storage } from "./storage";
-import { insertAccountSchema, updateAccountSchema, insertOrganizationSchema, updateOrganizationSchema, insertSpvSchema, updateSpvSchema, insertEntitySchema, updateEntitySchema, createApiTokenSchema } from "@shared/schema";
+import { insertAccountSchema, updateAccountSchema, insertOrganizationSchema, updateOrganizationSchema, insertSpvSchema, updateSpvSchema, insertEntitySchema, updateEntitySchema, createApiTokenSchema, ACCOUNT_SETUP_TTL_MS } from "@shared/schema";
 import { isLocale } from "@shared/i18n";
 import { ZodError } from "zod";
 import { fromZodError } from "zod-validation-error";
 import type { AccountWithRoles } from "./storage";
-import { sendPasswordResetEmail, sendWelcomeEmail } from "./email";
+import { sendPasswordResetEmail, sendWelcomeEmail, sendAccountSetupEmail } from "./email";
 import { generateApiToken, hashApiToken, parseBearerToken } from "./api-tokens";
 import { registerDocumentRoutes } from "./documents";
 import { registerCurrencyRoutes } from "./currency";
@@ -105,6 +105,16 @@ async function requireSessionAdmin(req: Request, res: Response, next: NextFuncti
 
 function isAdmin(account: AccountWithRoles): boolean {
   return account.roles.some(r => r.name === "admin");
+}
+
+/**
+ * Admins can manage any organization; non-admins only those they organize.
+ * Approved membership alone is NOT enough — it grants read access only.
+ */
+async function canManageOrg(me: AccountWithRoles, orgId: number): Promise<boolean> {
+  if (isAdmin(me)) return true;
+  const organizerOrgIds = await storage.getOrganizationIdsAsOrganizer(me.id);
+  return organizerOrgIds.includes(orgId);
 }
 
 async function canManageSpv(me: AccountWithRoles, spvId: number): Promise<boolean> {
@@ -254,10 +264,10 @@ export async function registerRoutes(
 
     let accountId: number;
 
-    if (req.body.accountId) {
-      accountId = parseInt(req.body.accountId);
-      if (isNaN(accountId)) return res.status(400).json({ message: "Invalid accountId" });
-    } else if (req.body.email && req.body.password && req.body.firstName && req.body.lastName) {
+    // Either create a new account from the body, or accept for the logged-in
+    // account. A client-supplied `accountId` is never trusted.
+    const authAccountId = getAuthAccountId(req);
+    if (req.body.email && req.body.password && req.body.firstName && req.body.lastName) {
       try {
         const newAccount = await storage.createAccount({
           email: req.body.email,
@@ -274,8 +284,10 @@ export async function registerRoutes(
         }
         throw e;
       }
+    } else if (authAccountId) {
+      accountId = authAccountId;
     } else {
-      return res.status(400).json({ message: "Provide accountId or new account details (email, password, firstName, lastName)" });
+      return res.status(400).json({ message: "Sign in, or provide new account details (email, password, firstName, lastName)" });
     }
 
     await storage.useInvite(req.params.token, accountId);
@@ -283,34 +295,81 @@ export async function registerRoutes(
     res.json({ member, message: "Invite accepted. You are now a member of this organization." });
   });
 
-  app.post("/api/organizations/:id/members/request", async (req, res) => {
-    const id = parseInt(req.params.id);
+  // Without `accountId` (or with the caller's own id): request membership for
+  // the logged-in account — created as "pending".
+  // With another `accountId`: only admins or organizers of this org may do it,
+  // and the membership is created already "approved" (they are the approvers).
+  app.post("/api/organizations/:id/members/request", requireAuth, async (req, res) => {
+    const id = parseInt(req.params.id as string);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
-    const { accountId } = req.body;
-    if (!accountId) return res.status(400).json({ message: "accountId is required" });
+    const callerId = getAuthAccountId(req)!;
+
+    let accountId = callerId;
+    let addedByManager = false;
+    if (req.body?.accountId !== undefined && req.body.accountId !== null) {
+      const target = parseInt(req.body.accountId);
+      if (isNaN(target)) return res.status(400).json({ message: "Invalid accountId" });
+      if (target !== callerId) {
+        const me = await storage.getAccount(callerId);
+        if (!me) return res.status(401).json({ message: "Account not found" });
+        if (!(await canManageOrg(me, id))) {
+          return res.status(403).json({ message: "Only admins or organizers of this organization can add other members" });
+        }
+        accountId = target;
+        addedByManager = true;
+      }
+    }
 
     const org = await storage.getOrganization(id);
     if (!org) return res.status(404).json({ message: "Organization not found" });
+    if (addedByManager && !(await storage.getAccount(accountId))) {
+      return res.status(404).json({ message: "Account not found" });
+    }
 
-    const existing = await storage.getMember(id, parseInt(accountId));
+    const existing = await storage.getMember(id, accountId);
     if (existing) {
+      // A manager adding someone with a pending/rejected request approves it.
+      if (addedByManager && existing.status !== "approved") {
+        const approved = await storage.updateMemberStatus(id, accountId, "approved");
+        return res.json(approved);
+      }
       return res.json(existing);
     }
 
-    const member = await storage.createMemberRequest(id, parseInt(accountId));
+    const member = await storage.createMemberRequest(id, accountId, undefined, addedByManager ? "approved" : "pending");
     res.status(201).json(member);
   });
 
-  app.post("/api/accounts", async (req, res) => {
+  // Admin-only: there is no self-signup. New users join via admin creation or
+  // an invite link (`/api/invites/:token/accept`). Gating this also keeps
+  // anonymous callers from assigning themselves roles (e.g. "admin").
+  app.post("/api/accounts", requireAdmin, async (req, res) => {
     try {
-      const welcome_email = !!req.body.welcome_email;
-      const plainPassword = req.body.password as string | undefined;
+      // Welcome email is ON by default; opt out with `welcome_email: false`.
+      // With a password it contains the credentials; without one it contains
+      // a link (valid 7 days) for the user to create their own password.
+      const welcome_email = req.body.welcome_email !== false;
       const data = insertAccountSchema.parse(req.body);
-      const account = await storage.createAccount(data);
-      if (welcome_email && plainPassword) {
-        await sendWelcomeEmail(account.email, account.firstName, plainPassword, account.language);
+      if (!data.password && !welcome_email) {
+        return res.status(400).json({
+          message: "Either provide a password or leave welcome_email enabled so the user can set their own password",
+        });
       }
-      res.status(201).json(stripPasswordHash(account));
+      const account = await storage.createAccount(data);
+      // Reported back so the admin knows if the user never got the email
+      // (critical when no password was set: the email is their only way in).
+      let welcomeEmail: "sent" | "failed" | "skipped" = "skipped";
+      if (welcome_email) {
+        let sent: boolean;
+        if (data.password) {
+          sent = await sendWelcomeEmail(account.email, account.firstName, data.password, account.language);
+        } else {
+          const token = await storage.createPasswordResetToken(account.id, ACCOUNT_SETUP_TTL_MS);
+          sent = await sendAccountSetupEmail(account.email, account.firstName, token, account.language);
+        }
+        welcomeEmail = sent ? "sent" : "failed";
+      }
+      res.status(201).json({ ...stripPasswordHash(account), welcomeEmail });
     } catch (e) {
       if (e instanceof ZodError) {
         return res.status(400).json({ message: fromZodError(e).message });
@@ -489,9 +548,14 @@ export async function registerRoutes(
 
       if (setPassword) {
         await storage.updatePassword(id, setPassword);
-      }
-      if (welcome_email && setPassword) {
-        await sendWelcomeEmail(account.email, account.firstName, setPassword, account.language);
+        // Only reported when a password is set, so plain profile edits keep
+        // the usual Account response shape.
+        let welcomeEmail: "sent" | "failed" | "skipped" = "skipped";
+        if (welcome_email) {
+          const sent = await sendWelcomeEmail(account.email, account.firstName, setPassword, account.language);
+          welcomeEmail = sent ? "sent" : "failed";
+        }
+        return res.json({ ...stripPasswordHash(account), welcomeEmail });
       }
 
       res.json(stripPasswordHash(account));
@@ -570,11 +634,8 @@ export async function registerRoutes(
     const me = await storage.getAccount(getAuthAccountId(req)!);
     if (!me) return res.status(401).json({ message: "Account not found" });
 
-    if (!isAdmin(me)) {
-      const orgIds = await storage.getOrganizationIdsForAccount(me.id);
-      if (!orgIds.includes(id)) {
-        return res.status(403).json({ message: "Access denied" });
-      }
+    if (!(await canManageOrg(me, id))) {
+      return res.status(403).json({ message: "Only admins or organizers of this organization can edit it" });
     }
 
     try {
@@ -604,11 +665,8 @@ export async function registerRoutes(
     const me = await storage.getAccount(getAuthAccountId(req)!);
     if (!me) return res.status(401).json({ message: "Account not found" });
 
-    if (!isAdmin(me)) {
-      const orgIds = await storage.getOrganizationIdsForAccount(me.id);
-      if (!orgIds.includes(id)) {
-        return res.status(403).json({ message: "Access denied" });
-      }
+    if (!(await canManageOrg(me, id))) {
+      return res.status(403).json({ message: "Only admins or organizers of this organization can manage organizers" });
     }
 
     const { accountId } = req.body;
@@ -631,11 +689,8 @@ export async function registerRoutes(
     const me = await storage.getAccount(getAuthAccountId(req)!);
     if (!me) return res.status(401).json({ message: "Account not found" });
 
-    if (!isAdmin(me)) {
-      const orgIds = await storage.getOrganizationIdsForAccount(me.id);
-      if (!orgIds.includes(id)) {
-        return res.status(403).json({ message: "Access denied" });
-      }
+    if (!(await canManageOrg(me, id))) {
+      return res.status(403).json({ message: "Only admins or organizers of this organization can manage organizers" });
     }
 
     const removed = await storage.removeOrganizer(id, accountId);
@@ -650,11 +705,8 @@ export async function registerRoutes(
     const me = await storage.getAccount(getAuthAccountId(req)!);
     if (!me) return res.status(401).json({ message: "Account not found" });
 
-    if (!isAdmin(me)) {
-      const orgIds = await storage.getOrganizationIdsForAccount(me.id);
-      if (!orgIds.includes(id)) {
-        return res.status(403).json({ message: "Access denied" });
-      }
+    if (!(await canManageOrg(me, id))) {
+      return res.status(403).json({ message: "Only admins or organizers of this organization can view its members" });
     }
 
     const members = await storage.getMembers(id);
@@ -668,11 +720,8 @@ export async function registerRoutes(
     const me = await storage.getAccount(getAuthAccountId(req)!);
     if (!me) return res.status(401).json({ message: "Account not found" });
 
-    if (!isAdmin(me)) {
-      const orgIds = await storage.getOrganizationIdsForAccount(me.id);
-      if (!orgIds.includes(id)) {
-        return res.status(403).json({ message: "Access denied" });
-      }
+    if (!(await canManageOrg(me, id))) {
+      return res.status(403).json({ message: "Only admins or organizers of this organization can manage members" });
     }
 
     const { status } = req.body;
@@ -691,11 +740,8 @@ export async function registerRoutes(
     const me = await storage.getAccount(getAuthAccountId(req)!);
     if (!me) return res.status(401).json({ message: "Account not found" });
 
-    if (!isAdmin(me)) {
-      const orgIds = await storage.getOrganizationIdsForAccount(me.id);
-      if (!orgIds.includes(id)) {
-        return res.status(403).json({ message: "Access denied" });
-      }
+    if (!(await canManageOrg(me, id))) {
+      return res.status(403).json({ message: "Only admins or organizers of this organization can manage members" });
     }
 
     const removed = await storage.removeMember(id, accountId);
@@ -709,11 +755,8 @@ export async function registerRoutes(
     const me = await storage.getAccount(getAuthAccountId(req)!);
     if (!me) return res.status(401).json({ message: "Account not found" });
 
-    if (!isAdmin(me)) {
-      const orgIds = await storage.getOrganizationIdsForAccount(me.id);
-      if (!orgIds.includes(id)) {
-        return res.status(403).json({ message: "Access denied" });
-      }
+    if (!(await canManageOrg(me, id))) {
+      return res.status(403).json({ message: "Only admins or organizers of this organization can view invites" });
     }
 
     const invites = await storage.getInvites(id);
@@ -726,11 +769,8 @@ export async function registerRoutes(
     const me = await storage.getAccount(getAuthAccountId(req)!);
     if (!me) return res.status(401).json({ message: "Account not found" });
 
-    if (!isAdmin(me)) {
-      const orgIds = await storage.getOrganizationIdsForAccount(me.id);
-      if (!orgIds.includes(id)) {
-        return res.status(403).json({ message: "Access denied" });
-      }
+    if (!(await canManageOrg(me, id))) {
+      return res.status(403).json({ message: "Only admins or organizers of this organization can create invites" });
     }
 
     const org = await storage.getOrganization(id);
@@ -803,11 +843,8 @@ export async function registerRoutes(
     const me = await storage.getAccount(getAuthAccountId(req)!);
     if (!me) return res.status(401).json({ message: "Account not found" });
 
-    if (!isAdmin(me)) {
-      const orgIds = await storage.getOrganizationIdsForAccount(me.id);
-      if (!orgIds.includes(orgId)) {
-        return res.status(403).json({ message: "Access denied" });
-      }
+    if (!(await canManageOrg(me, orgId))) {
+      return res.status(403).json({ message: "Only admins or organizers of this organization can create SPVs" });
     }
 
     const org = await storage.getOrganization(orgId);

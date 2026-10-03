@@ -214,9 +214,15 @@
     "zipPostalCode": "Code postal",
     "adminRoleDescription": "Administrateur de la plateforme avec accès complet à toutes les fonctionnalités et paramètres",
     "missingRequiredTitle": "Champs obligatoires manquants",
-    "missingRequiredDescription": "Veuillez renseigner le prénom, le nom, l'e-mail et le mot de passe.",
+    "missingRequiredDescription": "Veuillez renseigner le prénom, le nom et l'e-mail.",
     "sendWelcomeEmail": "Envoyer un e-mail de bienvenue",
-    "sendWelcomeEmailHint": "Envoie à l'utilisateur son nom d'utilisateur et son mot de passe"
+    "sendWelcomeEmailHint": "Envoie à l'utilisateur son nom d'utilisateur et son mot de passe — ou, si aucun mot de passe n'est défini, un lien pour le créer",
+    "passwordOptionalHint": "Facultatif. Laissez vide et l'e-mail de bienvenue demandera à l'utilisateur de créer son propre mot de passe.",
+    "passwordOrWelcomeEmailTitle": "Mot de passe ou e-mail de bienvenue requis",
+    "passwordOrWelcomeEmailDescription": "Définissez un mot de passe, ou laissez « Envoyer un e-mail de bienvenue » coché pour que l'utilisateur crée le sien.",
+    "welcomeEmailFailedTitle": "Compte créé, mais l'e-mail de bienvenue n'a pas pu être envoyé",
+    "welcomeEmailFailedDescription": "Transmettez vous-même les identifiants à l'utilisateur, ou utilisez « Envoyer l'e-mail de réinitialisation » sur la page de son compte.",
+    "setupEmailFailedDescription": "L'utilisateur n'a pas encore de mot de passe et ne peut pas se connecter. Utilisez « Envoyer l'e-mail de réinitialisation » ou « Définir le mot de passe » sur la page de son compte."
   },
   "accountDetail": {
     "tabPersonal": "Infos personnelles",
@@ -262,7 +268,9 @@
     "passwordSetSuccess": "Mot de passe défini avec succès",
     "passwordSetFailed": "Échec de la définition du mot de passe",
     "sendWelcomeEmail": "Envoyer un e-mail de bienvenue",
-    "sendWelcomeEmailHint": "Envoie à l'utilisateur son nom d'utilisateur et son nouveau mot de passe"
+    "sendWelcomeEmailHint": "Envoie à l'utilisateur son nom d'utilisateur et son nouveau mot de passe",
+    "welcomeEmailFailedTitle": "Mot de passe défini, mais l'e-mail de bienvenue n'a pas pu être envoyé",
+    "welcomeEmailFailedDescription": "Le nouveau mot de passe est actif. Transmettez-le vous-même à l'utilisateur, ou utilisez « Envoyer l'e-mail de réinitialisation »."
   },
   "organizations": {
     "title": "Organisations",

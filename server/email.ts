@@ -86,6 +86,65 @@ const welcomeStrings: Record<Lang, {
   },
 };
 
+// ─── Account setup translations (welcome email without a password) ───────────
+
+const setupStrings: Record<Lang, {
+  subject: string;
+  heading: string;
+  greeting: (name: string) => string;
+  intro: string;
+  usernameLabel: string;
+  cta: string;
+  btnLabel: string;
+  expiry: string;
+  fallback: string;
+  footer: string;
+  textBody: (firstName: string, email: string, url: string) => string;
+}> = {
+  en: {
+    subject: "Welcome to FundFlow – Set Up Your Password",
+    heading: "Welcome to FundFlow",
+    greeting: (name) => `Hi ${name},`,
+    intro: "An account has been created for you on FundFlow. Your username is:",
+    usernameLabel: "Username&nbsp;(Email):",
+    cta: "To sign in, you first need to create your password. Click the button below to set it:",
+    btnLabel: "Create Your Password",
+    expiry: "This link will expire in 7 days. If it expires, use \"Forgot your password?\" on the sign-in page to get a new one.",
+    fallback: "If the button doesn't work, copy and paste this link into your browser:",
+    footer: "FundFlow - Fund Management Platform",
+    textBody: (firstName, email, url) =>
+      `Hi ${firstName},\n\nAn account has been created for you on FundFlow.\n\nUsername (Email): ${email}\n\nTo sign in, you first need to create your password. Set it here: ${url}\n\nThis link will expire in 7 days. If it expires, use "Forgot your password?" on the sign-in page to get a new one.\n\nFundFlow - Fund Management Platform`,
+  },
+  es: {
+    subject: "Bienvenido a FundFlow – Crea tu contraseña",
+    heading: "Bienvenido a FundFlow",
+    greeting: (name) => `Hola ${name},`,
+    intro: "Se ha creado una cuenta para ti en FundFlow. Tu nombre de usuario es:",
+    usernameLabel: "Usuario&nbsp;(Email):",
+    cta: "Para iniciar sesión, primero debes crear tu contraseña. Haz clic en el botón de abajo para establecerla:",
+    btnLabel: "Crear tu contraseña",
+    expiry: "Este enlace caducará en 7 días. Si caduca, usa \"¿Olvidaste tu contraseña?\" en la página de inicio de sesión para obtener uno nuevo.",
+    fallback: "Si el botón no funciona, copia y pega este enlace en tu navegador:",
+    footer: "FundFlow - Plataforma de Gestión de Fondos",
+    textBody: (firstName, email, url) =>
+      `Hola ${firstName},\n\nSe ha creado una cuenta para ti en FundFlow.\n\nUsuario (Email): ${email}\n\nPara iniciar sesión, primero debes crear tu contraseña. Establécela aquí: ${url}\n\nEste enlace caducará en 7 días. Si caduca, usa "¿Olvidaste tu contraseña?" en la página de inicio de sesión para obtener uno nuevo.\n\nFundFlow - Plataforma de Gestión de Fondos`,
+  },
+  fr: {
+    subject: "Bienvenue sur FundFlow – Créez votre mot de passe",
+    heading: "Bienvenue sur FundFlow",
+    greeting: (name) => `Bonjour ${name},`,
+    intro: "Un compte a été créé pour vous sur FundFlow. Votre identifiant est :",
+    usernameLabel: "Identifiant&nbsp;(Email)&nbsp;:",
+    cta: "Pour vous connecter, vous devez d'abord créer votre mot de passe. Cliquez sur le bouton ci-dessous pour le définir :",
+    btnLabel: "Créer votre mot de passe",
+    expiry: "Ce lien expirera dans 7 jours. S'il expire, utilisez « Mot de passe oublié ? » sur la page de connexion pour en obtenir un nouveau.",
+    fallback: "Si le bouton ne fonctionne pas, copiez et collez ce lien dans votre navigateur :",
+    footer: "FundFlow - Plateforme de Gestion de Fonds",
+    textBody: (firstName, email, url) =>
+      `Bonjour ${firstName},\n\nUn compte a été créé pour vous sur FundFlow.\n\nIdentifiant (Email) : ${email}\n\nPour vous connecter, vous devez d'abord créer votre mot de passe. Définissez-le ici : ${url}\n\nCe lien expirera dans 7 jours. S'il expire, utilisez « Mot de passe oublié ? » sur la page de connexion pour en obtenir un nouveau.\n\nFundFlow - Plateforme de Gestion de Fonds`,
+  },
+};
+
 // ─── Password reset translations ──────────────────────────────────────────────
 
 const resetStrings: Record<Lang, {
@@ -183,6 +242,58 @@ export async function sendWelcomeEmail(
     return true;
   } catch (error) {
     log(`Failed to send welcome email to ${email}: ${(error as Error).message}`);
+    return false;
+  }
+}
+
+/**
+ * Welcome email for an account created without a password: shows the username
+ * and links to the reset-password page so the user can create their password.
+ */
+export async function sendAccountSetupEmail(
+  email: string,
+  firstName: string,
+  token: string,
+  language?: string,
+): Promise<boolean> {
+  const lang = normalizeLang(language);
+  const s = setupStrings[lang];
+  const setupUrl = `${getBaseUrl()}/${lang}${RESET_PASSWORD_PATHS[lang]}?token=${token}`;
+  const fromAddress = process.env.SMTP_FROM || process.env.SMTP_USER || "noreply@example.com";
+
+  try {
+    await transporter.sendMail({
+      from: `"FundFlow" <${fromAddress}>`,
+      to: email,
+      subject: s.subject,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <h2 style="color: #1a1a1a;">${s.heading}</h2>
+          <p>${s.greeting(firstName)}</p>
+          <p>${s.intro}</p>
+          <div style="background: #f4f4f5; border-radius: 6px; padding: 16px; margin: 24px 0;">
+            <p style="margin: 0; font-size: 14px;"><strong>${s.usernameLabel}</strong>&nbsp;${email}</p>
+          </div>
+          <p>${s.cta}</p>
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="${setupUrl}"
+               style="display: inline-block; padding: 12px 32px; background-color: #18181b; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: 500;">
+              ${s.btnLabel}
+            </a>
+          </div>
+          <p style="color: #666; font-size: 14px;">${s.expiry}</p>
+          <p style="color: #666; font-size: 14px;">${s.fallback}</p>
+          <p style="color: #666; font-size: 12px; word-break: break-all;">${setupUrl}</p>
+          <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;" />
+          <p style="color: #999; font-size: 12px;">${s.footer}</p>
+        </div>
+      `,
+      text: s.textBody(firstName, email, setupUrl),
+    });
+    log(`Account setup email sent to ${email}`);
+    return true;
+  } catch (error) {
+    log(`Failed to send account setup email to ${email}: ${(error as Error).message}`);
     return false;
   }
 }

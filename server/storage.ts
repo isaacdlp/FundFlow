@@ -5,7 +5,7 @@ import {
   organizationMembers, organizationInvites, spvs, spvMembers,
   spvAssets, spvAssetValuations,
   entities, entityOwners, entityManagers, passwordResetTokens,
-  apiTokens, currencies,
+  apiTokens, currencies, PASSWORD_RESET_TTL_MS,
   type Account, type Role, type InsertAccount, type UpdateAccount,
   type Organization, type InsertOrganization, type UpdateOrganization,
   type OrganizationMember, type OrganizationInvite,
@@ -150,7 +150,7 @@ export interface IStorage {
 
   getMembers(organizationId: number): Promise<MemberWithAccount[]>;
   getMember(organizationId: number, accountId: number): Promise<MemberWithAccount | undefined>;
-  createMemberRequest(organizationId: number, accountId: number, inviteId?: number): Promise<MemberWithAccount>;
+  createMemberRequest(organizationId: number, accountId: number, inviteId?: number, initialStatus?: "pending" | "approved"): Promise<MemberWithAccount>;
   updateMemberStatus(organizationId: number, accountId: number, status: string): Promise<MemberWithAccount | undefined>;
   removeMember(organizationId: number, accountId: number): Promise<boolean>;
 
@@ -197,7 +197,7 @@ export interface IStorage {
   getEntityIdsForAccount(accountId: number): Promise<number[]>;
   getSpvIdsForAccount(accountId: number): Promise<number[]>;
 
-  createPasswordResetToken(accountId: number): Promise<string>;
+  createPasswordResetToken(accountId: number, ttlMs?: number): Promise<string>;
   getPasswordResetToken(token: string): Promise<PasswordResetToken | undefined>;
   usePasswordResetToken(token: string): Promise<void>;
   updatePassword(accountId: number, newPassword: string): Promise<void>;
@@ -315,7 +315,9 @@ export class DatabaseStorage implements IStorage {
   async createAccount(data: InsertAccount): Promise<AccountWithRoles> {
     const { password, roles: roleNames, ...rest } = data;
     const bcrypt = await import("bcrypt");
-    const passwordHash = await bcrypt.hash(password, 10);
+    // No password → hash a random secret nobody knows, so the account cannot
+    // log in until the user sets a password via a setup/reset token.
+    const passwordHash = await bcrypt.hash(password ?? crypto.randomBytes(32).toString("hex"), 10);
 
     const profileComplete = isProfileComplete(rest);
     const [account] = await db.insert(accounts).values({
@@ -493,8 +495,14 @@ export class DatabaseStorage implements IStorage {
     return { ...m, account: acct };
   }
 
-  async createMemberRequest(organizationId: number, accountId: number, inviteId?: number): Promise<MemberWithAccount> {
-    const status = inviteId ? "approved" : "pending";
+  async createMemberRequest(
+    organizationId: number,
+    accountId: number,
+    inviteId?: number,
+    initialStatus?: "pending" | "approved",
+  ): Promise<MemberWithAccount> {
+    // Invite acceptances and admin/organizer additions are approved up front.
+    const status = initialStatus ?? (inviteId ? "approved" : "pending");
     const [member] = await db.insert(organizationMembers).values({
       organizationId,
       accountId,
@@ -1154,9 +1162,9 @@ export class DatabaseStorage implements IStorage {
     return result.length > 0;
   }
 
-  async createPasswordResetToken(accountId: number): Promise<string> {
+  async createPasswordResetToken(accountId: number, ttlMs: number = PASSWORD_RESET_TTL_MS): Promise<string> {
     const token = crypto.randomBytes(32).toString("hex");
-    const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+    const expiresAt = new Date(Date.now() + ttlMs);
     await db.insert(passwordResetTokens).values({ accountId, token, expiresAt });
     return token;
   }

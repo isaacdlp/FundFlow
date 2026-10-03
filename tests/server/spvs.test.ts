@@ -122,7 +122,7 @@ describe("/api/spvs", () => {
   describe("POST /api/organizations/:id/spvs", () => {
     it("non-admin not in org gets 403", async () => {
       const agent = await loginAs(app, mockStorage, fixtures.outsiderAccount);
-      mockStorage.getOrganizationIdsForAccount.mockResolvedValue([]);
+      mockStorage.getOrganizationIdsAsOrganizer.mockResolvedValue([]);
       const res = await agent
         .post(`/api/organizations/${orgA.id}/spvs`)
         .send({ legalName: "X", displayName: "X" });
@@ -149,7 +149,7 @@ describe("/api/spvs", () => {
 
     it("organizer can create SPV", async () => {
       const agent = await loginAs(app, mockStorage, fixtures.organizerAccount);
-      mockStorage.getOrganizationIdsForAccount.mockResolvedValue([orgA.id]);
+      mockStorage.getOrganizationIdsAsOrganizer.mockResolvedValue([orgA.id]);
       mockStorage.getOrganization.mockResolvedValue(orgA);
       mockStorage.createSpv.mockResolvedValue(spvA);
       const res = await agent

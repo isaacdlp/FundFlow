@@ -20,7 +20,7 @@ describe("Organizers", () => {
   describe("POST /api/organizations/:id/organizers", () => {
     it("returns 403 when non-admin not in org", async () => {
       const agent = await loginAs(app, mockStorage, fixtures.outsiderAccount);
-      mockStorage.getOrganizationIdsForAccount.mockResolvedValue([]);
+      mockStorage.getOrganizationIdsAsOrganizer.mockResolvedValue([]);
       const res = await agent
         .post(`/api/organizations/${orgA.id}/organizers`)
         .send({ accountId: 99 });
@@ -76,7 +76,7 @@ describe("Organizers", () => {
   describe("DELETE /api/organizations/:id/organizers/:accountId", () => {
     it("returns 403 when non-admin not in org", async () => {
       const agent = await loginAs(app, mockStorage, fixtures.outsiderAccount);
-      mockStorage.getOrganizationIdsForAccount.mockResolvedValue([]);
+      mockStorage.getOrganizationIdsAsOrganizer.mockResolvedValue([]);
       const res = await agent.delete(`/api/organizations/${orgA.id}/organizers/3`);
       expect(res.status).toBe(403);
     });

@@ -142,16 +142,16 @@ describe("/api/organizations", () => {
   describe("PATCH /api/organizations/:id", () => {
     it("returns 403 for non-admin who isn't an organizer/member", async () => {
       const agent = await loginAs(app, mockStorage, fixtures.outsiderAccount);
-      mockStorage.getOrganizationIdsForAccount.mockResolvedValue([]);
+      mockStorage.getOrganizationIdsAsOrganizer.mockResolvedValue([]);
       const res = await agent
         .patch(`/api/organizations/${orgA.id}`)
         .send({ name: "Hacked" });
       expect(res.status).toBe(403);
     });
 
-    it("organizer/member can update", async () => {
+    it("organizer can update", async () => {
       const agent = await loginAs(app, mockStorage, fixtures.organizerAccount);
-      mockStorage.getOrganizationIdsForAccount.mockResolvedValue([orgA.id]);
+      mockStorage.getOrganizationIdsAsOrganizer.mockResolvedValue([orgA.id]);
       mockStorage.updateOrganization.mockResolvedValue({ ...orgA, name: "Updated" });
       const res = await agent
         .patch(`/api/organizations/${orgA.id}`)
@@ -175,7 +175,7 @@ describe("/api/organizations", () => {
         .patch(`/api/organizations/${orgB.id}`)
         .send({ name: "Updated B" });
       expect(res.status).toBe(200);
-      expect(mockStorage.getOrganizationIdsForAccount).not.toHaveBeenCalled();
+      expect(mockStorage.getOrganizationIdsAsOrganizer).not.toHaveBeenCalled();
     });
   });
 

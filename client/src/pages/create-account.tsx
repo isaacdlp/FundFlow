@@ -44,16 +44,36 @@ export default function CreateAccount() {
     language: "en",
     roles: [] as string[],
   });
-  const [sendWelcomeEmail, setSendWelcomeEmail] = useState(false);
+  const [sendWelcomeEmail, setSendWelcomeEmail] = useState(true);
 
   const createMutation = useMutation({
     mutationFn: async (data: typeof formData) => {
-      const res = await apiRequest("POST", "/api/accounts", { ...data, welcome_email: sendWelcomeEmail });
-      return res.json();
+      // An empty password is omitted so the server sends an account-setup link instead.
+      const { password, ...rest } = data;
+      const res = await apiRequest("POST", "/api/accounts", {
+        ...rest,
+        ...(password ? { password } : {}),
+        welcome_email: sendWelcomeEmail,
+      });
+      return { ...(await res.json()), passwordSet: !!password };
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/accounts"] });
-      toast({ title: t("createAccount.successTitle") });
+      if (data.welcomeEmail === "failed") {
+        // Account exists, but the user never got the email. Without a password
+        // that email was their only way in, so make the follow-up explicit.
+        toast({
+          title: t("createAccount.welcomeEmailFailedTitle"),
+          description: t(
+            data.passwordSet
+              ? "createAccount.welcomeEmailFailedDescription"
+              : "createAccount.setupEmailFailedDescription",
+          ),
+          variant: "destructive",
+        });
+      } else {
+        toast({ title: t("createAccount.successTitle") });
+      }
       navigate(lp("accountDetail", { id: data.id }));
     },
     onError: (error: Error) => {
@@ -80,10 +100,18 @@ export default function CreateAccount() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.email || !formData.firstName || !formData.lastName || !formData.password) {
+    if (!formData.email || !formData.firstName || !formData.lastName) {
       toast({
         title: t("createAccount.missingRequiredTitle"),
         description: t("createAccount.missingRequiredDescription"),
+        variant: "destructive",
+      });
+      return;
+    }
+    if (!formData.password && !sendWelcomeEmail) {
+      toast({
+        title: t("createAccount.passwordOrWelcomeEmailTitle"),
+        description: t("createAccount.passwordOrWelcomeEmailDescription"),
         variant: "destructive",
       });
       return;
@@ -208,15 +236,15 @@ export default function CreateAccount() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="password">{t("common.password")} *</Label>
+                <Label htmlFor="password">{t("common.password")}</Label>
                 <Input
                   id="password"
                   type="password"
                   value={formData.password}
                   onChange={(e) => updateField("password", e.target.value)}
-                  required
                   data-testid="input-password"
                 />
+                <p className="text-xs text-muted-foreground">{t("createAccount.passwordOptionalHint")}</p>
               </div>
             </CardContent>
           </Card>

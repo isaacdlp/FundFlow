@@ -173,11 +173,19 @@ export default function AccountDetail() {
       const res = await apiRequest("PATCH", `/api/accounts/${accountId}`, { password, welcome_email });
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       setAdminNewPassword("");
       setAdminConfirmPassword("");
       setAdminSendWelcome(false);
-      toast({ title: t("accountDetail.passwordSetSuccess") });
+      if (data.welcomeEmail === "failed") {
+        toast({
+          title: t("accountDetail.welcomeEmailFailedTitle"),
+          description: t("accountDetail.welcomeEmailFailedDescription"),
+          variant: "destructive",
+        });
+      } else {
+        toast({ title: t("accountDetail.passwordSetSuccess") });
+      }
     },
     onError: (error: Error) => {
       toast({ title: t("accountDetail.passwordSetFailed"), description: error.message, variant: "destructive" });

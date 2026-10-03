@@ -215,6 +215,11 @@ export const spvAssetValuations = pgTable("spv_asset_valuations", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Token lifetimes: "forgot password" links are short-lived; account-setup links
+// (sent when an admin creates a user without a password) last a week.
+export const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000;
+export const ACCOUNT_SETUP_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
 export const passwordResetTokens = pgTable("password_reset_tokens", {
   id: serial("id").primaryKey(),
   accountId: integer("account_id").notNull().references(() => accounts.id, { onDelete: "cascade" }),
@@ -290,7 +295,9 @@ export const insertAccountSchema = createInsertSchema(accounts).omit({
   createdAt: true,
   updatedAt: true,
 }).extend({
-  password: z.string().min(1),
+  // Optional: when omitted the account gets an unusable password and the user
+  // sets their own via an account-setup link (see POST /api/accounts).
+  password: z.string().min(1).optional(),
   roles: z.array(z.string()).optional(),
   language: z.enum(["en", "es", "fr"]).optional().default("en"),
 });

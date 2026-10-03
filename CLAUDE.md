@@ -68,7 +68,8 @@ docs/openapi.yaml              # API spec (source of truth for all endpoints)
 - **Bearer token auth**: `Authorization: Bearer ff_<48 hex chars>`. Only SHA-256 hash stored. Tokens inherit owner's roles. Token CRUD and password change require a real session cookie.
 - **Admin**: full platform access — create/delete organizations, manage all resources
 - **Non-admin**: sees only own account, entities they manage/own, orgs they belong to, SPVs they're members of
-- Public routes (no auth): `/api/auth/login`, `/api/auth/me`, `/api/organizations/by-slug/:slug`, `/api/invites/:token`, `/api/invites/:token/accept`, `POST /api/accounts`
+- **Organizers vs members**: managing an org (edit it, organizers, member list/approve/remove, invites, create SPVs) requires admin or organizer of that org (`canManageOrg` in `server/routes.ts`). Approved membership only grants read access to the org — never use `getOrganizationIdsForAccount` (members + organizers) for write checks; use `getOrganizationIdsAsOrganizer`.
+- Public routes (no auth): `/api/auth/login`, `/api/auth/me`, `/api/organizations/by-slug/:slug`, `/api/invites/:token`, `/api/invites/:token/accept` (creates a new account from body fields, or accepts for the logged-in caller — never a client-supplied `accountId`). `POST /api/accounts` is admin-only (no self-signup — new users come from admin creation or invite links) and sends a welcome email unless `welcome_email: false`. `password` is optional: with one the email contains the credentials; without one it contains a 7-day link to create a password (no password + `welcome_email: false` → 400). The 201 response includes `welcomeEmail: "sent" | "failed" | "skipped"`; a failed send doesn't roll back the account and the UI warns the admin. Same for an admin setting a password via `PATCH /api/accounts/:id` (`welcomeEmail` is only present in that response when `password` was sent). `POST /api/organizations/:id/members/request` requires auth: without `accountId` it creates a pending request for the caller; with another `accountId` only admins/organizers of that org may call it and the membership is created approved
 - API spec served at `/docs` (Redoc), `/api/openapi.yaml`, `/api/openapi.json` (all public)
 
 ## Database Schema Overview
@@ -85,7 +86,7 @@ docs/openapi.yaml              # API spec (source of truth for all endpoints)
 - `entity_owners` / `entity_managers` — entity access control
 - `documents` — file metadata; files stored at `<storage_path>/{account|entity}/<id>/<folderPath>/`
 - `app_settings` — key/value config (e.g. `documents_storage_path`)
-- `password_reset_tokens` — single-use, 1-hour expiry
+- `password_reset_tokens` — single-use; 1-hour expiry for "forgot password", 7 days for account-setup links (`PASSWORD_RESET_TTL_MS` / `ACCOUNT_SETUP_TTL_MS` in `shared/schema.ts`)
 
 ## Key Implementation Details
 - Password hashing: bcrypt
@@ -99,7 +100,12 @@ docs/openapi.yaml              # API spec (source of truth for all endpoints)
 - Non-admin users can update their own account profile; `roles` field is silently stripped (not rejected) for non-admins on `PATCH /api/accounts/:id`
 - Seed account: `isaac@conexo.vc` (admin)
 
+## Change Checklist (every change)
+- **Tests**: add or update tests for any behaviour you change, and fix any test you break — never leave the suite red. Run `npm run test` and make sure it passes (all files load, 0 failures) before finishing a change.
+- **API docs**: any change to an endpoint's auth, request body, response shape or status codes must be reflected in `docs/openapi.yaml` in the same change (it is the source of truth, served at `/docs`). Check it still parses with `js-yaml`.
+- **i18n**: user-facing strings go in all three catalogs (`en`, `es`, `fr`).
+
 ## Production Deployment (this server)
 - Runs as systemd service `fundflow` on port 3000
 - nginx reverse proxies `https://portal.rapidscale.vc` → port 3000, handles SSL (Let's Encrypt, auto-renews)
-- To deploy an update: `git pull && npm install && npm run build && systemctl restart fundflow`
+- To deploy an update: `git pull && npm install && npm run test && npm run build && systemctl restart fundflow` — **do not deploy if `npm run test` fails**; fix the tests (or the code) first.

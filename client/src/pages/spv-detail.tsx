@@ -88,8 +88,10 @@ function SpvMembersTab({ spvId, orgId, canEdit, allocationMethod, currencySymbol
     queryKey: ["/api/spvs", spvId, "members"],
   });
 
+  // Only organizers/admins can list org members (used for the add-investor picker).
   const { data: orgMembers } = useQuery<MemberInfo[]>({
     queryKey: ["/api/organizations", String(orgId), "members"],
+    enabled: canEdit,
   });
 
   const { data: entitiesList } = useQuery<EntityInfo[]>({

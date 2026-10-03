@@ -66,24 +66,53 @@ describe("Invites", () => {
       expect(res.status).toBe(410);
     });
 
-    it("returns 400 when neither accountId nor new account fields supplied", async () => {
+    it("returns 400 when anonymous and no new account fields supplied", async () => {
       mockStorage.getInviteByToken.mockResolvedValue(fixtures.invite());
       const res = await request(app).post("/api/invites/t/accept").send({});
       expect(res.status).toBe(400);
     });
 
-    it("accepts invite for an existing account", async () => {
+    it("ignores a client-supplied accountId from an anonymous caller", async () => {
+      mockStorage.getInviteByToken.mockResolvedValue(fixtures.invite());
+      const res = await request(app)
+        .post("/api/invites/test-invite-token/accept")
+        .send({ accountId: fixtures.memberAccount.id });
+      expect(res.status).toBe(400);
+      expect(mockStorage.useInvite).not.toHaveBeenCalled();
+      expect(mockStorage.createMemberRequest).not.toHaveBeenCalled();
+    });
+
+    it("accepts invite for the logged-in account", async () => {
+      const agent = await loginAs(app, mockStorage, fixtures.memberAccount);
       mockStorage.getInviteByToken.mockResolvedValue(fixtures.invite());
       mockStorage.createMemberRequest.mockResolvedValue(
         fixtures.member({ status: "pending", inviteId: 50 }),
       );
-      const res = await request(app)
-        .post("/api/invites/test-invite-token/accept")
-        .send({ accountId: fixtures.memberAccount.id });
+      const res = await agent.post("/api/invites/test-invite-token/accept").send({});
       expect(res.status).toBe(200);
       expect(mockStorage.useInvite).toHaveBeenCalledWith(
         "test-invite-token",
         fixtures.memberAccount.id,
+      );
+    });
+
+    it("uses the logged-in account even if another accountId is supplied", async () => {
+      const agent = await loginAs(app, mockStorage, fixtures.memberAccount);
+      mockStorage.getInviteByToken.mockResolvedValue(fixtures.invite());
+      mockStorage.createMemberRequest.mockResolvedValue(
+        fixtures.member({ status: "pending", inviteId: 50 }),
+      );
+      const res = await agent
+        .post("/api/invites/test-invite-token/accept")
+        .send({ accountId: fixtures.outsiderAccount.id });
+      expect(res.status).toBe(200);
+      expect(mockStorage.useInvite).toHaveBeenCalledWith(
+        "test-invite-token",
+        fixtures.memberAccount.id,
+      );
+      expect(mockStorage.useInvite).not.toHaveBeenCalledWith(
+        "test-invite-token",
+        fixtures.outsiderAccount.id,
       );
     });
 
@@ -131,14 +160,14 @@ describe("Invites", () => {
   describe("GET /api/organizations/:id/invites (auth)", () => {
     it("non-admin not in org gets 403", async () => {
       const agent = await loginAs(app, mockStorage, fixtures.outsiderAccount);
-      mockStorage.getOrganizationIdsForAccount.mockResolvedValue([]);
+      mockStorage.getOrganizationIdsAsOrganizer.mockResolvedValue([]);
       const res = await agent.get(`/api/organizations/${orgA.id}/invites`);
       expect(res.status).toBe(403);
     });
 
     it("organizer can list invites", async () => {
       const agent = await loginAs(app, mockStorage, fixtures.organizerAccount);
-      mockStorage.getOrganizationIdsForAccount.mockResolvedValue([orgA.id]);
+      mockStorage.getOrganizationIdsAsOrganizer.mockResolvedValue([orgA.id]);
       mockStorage.getInvites.mockResolvedValue([fixtures.invite()]);
       const res = await agent.get(`/api/organizations/${orgA.id}/invites`);
       expect(res.status).toBe(200);
@@ -156,7 +185,7 @@ describe("Invites", () => {
 
     it("organizer can create an invite", async () => {
       const agent = await loginAs(app, mockStorage, fixtures.organizerAccount);
-      mockStorage.getOrganizationIdsForAccount.mockResolvedValue([orgA.id]);
+      mockStorage.getOrganizationIdsAsOrganizer.mockResolvedValue([orgA.id]);
       mockStorage.getOrganization.mockResolvedValue(orgA);
       mockStorage.createInvite.mockResolvedValue(fixtures.invite());
       const res = await agent.post(`/api/organizations/${orgA.id}/invites`);

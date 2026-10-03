@@ -214,9 +214,15 @@
     "zipPostalCode": "Zip / Postal Code",
     "adminRoleDescription": "Platform administrator with full access to all features and settings",
     "missingRequiredTitle": "Missing required fields",
-    "missingRequiredDescription": "Please fill in first name, last name, email, and password.",
+    "missingRequiredDescription": "Please fill in first name, last name, and email.",
     "sendWelcomeEmail": "Send welcome email",
-    "sendWelcomeEmailHint": "Email the user their username and password"
+    "sendWelcomeEmailHint": "Email the user their username and password — or, if no password is set, a link to create one",
+    "passwordOptionalHint": "Optional. Leave blank and the welcome email will ask the user to create their own password.",
+    "passwordOrWelcomeEmailTitle": "Password or welcome email required",
+    "passwordOrWelcomeEmailDescription": "Set a password, or keep \"Send welcome email\" checked so the user can create their own.",
+    "welcomeEmailFailedTitle": "Account created, but the welcome email could not be sent",
+    "welcomeEmailFailedDescription": "Share the login details with the user yourself, or use \"Send Password Reset Email\" on their account page.",
+    "setupEmailFailedDescription": "The user has no password yet and cannot sign in. Use \"Send Password Reset Email\" or \"Set Password\" on their account page."
   },
   "accountDetail": {
     "tabPersonal": "Personal Info",
@@ -262,7 +268,9 @@
     "passwordSetSuccess": "Password set successfully",
     "passwordSetFailed": "Failed to set password",
     "sendWelcomeEmail": "Send welcome email",
-    "sendWelcomeEmailHint": "Email the user their username and new password"
+    "sendWelcomeEmailHint": "Email the user their username and new password",
+    "welcomeEmailFailedTitle": "Password set, but the welcome email could not be sent",
+    "welcomeEmailFailedDescription": "The new password is active. Share it with the user yourself, or use \"Send Password Reset Email\"."
   },
   "organizations": {
     "title": "Organizations",

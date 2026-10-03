@@ -214,9 +214,15 @@
     "zipPostalCode": "Código postal",
     "adminRoleDescription": "Administrador de la plataforma con acceso completo a todas las funciones y ajustes",
     "missingRequiredTitle": "Faltan campos obligatorios",
-    "missingRequiredDescription": "Por favor completa nombre, apellido, correo electrónico y contraseña.",
+    "missingRequiredDescription": "Por favor completa nombre, apellido y correo electrónico.",
     "sendWelcomeEmail": "Enviar correo de bienvenida",
-    "sendWelcomeEmailHint": "Envía al usuario su nombre de usuario y contraseña"
+    "sendWelcomeEmailHint": "Envía al usuario su nombre de usuario y contraseña — o, si no se establece contraseña, un enlace para crearla",
+    "passwordOptionalHint": "Opcional. Déjala en blanco y el correo de bienvenida pedirá al usuario que cree su propia contraseña.",
+    "passwordOrWelcomeEmailTitle": "Se requiere contraseña o correo de bienvenida",
+    "passwordOrWelcomeEmailDescription": "Establece una contraseña o mantén marcado \"Enviar correo de bienvenida\" para que el usuario cree la suya.",
+    "welcomeEmailFailedTitle": "Cuenta creada, pero no se pudo enviar el correo de bienvenida",
+    "welcomeEmailFailedDescription": "Comparte tú mismo los datos de acceso con el usuario, o usa \"Enviar correo de restablecimiento\" en la página de su cuenta.",
+    "setupEmailFailedDescription": "El usuario aún no tiene contraseña y no puede iniciar sesión. Usa \"Enviar correo de restablecimiento\" o \"Establecer contraseña\" en la página de su cuenta."
   },
   "accountDetail": {
     "tabPersonal": "Información personal",
@@ -262,7 +268,9 @@
     "passwordSetSuccess": "Contraseña establecida correctamente",
     "passwordSetFailed": "Error al establecer la contraseña",
     "sendWelcomeEmail": "Enviar correo de bienvenida",
-    "sendWelcomeEmailHint": "Envía al usuario su nombre de usuario y nueva contraseña"
+    "sendWelcomeEmailHint": "Envía al usuario su nombre de usuario y nueva contraseña",
+    "welcomeEmailFailedTitle": "Contraseña establecida, pero no se pudo enviar el correo de bienvenida",
+    "welcomeEmailFailedDescription": "La nueva contraseña ya está activa. Compártela tú mismo con el usuario, o usa \"Enviar correo de restablecimiento\"."
   },
   "organizations": {
     "title": "Organizaciones",

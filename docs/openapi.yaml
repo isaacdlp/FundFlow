@@ -328,9 +328,24 @@ paths:
                 items: { $ref: '#/components/schemas/Account' }
     post:
       tags: [Accounts]
-      summary: Create a new account (public)
-      description: Public — used by the signup flow. No authentication required.
-      security: []
+      summary: Create a new account (admin only)
+      description: |
+        Admin only. There is no self-signup via the API — new users are created
+        by an admin or join through an organization invite
+        (`POST /api/invites/{token}/accept`).
+
+        **Password is optional.** The welcome email (on by default) depends on it:
+        - **With `password`** — the email contains the username and password.
+        - **Without `password`** — the account cannot log in yet; the email
+          contains the username and a link to create a password (valid 7 days,
+          single use). If it expires, the user can use "Forgot your password?".
+
+        Omitting `password` while sending `welcome_email: false` is rejected
+        with 400, since the user would have no way to sign in.
+
+        The response includes `welcomeEmail` so callers can tell whether the
+        email actually went out. A failed send does not roll back the account
+        (still 201) — follow up with a password reset or set a password.
       requestBody:
         required: true
         content:
@@ -339,8 +354,24 @@ paths:
       responses:
         '201':
           description: Account created
-          content: { application/json: { schema: { $ref: '#/components/schemas/Account' } } }
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Account'
+                  - type: object
+                    required: [welcomeEmail]
+                    properties:
+                      welcomeEmail:
+                        type: string
+                        enum: [sent, failed, skipped]
+                        description: |
+                          `sent` — welcome email delivered to the SMTP server.
+                          `failed` — sending failed; the account was still created.
+                          `skipped` — `welcome_email: false` was sent.
         '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '409': { description: Email already registered }
 
   /api/accounts/{id}:
@@ -362,7 +393,22 @@ paths:
           application/json:
             schema: { $ref: '#/components/schemas/AccountUpdate' }
       responses:
-        '200': { content: { application/json: { schema: { $ref: '#/components/schemas/Account' } } }, description: Updated }
+        '200':
+          description: |
+            Updated. When `password` was set, the response also includes
+            `welcomeEmail` (`sent`, `failed` or `skipped`); a failed send does
+            not undo the password change.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Account'
+                  - type: object
+                    properties:
+                      welcomeEmail:
+                        type: string
+                        enum: [sent, failed, skipped]
+                        description: Present only when `password` was set.
         '400': { $ref: '#/components/responses/BadRequest' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
@@ -426,6 +472,7 @@ paths:
     patch:
       tags: [Organizations]
       summary: Update organization settings (admin or organizer)
+      description: Admin, or an organizer of this organization. Approved membership alone is not enough (403).
       requestBody:
         required: true
         content:
@@ -462,6 +509,7 @@ paths:
     post:
       tags: [Organizations]
       summary: Add an organizer to an organization
+      description: Admin, or an organizer of this organization. Approved membership alone is not enough (403).
       requestBody:
         required: true
         content:
@@ -481,6 +529,7 @@ paths:
     delete:
       tags: [Organizations]
       summary: Remove an organizer
+      description: Admin, or an organizer of this organization. Approved membership alone is not enough (403).
       responses:
         '200': { description: Removed }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -493,28 +542,45 @@ paths:
     get:
       tags: [Organization Members]
       summary: List organization members
+      description: Admin, or an organizer of this organization. Approved membership alone is not enough (403).
       responses:
         '200':
           description: Members with account info
           content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Member' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
 
   /api/organizations/{id}/members/request:
     parameters:
       - { name: id, in: path, required: true, schema: { type: integer } }
     post:
       tags: [Organization Members]
-      summary: Request access to an organization (public)
-      security: []
+      summary: Request membership for yourself, or add another account (admin/organizer)
+      description: |
+        Requires authentication (session or bearer token).
+
+        - **No `accountId`** (or the caller's own id): creates a **pending**
+          membership request for the logged-in account. Any user can do this.
+        - **Another account's `accountId`**: only an admin, or an organizer of
+          this organization, may do this (403 otherwise). The membership is
+          created already **approved**. If that account already has a pending
+          or rejected request, it is approved.
       requestBody:
-        required: true
+        required: false
         content:
           application/json:
             schema:
               type: object
-              required: [accountId]
-              properties: { accountId: { type: integer } }
+              properties:
+                accountId:
+                  type: integer
+                  description: Account to add. Omit to request membership for yourself.
       responses:
-        '201': { description: Pending membership created }
+        '200': { description: Existing membership returned (approved if a manager added a pending/rejected one) }
+        '201': { description: Membership created — pending for self-requests, approved when added by an admin/organizer }
+        '400': { description: Invalid organization ID or accountId }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Organization or account not found }
 
   /api/organizations/{id}/members/{accountId}:
     parameters:
@@ -523,6 +589,7 @@ paths:
     patch:
       tags: [Organization Members]
       summary: Approve / reject a pending membership
+      description: Admin, or an organizer of this organization. Approved membership alone is not enough (403).
       requestBody:
         required: true
         content:
@@ -535,11 +602,14 @@ paths:
       responses:
         '200': { description: Updated }
         '400': { description: Invalid status value }
+        '403': { $ref: '#/components/responses/Forbidden' }
     delete:
       tags: [Organization Members]
       summary: Remove a member from an organization
+      description: Admin, or an organizer of this organization. Approved membership alone is not enough (403).
       responses:
         '200': { description: Removed }
+        '403': { $ref: '#/components/responses/Forbidden' }
 
   # ──── Organization Invites ────────────────────────────────────────────────
   /api/organizations/{id}/invites:
@@ -548,15 +618,19 @@ paths:
     get:
       tags: [Organization Invites]
       summary: List invites (with used-by info)
+      description: Admin, or an organizer of this organization. Approved membership alone is not enough (403).
       responses:
         '200':
           description: Invites
           content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Invite' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
     post:
       tags: [Organization Invites]
       summary: Generate a new single-use invite link
+      description: Admin, or an organizer of this organization. Approved membership alone is not enough (403).
       responses:
         '201': { content: { application/json: { schema: { $ref: '#/components/schemas/Invite' } } }, description: Created }
+        '403': { $ref: '#/components/responses/Forbidden' }
 
   /api/invites/{token}:
     parameters:
@@ -576,16 +650,23 @@ paths:
     post:
       tags: [Organization Invites]
       summary: Accept an invite (public, auto-approves membership)
+      description: |
+        Two ways to accept:
+        - **New user** (no auth needed): send `email`, `password`, `firstName`,
+          `lastName` — a new account is created and joins the organization.
+        - **Existing user**: call while authenticated (session or bearer token)
+          with an empty body — the invite is accepted for the caller's account.
+
+        A client-supplied `accountId` is ignored.
       security: []
       requestBody:
-        required: true
+        required: false
         content:
           application/json:
             schema:
               oneOf:
                 - type: object
-                  required: [accountId]
-                  properties: { accountId: { type: integer } }
+                  description: Empty body — accept for the authenticated caller.
                 - type: object
                   required: [email, password, firstName, lastName]
                   properties:
@@ -595,6 +676,9 @@ paths:
                     lastName: { type: string }
       responses:
         '200': { description: Accepted }
+        '400': { description: Not authenticated and no new account details supplied }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: Email already registered (sign in instead) }
         '410': { description: Invite already used }
 
   # ──── SPVs ────────────────────────────────────────────────────────────────
@@ -619,6 +703,7 @@ paths:
     post:
       tags: [SPVs]
       summary: Create an SPV under an organization
+      description: Admin, or an organizer of this organization. Approved membership alone is not enough (403).
       requestBody:
         required: true
         content: { application/json: { schema: { $ref: '#/components/schemas/SpvCreate' } } }
@@ -1194,12 +1279,31 @@ components:
 
     AccountCreate:
       type: object
-      required: [email, password, firstName, lastName]
+      required: [email, firstName, lastName]
       properties:
         email: { type: string, format: email }
-        password: { type: string, minLength: 6 }
+        password:
+          type: string
+          minLength: 1
+          description: |
+            Optional. Omit it to have the welcome email send the user a link to
+            create their own password instead (requires `welcome_email` to be true).
         firstName: { type: string }
         lastName: { type: string }
+        roles:
+          type: array
+          items: { type: string }
+          example: [admin]
+          description: Role names to assign (e.g. `admin`). Unknown names are ignored. Defaults to no roles.
+        welcome_email:
+          type: boolean
+          default: true
+          description: |
+            Send the new user a welcome email in the account's `language`.
+            With a `password`, it contains the login email, password and a
+            sign-in link; without one, it contains the login email and a link to
+            create a password. Defaults to true; pass `false` to skip it (only
+            allowed when a `password` is provided).
 
     AccountUpdate:
       type: object
@@ -1207,10 +1311,25 @@ components:
         email: { type: string, format: email }
         firstName: { type: string }
         lastName: { type: string }
-        roleIds:
+        roles:
           type: array
-          items: { type: integer }
-          description: Replace the account's role assignments wholesale (admin-only).
+          items: { type: string }
+          example: [admin]
+          description: |
+            Role names (e.g. `admin`). Replaces the account's role assignments
+            wholesale — send `[]` to remove all roles. Unknown names are ignored.
+            Admin only: for non-admin callers this field is silently stripped
+            (the rest of the update still applies).
+        password:
+          type: string
+          minLength: 6
+          description: Admin only. Directly sets a new password for the account.
+        welcome_email:
+          type: boolean
+          default: false
+          description: |
+            Only used together with `password`. When true, emails the user their
+            login email and the new password (in the account's `language`).
 
     Organization:
       type: object
