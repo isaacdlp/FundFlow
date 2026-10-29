@@ -18,6 +18,7 @@ import {
 } from "@shared/schema";
 import crypto from "crypto";
 import bcrypt from "bcrypt";
+import { resolveSeedAdminPassword } from "./seed";
 
 type InvestmentFields = {
   committed?: string;
@@ -1296,7 +1297,7 @@ export class DatabaseStorage implements IStorage {
     const existingAccounts = await db.select().from(accounts);
     if (existingAccounts.length === 0) {
       const bcrypt = await import("bcrypt");
-      const adminHash = await bcrypt.hash("ioYOU&*HjEE", 10);
+      const adminHash = await bcrypt.hash(resolveSeedAdminPassword(), 10);
       const isProduction = process.env.NODE_ENV === "production";
 
       const adminAccount = {

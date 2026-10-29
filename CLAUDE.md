@@ -14,6 +14,8 @@ Multi-tenant fund management platform for VC and PE investments. Organizations h
 - `npm run build` — production build → `dist/index.cjs`
 - `npm run check` — TypeScript type check
 - `npm run db:push` — push schema changes to DB
+- `npm run dev-data:export` — snapshot an org + selected SPVs (with their investors, entities, assets, valuations) from a FundFlow instance via the API into `dev-data/dataset.json` (gitignored — real people's data). Needs `FUNDFLOW_TOKEN` (admin `ff_…` token); optional `FUNDFLOW_URL` (default production), `DEV_DATA_ORG` (default `rapid-scale`), `DEV_DATA_SPVS` (comma-separated name fragments, default `Kapital,Kushki,Modelia`). Tax IDs and bank account/routing numbers are blanked
+- `npm run dev-data:seed` — load that snapshot into the local DB (refuses in production; no-op if the org slug already exists). Accounts reuse existing ones by email; new ones get `DEV_SEED_PASSWORD` (default `password123`). Logic in `server/dev-data.ts`, CLI in `script/dev-data.ts`
 - `npm run test` — Vitest (server + client)
 - `npm run test:e2e` — Playwright E2E tests
 
@@ -52,6 +54,7 @@ docs/openapi.yaml              # API spec (source of truth for all endpoints)
 | `SMTP_USER` | SMTP username |
 | `SMTP_FROM` | Sender address |
 | `SMTP_PASSWORD` | SMTP password |
+| `SEED_ADMIN_PASSWORD` | Password for the seed admin (`isaac@conexo.vc`), used only when the DB has no accounts. Required in production then; in dev, a random one is generated and logged if unset |
 
 ## Internationalization (i18n)
 - **Languages**: English (default), Spanish, French
@@ -98,7 +101,7 @@ docs/openapi.yaml              # API spec (source of truth for all endpoints)
 - Documents folder tree is collapsed by default (only root node is open)
 - Organizations auto-generate slugs from name on creation
 - Non-admin users can update their own account profile; `roles` field is silently stripped (not rejected) for non-admins on `PATCH /api/accounts/:id`
-- Seed account: `isaac@conexo.vc` (admin)
+- Seed account: `isaac@conexo.vc` (admin, password from `SEED_ADMIN_PASSWORD`; see `server/seed.ts`)
 
 ## Change Checklist (every change)
 - **Tests**: add or update tests for any behaviour you change, and fix any test you break — never leave the suite red. Run `npm run test` and make sure it passes (all files load, 0 failures) before finishing a change.

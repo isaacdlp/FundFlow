@@ -9,9 +9,13 @@ vite.config.ts.*
 .env
 .env.*
 !.env.example
+.vscode/settings.json
 
 # Uploaded files
 uploads/
+
+# Development data snapshot (real people's data — never commit)
+dev-data/
 
 # Test artifacts
 test-results/
