@@ -65,6 +65,18 @@ describe("/api/accounts", () => {
       expect(res.body.passwordHash).toBeUndefined();
     });
 
+    it("stores a blank birthdate (empty form field) as null", async () => {
+      const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
+      mockStorage.createAccount.mockResolvedValue(fixtures.memberAccount);
+
+      const res = await agent.post("/api/accounts").send({ ...validBody, birthdate: "" });
+
+      expect(res.status).toBe(201);
+      expect(mockStorage.createAccount).toHaveBeenCalledWith(
+        expect.objectContaining({ birthdate: null }),
+      );
+    });
+
     it("sends a welcome email with credentials by default", async () => {
       const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
       mockStorage.createAccount.mockResolvedValue({ ...fixtures.memberAccount, language: "es" });
@@ -275,6 +287,19 @@ describe("/api/accounts", () => {
         .send({ firstName: "Updated" });
       expect(res.status).toBe(200);
       expect(res.body.firstName).toBe("Updated");
+    });
+
+    it("clearing the birthdate sends null, not an empty string", async () => {
+      const agent = await loginAs(app, mockStorage, fixtures.memberAccount);
+      mockStorage.updateAccount.mockResolvedValue(fixtures.memberAccount);
+      const res = await agent
+        .patch(`/api/accounts/${fixtures.memberAccount.id}`)
+        .send({ birthdate: "" });
+      expect(res.status).toBe(200);
+      expect(mockStorage.updateAccount).toHaveBeenCalledWith(
+        fixtures.memberAccount.id,
+        expect.objectContaining({ birthdate: null }),
+      );
     });
 
     it("non-admin gets 403 updating someone else", async () => {

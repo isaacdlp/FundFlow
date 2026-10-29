@@ -363,6 +363,13 @@ export const createApiTokenSchema = z.object({
   expiresInDays: z.number().int().positive().max(3650).optional(),
 });
 
+// Forms send "" for a blank date input; Postgres rejects "" for a date column,
+// so store it as null.
+const optionalDate = z.preprocess(
+  (v) => (v === "" ? null : v),
+  z.string().nullable().optional(),
+);
+
 export const insertAccountSchema = createInsertSchema(accounts).omit({
   id: true,
   passwordHash: true,
@@ -374,6 +381,7 @@ export const insertAccountSchema = createInsertSchema(accounts).omit({
   password: z.string().min(1).optional(),
   roles: z.array(z.string()).optional(),
   language: z.enum(["en", "es", "fr"]).optional().default("en"),
+  birthdate: optionalDate,
 });
 
 export const updateAccountSchema = createInsertSchema(accounts).omit({
@@ -384,6 +392,7 @@ export const updateAccountSchema = createInsertSchema(accounts).omit({
 }).partial().extend({
   roles: z.array(z.string()).optional(),
   language: z.enum(["en", "es", "fr"]).optional(),
+  birthdate: optionalDate,
 });
 
 export const insertOrganizationSchema = createInsertSchema(organizations).omit({
