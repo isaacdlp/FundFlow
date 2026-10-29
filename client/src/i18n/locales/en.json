@@ -77,6 +77,14 @@
     "moreResults_one": "{{count}} more — keep typing to narrow down",
     "moreResults_other": "{{count}} more — keep typing to narrow down"
   },
+  "pagination": {
+    "rowsPerPage": "Rows per page",
+    "all": "All",
+    "range": "{{from}}–{{to}} of {{total}}",
+    "page": "Page {{page}} of {{pages}}",
+    "previousPage": "Previous page",
+    "nextPage": "Next page"
+  },
   "nav": {
     "platform": "Platform",
     "administration": "Administration",

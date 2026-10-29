@@ -20,6 +20,10 @@ import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { useLocalePath } from "@/i18n/hooks";
+import { useSort } from "@/hooks/use-sort";
+import { SortableTableHead } from "@/components/sortable-table-head";
+import { usePagination } from "@/hooks/use-pagination";
+import { ListPagination } from "@/components/list-pagination";
 
 export default function Entities() {
   const [, navigate] = useLocation();
@@ -56,6 +60,13 @@ export default function Entities() {
       e.managers.some(m => normalizeSearch(`${m.account.firstName} ${m.account.lastName}`).includes(q))
     );
   });
+  const sort = useSort(filtered, {
+    name: e => e.name,
+    type: e => e.entityType,
+    managers: e => e.managers.map(m => `${m.account.firstName} ${m.account.lastName}`).join(", "),
+    owners: e => e.ownerCount,
+  });
+  const pagination = usePagination(sort.sorted, [search, sort.sort]);
 
   return (
     <div className="p-6 space-y-6">
@@ -98,15 +109,15 @@ export default function Entities() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>{t("entities.tableName")}</TableHead>
-                    <TableHead>{t("entities.tableType")}</TableHead>
-                    <TableHead>{t("entities.tableManagers")}</TableHead>
-                    <TableHead className="text-center">{t("entities.tableOwners")}</TableHead>
+                    <SortableTableHead control={sort} column="name">{t("entities.tableName")}</SortableTableHead>
+                    <SortableTableHead control={sort} column="type">{t("entities.tableType")}</SortableTableHead>
+                    <SortableTableHead control={sort} column="managers">{t("entities.tableManagers")}</SortableTableHead>
+                    <SortableTableHead control={sort} column="owners" className="text-center">{t("entities.tableOwners")}</SortableTableHead>
                     <TableHead className="text-right">{t("common.actions")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filtered.map(entity => (
+                  {pagination.items.map(entity => (
                     <TableRow key={entity.id} data-testid={`entity-row-${entity.id}`}>
                       <TableCell>
                         <Link href={lp("entityDetail", { id: entity.id })}>
@@ -163,6 +174,7 @@ export default function Entities() {
                   ))}
                 </TableBody>
               </Table>
+              <ListPagination control={pagination.control} className="border-t" />
             </div>
           </CardContent>
         </Card>

@@ -6,6 +6,10 @@ import type { AccountWithRoles, AccountIntroductionsInfo, EntityInfo, Introducti
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useLocalePath } from "@/i18n/hooks";
 import { useToast } from "@/hooks/use-toast";
+import { useSort } from "@/hooks/use-sort";
+import { SortableTableHead } from "@/components/sortable-table-head";
+import { usePagination } from "@/hooks/use-pagination";
+import { ListPagination } from "@/components/list-pagination";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -93,6 +97,20 @@ export function AccountIntroductions({ accountId }: { accountId: number }) {
 
   const introducedBy = data?.introducedBy ?? [];
   const introduced = data?.introduced ?? [];
+  const introducedLabel = (intro: IntroductionInfo) =>
+    intro.introducedEntityId !== null ? intro.introducedEntity?.name ?? "—" : personName(intro.introducedAccount);
+  const introducedBySort = useSort(introducedBy, {
+    name: intro => personName(intro.introducer),
+    date: intro => intro.date,
+    notes: intro => intro.notes,
+  });
+  const introducedSort = useSort(introduced, {
+    name: introducedLabel,
+    date: intro => intro.date,
+    notes: intro => intro.notes,
+  });
+  const introducedByPages = usePagination(introducedBySort.sorted, introducedBySort.sort);
+  const introducedPages = usePagination(introducedSort.sorted, introducedSort.sort);
   const unavailable = data?.unavailable;
 
   const introducerOptions = (accountsList ?? []).filter(a =>
@@ -175,17 +193,18 @@ export function AccountIntroductions({ accountId }: { accountId: number }) {
         </CardHeader>
         <CardContent>
           {introducedBy.length > 0 ? (
+            <>
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>{t("introductions.introducer")}</TableHead>
-                  <TableHead>{t("introductions.date")}</TableHead>
-                  <TableHead>{t("introductions.notes")}</TableHead>
+                  <SortableTableHead control={introducedBySort} column="name">{t("introductions.introducer")}</SortableTableHead>
+                  <SortableTableHead control={introducedBySort} column="date">{t("introductions.date")}</SortableTableHead>
+                  <SortableTableHead control={introducedBySort} column="notes">{t("introductions.notes")}</SortableTableHead>
                   <TableHead className="w-[100px]" />
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {introducedBy.map(intro => (
+                {introducedByPages.items.map(intro => (
                   <TableRow key={intro.id} data-testid={`row-introducer-${intro.introducerAccountId}`}>
                     <TableCell>
                       <Link href={lp("accountDetail", { id: intro.introducerAccountId })} className="font-medium hover:underline">
@@ -198,6 +217,8 @@ export function AccountIntroductions({ accountId }: { accountId: number }) {
                 ))}
               </TableBody>
             </Table>
+            <ListPagination control={introducedByPages.control} />
+            </>
           ) : (
             <p className="text-sm text-muted-foreground">{t("introductions.noIntroducers")}</p>
           )}
@@ -220,19 +241,20 @@ export function AccountIntroductions({ accountId }: { accountId: number }) {
         </CardHeader>
         <CardContent>
           {introduced.length > 0 ? (
+            <>
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>{t("introductions.introduced")}</TableHead>
-                  <TableHead>{t("introductions.date")}</TableHead>
-                  <TableHead>{t("introductions.notes")}</TableHead>
+                  <SortableTableHead control={introducedSort} column="name">{t("introductions.introduced")}</SortableTableHead>
+                  <SortableTableHead control={introducedSort} column="date">{t("introductions.date")}</SortableTableHead>
+                  <SortableTableHead control={introducedSort} column="notes">{t("introductions.notes")}</SortableTableHead>
                   <TableHead className="w-[100px]" />
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {introduced.map(intro => {
+                {introducedPages.items.map(intro => {
                   const isEntity = intro.introducedEntityId !== null;
-                  const label = isEntity ? intro.introducedEntity?.name ?? "—" : personName(intro.introducedAccount);
+                  const label = introducedLabel(intro);
                   const href = isEntity
                     ? lp("entityDetail", { id: intro.introducedEntityId! })
                     : lp("accountDetail", { id: intro.introducedAccountId! });
@@ -256,6 +278,8 @@ export function AccountIntroductions({ accountId }: { accountId: number }) {
                 })}
               </TableBody>
             </Table>
+            <ListPagination control={introducedPages.control} />
+            </>
           ) : (
             <p className="text-sm text-muted-foreground">{t("introductions.noIntroduced")}</p>
           )}

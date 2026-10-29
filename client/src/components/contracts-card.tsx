@@ -4,6 +4,10 @@ import { useTranslation } from "react-i18next";
 import type { ContractDraft, ContractInfo } from "@shared/types";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useSort } from "@/hooks/use-sort";
+import { SortableTableHead } from "@/components/sortable-table-head";
+import { usePagination } from "@/hooks/use-pagination";
+import { ListPagination } from "@/components/list-pagination";
 import { useLocale } from "@/i18n/hooks";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -183,6 +187,13 @@ export function ContractsCard({ listUrl, draftUrl, createUrl, hint, onChange }: 
 
   const { data: contracts, isLoading } = useQuery<ContractInfo[]>({ queryKey: [listUrl] });
   const { data: draft } = useQuery<ContractDraft>({ queryKey: [draftUrl] });
+  const sort = useSort(contracts, {
+    title: c => c.title,
+    status: c => t(contractStatusKey(c.status), { status: c.status }),
+    signers: c => c.signers.join(", "),
+    sentOn: c => new Date(c.createdAt),
+  });
+  const pagination = usePagination(sort.sorted, sort.sort);
 
   const changed = () => {
     queryClient.invalidateQueries({ queryKey: [listUrl] });
@@ -241,18 +252,19 @@ export function ContractsCard({ listUrl, draftUrl, createUrl, hint, onChange }: 
         {isLoading ? (
           <p className="text-sm text-muted-foreground">{t("common.loading")}</p>
         ) : contracts && contracts.length > 0 ? (
+          <>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>{t("contracts.title")}</TableHead>
-                <TableHead>{t("common.status")}</TableHead>
-                <TableHead>{t("contracts.signers")}</TableHead>
-                <TableHead>{t("contracts.sentOn")}</TableHead>
+                <SortableTableHead control={sort} column="title">{t("contracts.title")}</SortableTableHead>
+                <SortableTableHead control={sort} column="status">{t("common.status")}</SortableTableHead>
+                <SortableTableHead control={sort} column="signers">{t("contracts.signers")}</SortableTableHead>
+                <SortableTableHead control={sort} column="sentOn">{t("contracts.sentOn")}</SortableTableHead>
                 <TableHead className="w-[140px]" />
               </TableRow>
             </TableHeader>
             <TableBody>
-              {contracts.map(c => (
+              {pagination.items.map(c => (
                 <TableRow key={c.id} data-testid={`row-contract-${c.id}`}>
                   <TableCell className="font-medium">{c.title}</TableCell>
                   <TableCell>
@@ -296,6 +308,8 @@ export function ContractsCard({ listUrl, draftUrl, createUrl, hint, onChange }: 
               ))}
             </TableBody>
           </Table>
+            <ListPagination control={pagination.control} />
+          </>
         ) : (
           <p className="text-sm text-muted-foreground">{t("contracts.none")}</p>
         )}

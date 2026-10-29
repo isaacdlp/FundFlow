@@ -22,6 +22,10 @@ import { Plus, Search, ChevronRight, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useLocalePath } from "@/i18n/hooks";
+import { useSort } from "@/hooks/use-sort";
+import { SortableTableHead } from "@/components/sortable-table-head";
+import { usePagination } from "@/hooks/use-pagination";
+import { ListPagination } from "@/components/list-pagination";
 
 export default function Accounts() {
   const [search, setSearch] = useState("");
@@ -51,6 +55,12 @@ export default function Accounts() {
     return normalizeSearch(`${account.firstName} ${account.lastName}`).includes(q) ||
       normalizeSearch(account.email).includes(q);
   });
+  const sort = useSort(filtered, {
+    name: (a) => `${a.firstName} ${a.lastName}`,
+    email: (a) => a.email,
+    roles: (a) => a.roles.map((r) => r.name).sort().join(", "),
+  });
+  const pagination = usePagination(sort.sorted, [search, sort.sort]);
 
   return (
     <div className="p-6 space-y-6">
@@ -90,14 +100,14 @@ export default function Accounts() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>{t("accounts.tableName")}</TableHead>
-                    <TableHead>{t("accounts.tableEmail")}</TableHead>
-                    <TableHead>{t("accounts.tableRoles")}</TableHead>
+                    <SortableTableHead control={sort} column="name">{t("accounts.tableName")}</SortableTableHead>
+                    <SortableTableHead control={sort} column="email">{t("accounts.tableEmail")}</SortableTableHead>
+                    <SortableTableHead control={sort} column="roles">{t("accounts.tableRoles")}</SortableTableHead>
                     <TableHead className="w-[100px] text-right">{t("common.actions")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filtered.map((account) => {
+                  {pagination.items.map((account) => {
                     const isSelf = user?.id === account.id;
                     return (
                       <TableRow key={account.id} data-testid={`row-account-${account.id}`}>
@@ -165,6 +175,7 @@ export default function Accounts() {
                   })}
                 </TableBody>
               </Table>
+              <ListPagination control={pagination.control} className="border-t" />
             </div>
           ) : (
             <div className="text-center py-12">

@@ -31,6 +31,10 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
+import { useSort } from "@/hooks/use-sort";
+import { SortableTableHead } from "@/components/sortable-table-head";
+import { usePagination } from "@/hooks/use-pagination";
+import { ListPagination } from "@/components/list-pagination";
 import { Copy, Key, Loader2, Plus, ShieldAlert, Trash2 } from "lucide-react";
 import type { PublicApiToken } from "@shared/schema";
 
@@ -66,6 +70,16 @@ export function ApiTokensSection() {
     queryKey: ["/api/auth/tokens"],
     retry: false,
   });
+  const toDate = (v: string | Date | null) => (v ? new Date(v) : null);
+  const sort = useSort(tokens, {
+    name: (tk) => tk.name,
+    prefix: (tk) => tk.prefix,
+    status: (tk) => tokenStatus(tk, t).label,
+    lastUsed: (tk) => toDate(tk.lastUsedAt),
+    expires: (tk) => toDate(tk.expiresAt),
+    created: (tk) => toDate(tk.createdAt),
+  });
+  const pagination = usePagination(sort.sorted, sort.sort);
 
   const createMutation = useMutation({
     mutationFn: async () => {
@@ -233,20 +247,21 @@ export function ApiTokensSection() {
               {t("apiTokens.noTokens")}
             </p>
           ) : (
+            <>
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>{t("apiTokens.tableName")}</TableHead>
-                  <TableHead>{t("apiTokens.tablePrefix")}</TableHead>
-                  <TableHead>{t("common.status")}</TableHead>
-                  <TableHead>{t("apiTokens.tableLastUsed")}</TableHead>
-                  <TableHead>{t("apiTokens.tableExpires")}</TableHead>
-                  <TableHead>{t("apiTokens.tableCreated")}</TableHead>
+                  <SortableTableHead control={sort} column="name">{t("apiTokens.tableName")}</SortableTableHead>
+                  <SortableTableHead control={sort} column="prefix">{t("apiTokens.tablePrefix")}</SortableTableHead>
+                  <SortableTableHead control={sort} column="status">{t("common.status")}</SortableTableHead>
+                  <SortableTableHead control={sort} column="lastUsed">{t("apiTokens.tableLastUsed")}</SortableTableHead>
+                  <SortableTableHead control={sort} column="expires">{t("apiTokens.tableExpires")}</SortableTableHead>
+                  <SortableTableHead control={sort} column="created">{t("apiTokens.tableCreated")}</SortableTableHead>
                   <TableHead className="text-right">{t("common.actions")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {tokens.map((tk) => {
+                {pagination.items.map((tk) => {
                   const status = tokenStatus(tk, t);
                   const isRevoked = !!tk.revokedAt;
                   return (
@@ -303,6 +318,8 @@ export function ApiTokensSection() {
                 })}
               </TableBody>
             </Table>
+              <ListPagination control={pagination.control} />
+            </>
           )}
         </CardContent>
       </Card>

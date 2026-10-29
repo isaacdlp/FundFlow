@@ -16,6 +16,10 @@ import { Search, TrendingUp, TrendingDown, ArrowRight, ChevronDown, ChevronRight
 import { PieChart, Pie, Cell, Tooltip as RTooltip, ResponsiveContainer } from "recharts";
 import { useLocale, useLocalePath } from "@/i18n/hooks";
 import { LOCALE_TO_BCP, fmtMoney } from "@/lib/format";
+import { sortItems, useSortState, type SortAccessors } from "@/hooks/use-sort";
+import { SortButton } from "@/components/sortable-table-head";
+import { usePagination } from "@/hooks/use-pagination";
+import { ListPagination } from "@/components/list-pagination";
 
 const PIE_GRADIENTS: { id: string; from: string; to: string }[] = [
   { id: "grad-blue",       from: "#93c5fd", to: "#1e40af" },
@@ -44,6 +48,47 @@ function fmtDate(d: string | null, locale: string): string {
   if (!d) return "—";
   try { return new Date(d).toLocaleDateString(LOCALE_TO_BCP[locale] || locale); } catch { return d; }
 }
+
+function investmentFigures(inv: PortfolioInvestment) {
+  const initial = parseFloat(inv.totalCalled || "0");
+  const current = parseFloat(inv.currentValue || "0");
+  const distributions = parseFloat(inv.distributed || "0");
+  const roi = initial > 0 ? ((current + distributions - initial) / initial) * 100 : 0;
+  return { initial, current, distributions, roi };
+}
+
+type PortfolioColumn = "name" | "totalCalled" | "currentValue" | "distributed" | "roi" | "date";
+const PORTFOLIO_COLUMNS: { key: PortfolioColumn; label: string; numeric: boolean }[] = [
+  { key: "name", label: "dashboard.tableName", numeric: false },
+  { key: "totalCalled", label: "dashboard.tableTotalCalled", numeric: true },
+  { key: "currentValue", label: "dashboard.tableCurrentValue", numeric: true },
+  { key: "distributed", label: "dashboard.tableDistributed", numeric: true },
+  { key: "roi", label: "dashboard.tableRoi", numeric: true },
+  { key: "date", label: "dashboard.tableDate", numeric: true },
+];
+
+const toDate = (d: string | null) => (d ? new Date(d) : null);
+
+// Groups show no date of their own; they sort by their most recent investment
+const groupSortAccessors: SortAccessors<{ name: string; initial: number; current: number; distributions: number; roi: number; investments: PortfolioInvestment[] }, PortfolioColumn> = {
+  name: g => g.name,
+  totalCalled: g => g.initial,
+  currentValue: g => g.current,
+  distributed: g => g.distributions,
+  roi: g => g.roi,
+  date: g => g.investments.reduce<string | null>((max, inv) => (inv.date && (!max || inv.date > max) ? inv.date : max), null),
+};
+
+const investmentSortAccessors = (name: (inv: PortfolioInvestment) => string): SortAccessors<PortfolioInvestment, PortfolioColumn> => ({
+  name,
+  totalCalled: inv => investmentFigures(inv).initial,
+  currentValue: inv => investmentFigures(inv).current,
+  distributed: inv => investmentFigures(inv).distributions,
+  roi: inv => investmentFigures(inv).roi,
+  date: inv => toDate(inv.date),
+});
+const byInvestorName = investmentSortAccessors(inv => inv.investorName);
+const bySpvName = investmentSortAccessors(inv => inv.spvName);
 
 function SpvPieCard({
   title, subtitle, data,
@@ -351,6 +396,25 @@ export default function Dashboard() {
 
   const toggle = (key: string) => setExpanded(e => ({ ...e, [key]: !e[key] }));
 
+  // One sort for both groupings: it orders the groups and the investments inside each
+  const portfolioSort = useSortState<PortfolioColumn>({ key: "name", direction: "asc" });
+  // Pages are of groups; anything that reshapes the groups goes back to page 1
+  const portfolioReset = [search, portfolioSort.sort, selectedBeneficiaryKeys && Array.from(selectedBeneficiaryKeys)];
+  const companyPages = usePagination(sortItems(groupedByCompany, groupSortAccessors, portfolioSort.sort), portfolioReset);
+  const beneficiaryPages = usePagination(sortItems(groupedByBeneficiary, groupSortAccessors, portfolioSort.sort), portfolioReset);
+  const portfolioHeader = (
+    <thead>
+      <tr className="border-b text-left text-xs uppercase tracking-wider text-muted-foreground">
+        <th className="py-2 pr-3 font-medium w-8"></th>
+        {PORTFOLIO_COLUMNS.map(col => (
+          <th key={col.key} className={`py-2 pr-3 font-medium ${col.numeric ? "text-right" : ""}`}>
+            <SortButton control={portfolioSort} column={col.key} className="uppercase">{t(col.label)}</SortButton>
+          </th>
+        ))}
+      </tr>
+    </thead>
+  );
+
   const titleText =
     accountIdParam && contextAccount
       ? t("dashboard.titleAccount", { name: `${contextAccount.firstName} ${contextAccount.lastName}` })
@@ -562,19 +626,9 @@ export default function Dashboard() {
           ) : groupBy === "spv" ? (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b text-left text-xs uppercase tracking-wider text-muted-foreground">
-                    <th className="py-2 pr-3 font-medium w-8"></th>
-                    <th className="py-2 pr-3 font-medium">{t("dashboard.tableName")}</th>
-                    <th className="py-2 pr-3 font-medium text-right">{t("dashboard.tableTotalCalled")}</th>
-                    <th className="py-2 pr-3 font-medium text-right">{t("dashboard.tableCurrentValue")}</th>
-                    <th className="py-2 pr-3 font-medium text-right">{t("dashboard.tableDistributed")}</th>
-                    <th className="py-2 pr-3 font-medium text-right">{t("dashboard.tableRoi")}</th>
-                    <th className="py-2 pr-3 font-medium text-right">{t("dashboard.tableDate")}</th>
-                  </tr>
-                </thead>
+                {portfolioHeader}
                 <tbody>
-                  {groupedByCompany.flatMap(group => {
+                  {companyPages.items.flatMap(group => {
                     const isOpen = expanded[group.key] ?? false;
                     const rows: JSX.Element[] = [];
                     rows.push(
@@ -608,11 +662,8 @@ export default function Dashboard() {
                       </tr>
                     );
                     if (isOpen) {
-                      group.investments.forEach(inv => {
-                        const initial = parseFloat(inv.totalCalled || "0");
-                        const current = parseFloat(inv.currentValue || "0");
-                        const distributions = parseFloat(inv.distributed || "0");
-                        const roi = initial > 0 ? ((current + distributions - initial) / initial) * 100 : 0;
+                      sortItems(group.investments, byInvestorName, portfolioSort.sort).forEach(inv => {
+                        const { initial, current, distributions, roi } = investmentFigures(inv);
                         rows.push(
                           <tr
                             key={`inv-${inv.memberId}`}
@@ -643,6 +694,7 @@ export default function Dashboard() {
                   })}
                 </tbody>
               </table>
+              <ListPagination control={companyPages.control} className="border-t" />
               <p className="mt-3 text-xs text-muted-foreground" data-testid="text-results-count">
                 {t("dashboard.showingCompanies", { count: groupedByCompany.length, invCount: filtered.length })}
               </p>
@@ -650,19 +702,9 @@ export default function Dashboard() {
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b text-left text-xs uppercase tracking-wider text-muted-foreground">
-                    <th className="py-2 pr-3 font-medium w-8"></th>
-                    <th className="py-2 pr-3 font-medium">{t("dashboard.tableName")}</th>
-                    <th className="py-2 pr-3 font-medium text-right">{t("dashboard.tableTotalCalled")}</th>
-                    <th className="py-2 pr-3 font-medium text-right">{t("dashboard.tableCurrentValue")}</th>
-                    <th className="py-2 pr-3 font-medium text-right">{t("dashboard.tableDistributed")}</th>
-                    <th className="py-2 pr-3 font-medium text-right">{t("dashboard.tableRoi")}</th>
-                    <th className="py-2 pr-3 font-medium text-right">{t("dashboard.tableDate")}</th>
-                  </tr>
-                </thead>
+                {portfolioHeader}
                 <tbody>
-                  {groupedByBeneficiary.flatMap(group => {
+                  {beneficiaryPages.items.flatMap(group => {
                     const isOpen = expanded[group.key] ?? false;
                     const rows: JSX.Element[] = [];
                     rows.push(
@@ -701,11 +743,8 @@ export default function Dashboard() {
                       </tr>
                     );
                     if (isOpen) {
-                      group.investments.forEach(inv => {
-                        const initial = parseFloat(inv.totalCalled || "0");
-                        const current = parseFloat(inv.currentValue || "0");
-                        const distributions = parseFloat(inv.distributed || "0");
-                        const roi = initial > 0 ? ((current + distributions - initial) / initial) * 100 : 0;
+                      sortItems(group.investments, bySpvName, portfolioSort.sort).forEach(inv => {
+                        const { initial, current, distributions, roi } = investmentFigures(inv);
                         rows.push(
                           <tr
                             key={`binv-${inv.memberId}`}
@@ -736,6 +775,7 @@ export default function Dashboard() {
                   })}
                 </tbody>
               </table>
+              <ListPagination control={beneficiaryPages.control} className="border-t" />
               <p className="mt-3 text-xs text-muted-foreground" data-testid="text-results-count">
                 {t("dashboard.showingBeneficiaries", { count: groupedByBeneficiary.length, invCount: filtered.length })}
               </p>

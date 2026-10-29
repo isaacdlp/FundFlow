@@ -21,6 +21,10 @@ import { Plus, Search, ChevronRight, Trash2, Building2 } from "lucide-react";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useLocalePath } from "@/i18n/hooks";
+import { useSort } from "@/hooks/use-sort";
+import { SortableTableHead } from "@/components/sortable-table-head";
+import { usePagination } from "@/hooks/use-pagination";
+import { ListPagination } from "@/components/list-pagination";
 
 export default function Organizations() {
   const [search, setSearch] = useState("");
@@ -51,6 +55,12 @@ export default function Organizations() {
     return normalizeSearch(org.name).includes(q) ||
       normalizeSearch(org.description || "").includes(q);
   });
+  const sort = useSort(filtered, {
+    name: (o) => o.name,
+    location: (o) => [o.city, o.stateProvince, o.country].filter(Boolean).join(", "),
+    organizers: (o) => o.organizers.map((x) => `${x.account.firstName} ${x.account.lastName}`).join(", "),
+  });
+  const pagination = usePagination(sort.sorted, [search, sort.sort]);
 
   return (
     <div className="p-6 space-y-6">
@@ -88,14 +98,14 @@ export default function Organizations() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>{t("organizations.tableOrg")}</TableHead>
-                    <TableHead>{t("organizations.tableLocation")}</TableHead>
-                    <TableHead>{t("organizations.tableOrganizers")}</TableHead>
+                    <SortableTableHead control={sort} column="name">{t("organizations.tableOrg")}</SortableTableHead>
+                    <SortableTableHead control={sort} column="location">{t("organizations.tableLocation")}</SortableTableHead>
+                    <SortableTableHead control={sort} column="organizers">{t("organizations.tableOrganizers")}</SortableTableHead>
                     <TableHead className="w-[100px]"></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filtered.map((org) => (
+                  {pagination.items.map((org) => (
                     <TableRow key={org.id} data-testid={`row-org-${org.id}`}>
                       <TableCell>
                         <Link href={lp("organizationDetail", { id: org.id })}>
@@ -167,6 +177,7 @@ export default function Organizations() {
                   ))}
                 </TableBody>
               </Table>
+              <ListPagination control={pagination.control} className="border-t" />
             </div>
           ) : (
             <div className="text-center py-12">

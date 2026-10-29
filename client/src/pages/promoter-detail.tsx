@@ -7,6 +7,8 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { INCENTIVE_TYPES, formatPercent, incentiveLabelKey } from "@/lib/promoters";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
+import { useSort } from "@/hooks/use-sort";
+import { SortableTableHead } from "@/components/sortable-table-head";
 import { useLocalePath, useLocale } from "@/i18n/hooks";
 import { ROUTE_PATTERNS } from "@/i18n/routes";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -70,6 +72,12 @@ function IncentivesSection({ promoter }: { promoter: PromoterInfo }) {
     onError: onError(t("promoters.incentiveRemoveFailed")),
   });
 
+  const sort = useSort(promoter.incentives, {
+    type: i => t(incentiveLabelKey(i.type)),
+    percent: i => Number(i.percent),
+    notes: i => i.notes,
+  });
+
   const edit = (i: PromoterIncentiveInfo) =>
     setDraft({ id: i.id, type: i.type, percent: String(Number(i.percent)), notes: i.notes ?? "" });
 
@@ -95,14 +103,14 @@ function IncentivesSection({ promoter }: { promoter: PromoterInfo }) {
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>{t("promoters.incentiveType")}</TableHead>
-                <TableHead>{t("promoters.percent")}</TableHead>
-                <TableHead>{t("promoters.notes")}</TableHead>
+                <SortableTableHead control={sort} column="type">{t("promoters.incentiveType")}</SortableTableHead>
+                <SortableTableHead control={sort} column="percent">{t("promoters.percent")}</SortableTableHead>
+                <SortableTableHead control={sort} column="notes">{t("promoters.notes")}</SortableTableHead>
                 <TableHead className="w-[100px]" />
               </TableRow>
             </TableHeader>
             <TableBody>
-              {promoter.incentives.map(i => (
+              {sort.sorted.map(i => (
                 <TableRow key={i.id} data-testid={`row-incentive-${i.type}`}>
                   <TableCell className="font-medium">{t(incentiveLabelKey(i.type))}</TableCell>
                   <TableCell>{formatPercent(i.percent)}</TableCell>

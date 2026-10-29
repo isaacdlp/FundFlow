@@ -15,6 +15,10 @@ import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useOrgPermissions } from "@/hooks/use-org-permissions";
 import { useLocalePath } from "@/i18n/hooks";
+import { useSort } from "@/hooks/use-sort";
+import { SortableTableHead } from "@/components/sortable-table-head";
+import { usePagination } from "@/hooks/use-pagination";
+import { ListPagination } from "@/components/list-pagination";
 
 export default function Spvs() {
   const [, navigate] = useLocation();
@@ -52,6 +56,13 @@ export default function Spvs() {
       normalizeSearch(spv.entityType || "").includes(q)
     );
   });
+  const sort = useSort(filtered, {
+    name: spv => spv.displayName,
+    org: spv => spv.organization?.name,
+    entityType: spv => spv.entityType || "LLC",
+    manager: spv => spv.manager ? `${spv.manager.firstName} ${spv.manager.lastName}` : null,
+  });
+  const pagination = usePagination(sort.sorted, [search, sort.sort]);
 
   return (
     <div className="p-6 space-y-6">
@@ -86,15 +97,15 @@ export default function Spvs() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>{t("spvs.tableName")}</TableHead>
-                    <TableHead>{t("spvs.tableOrg")}</TableHead>
-                    <TableHead>{t("spvs.tableEntityType")}</TableHead>
-                    <TableHead>{t("spvs.tableManager")}</TableHead>
+                    <SortableTableHead control={sort} column="name">{t("spvs.tableName")}</SortableTableHead>
+                    <SortableTableHead control={sort} column="org">{t("spvs.tableOrg")}</SortableTableHead>
+                    <SortableTableHead control={sort} column="entityType">{t("spvs.tableEntityType")}</SortableTableHead>
+                    <SortableTableHead control={sort} column="manager">{t("spvs.tableManager")}</SortableTableHead>
                     <TableHead className="text-right">{t("common.actions")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filtered.map(spv => (
+                  {pagination.items.map(spv => (
                     <TableRow key={spv.id} data-testid={`spv-row-${spv.id}`}>
                       <TableCell>
                         <Link href={lp("spvDetail", { id: spv.id })}>
@@ -148,6 +159,7 @@ export default function Spvs() {
                   ))}
                 </TableBody>
               </Table>
+              <ListPagination control={pagination.control} className="border-t" />
             </div>
           </CardContent>
         </Card>

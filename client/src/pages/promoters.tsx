@@ -9,6 +9,10 @@ import { INCENTIVE_TYPES, formatPercent, incentiveLabelKey, incentiveShortLabelK
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { useLocalePath } from "@/i18n/hooks";
+import { useSort } from "@/hooks/use-sort";
+import { SortableTableHead } from "@/components/sortable-table-head";
+import { usePagination } from "@/hooks/use-pagination";
+import { ListPagination } from "@/components/list-pagination";
 import { SearchPicker } from "@/components/search-picker";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -147,11 +151,19 @@ export default function Promoters() {
     enabled: isAdmin,
   });
 
-  if (!isAdmin) return <NotFound />;
-
   const q = normalizeSearch(search);
   const filtered = promotersList?.filter(c =>
     !q || normalizeSearch(`${personName(c.account)} ${c.account.email}`).includes(q));
+  const sort = useSort(filtered, {
+    promoter: c => personName(c.account),
+    status: c => c.active,
+    contractDate: c => c.contractDate,
+    incentives: c => c.incentives.map(i => `${t(incentiveShortLabelKey(i.type))} ${formatPercent(i.percent)}`).join(", "),
+    introductions: c => c.introductionCount,
+  });
+  const pagination = usePagination(sort.sorted, [search, sort.sort]);
+
+  if (!isAdmin) return <NotFound />;
 
   return (
     <div className="p-6 space-y-6">
@@ -188,15 +200,15 @@ export default function Promoters() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>{t("promoters.promoter")}</TableHead>
-                  <TableHead>{t("promoters.status")}</TableHead>
-                  <TableHead>{t("promoters.contractDate")}</TableHead>
-                  <TableHead>{t("promoters.incentives")}</TableHead>
-                  <TableHead className="text-center">{t("promoters.introductions")}</TableHead>
+                  <SortableTableHead control={sort} column="promoter">{t("promoters.promoter")}</SortableTableHead>
+                  <SortableTableHead control={sort} column="status">{t("promoters.status")}</SortableTableHead>
+                  <SortableTableHead control={sort} column="contractDate">{t("promoters.contractDate")}</SortableTableHead>
+                  <SortableTableHead control={sort} column="incentives">{t("promoters.incentives")}</SortableTableHead>
+                  <SortableTableHead control={sort} column="introductions" className="text-center">{t("promoters.introductions")}</SortableTableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filtered.map(c => (
+                {pagination.items.map(c => (
                   <TableRow key={c.id} data-testid={`promoter-row-${c.id}`}>
                     <TableCell>
                       <Link href={lp("promoterDetail", { id: c.id })} className="font-medium hover:underline">
@@ -228,6 +240,7 @@ export default function Promoters() {
                 ))}
               </TableBody>
             </Table>
+            <ListPagination control={pagination.control} className="border-t" />
           </CardContent>
         </Card>
       ) : (

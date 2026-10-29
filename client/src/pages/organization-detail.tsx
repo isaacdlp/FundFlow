@@ -25,6 +25,10 @@ import { ArrowLeft, Pencil, Save, X, UserPlus, UserMinus, Building2, Check, Ban,
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useOrgPermissions } from "@/hooks/use-org-permissions";
+import { useSort } from "@/hooks/use-sort";
+import { SortableTableHead } from "@/components/sortable-table-head";
+import { usePagination } from "@/hooks/use-pagination";
+import { ListPagination } from "@/components/list-pagination";
 
 function MembersTab({ orgId, canEdit }: { orgId: string; canEdit: boolean }) {
   const { toast } = useToast();
@@ -229,6 +233,12 @@ function SpvsTab({ orgId, canEdit }: { orgId: string; canEdit: boolean }) {
   const { data: spvsList, isLoading } = useQuery<SpvInfo[]>({
     queryKey: ["/api/organizations", orgId, "spvs"],
   });
+  const sort = useSort(spvsList, {
+    name: spv => spv.displayName,
+    entityType: spv => spv.entityType || "LLC",
+    manager: spv => spv.manager ? `${spv.manager.firstName} ${spv.manager.lastName}` : null,
+  });
+  const pagination = usePagination(sort.sorted, sort.sort);
 
   const deleteMutation = useMutation({
     mutationFn: async (spvId: number) => {
@@ -271,14 +281,14 @@ function SpvsTab({ orgId, canEdit }: { orgId: string; canEdit: boolean }) {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>{t("spvs.tableName")}</TableHead>
-                    <TableHead>{t("spvs.tableEntityType")}</TableHead>
-                    <TableHead>{t("spvs.tableManager")}</TableHead>
+                    <SortableTableHead control={sort} column="name">{t("spvs.tableName")}</SortableTableHead>
+                    <SortableTableHead control={sort} column="entityType">{t("spvs.tableEntityType")}</SortableTableHead>
+                    <SortableTableHead control={sort} column="manager">{t("spvs.tableManager")}</SortableTableHead>
                     <TableHead className="text-right">{t("common.actions")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {spvsList.map(spv => (
+                  {pagination.items.map(spv => (
                     <TableRow key={spv.id} data-testid={`spv-row-${spv.id}`}>
                       <TableCell>
                         <Link href={lpSpv("spvDetail", { id: spv.id })}>
@@ -322,6 +332,7 @@ function SpvsTab({ orgId, canEdit }: { orgId: string; canEdit: boolean }) {
                   ))}
                 </TableBody>
               </Table>
+              <ListPagination control={pagination.control} className="border-t" />
             </div>
           ) : (
             <div className="text-center py-12">
