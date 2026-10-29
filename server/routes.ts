@@ -4,7 +4,7 @@ import { readFileSync } from "fs";
 import path from "path";
 import yaml from "js-yaml";
 import { storage } from "./storage";
-import { insertAccountSchema, updateAccountSchema, insertOrganizationSchema, updateOrganizationSchema, insertSpvSchema, updateSpvSchema, insertEntitySchema, updateEntitySchema, createApiTokenSchema, createIntroductionSchema, updateIntroductionSchema, createPromoterSchema, updatePromoterSchema, createIncentiveSchema, updateIncentiveSchema, createPromoterContractSchema, updateConcordSettingsSchema, ACCOUNT_SETUP_TTL_MS } from "@shared/schema";
+import { insertAccountSchema, updateAccountSchema, insertOrganizationSchema, updateOrganizationSchema, insertVehicleSchema, updateVehicleSchema, insertEntitySchema, updateEntitySchema, createApiTokenSchema, createIntroductionSchema, updateIntroductionSchema, createPromoterSchema, updatePromoterSchema, createIncentiveSchema, updateIncentiveSchema, createPromoterContractSchema, updateConcordSettingsSchema, ACCOUNT_SETUP_TTL_MS } from "@shared/schema";
 import { ConcordError, ConcordNotConfiguredError, getConcordClient } from "./concord";
 import {
   buildPromoterContractDraft, concordConfigFrom, concordSettingsInfo, getConcordSettings, getContractTemplate,
@@ -123,11 +123,11 @@ async function canManageOrg(me: AccountWithRoles, orgId: number): Promise<boolea
   return organizerOrgIds.includes(orgId);
 }
 
-async function canManageSpv(me: AccountWithRoles, spvId: number): Promise<boolean> {
+async function canManageVehicle(me: AccountWithRoles, vehicleId: number): Promise<boolean> {
   if (isAdmin(me)) return true;
-  const spv = await storage.getSpv(spvId);
-  if (!spv) return false;
-  const org = await storage.getOrganization(spv.organizationId);
+  const vehicle = await storage.getVehicle(vehicleId);
+  if (!vehicle) return false;
+  const org = await storage.getOrganization(vehicle.organizationId);
   if (!org) return false;
   return org.organizers.some(o => o.accountId === me.id);
 }
@@ -699,6 +699,11 @@ export async function registerRoutes(
       if (e instanceof ZodError) return res.status(400).json({ message: fromZodError(e).message });
       throw e;
     }
+    const promoter = await storage.getPromoter(id);
+    if (!promoter) return res.status(404).json({ message: "Promoter not found" });
+    if (data.active && !promoter.active && !promoter.hasSignedContract) {
+      return res.status(409).json({ message: "A promoter can only be active once their promoter agreement is signed" });
+    }
     const updated = await storage.updatePromoter(id, data);
     if (!updated) return res.status(404).json({ message: "Promoter not found" });
     res.json(updated);
@@ -880,11 +885,16 @@ export async function registerRoutes(
       statusCheckedAt: now,
       signedAt: newlySigned ? now : contract.signedAt,
     });
-    // A signed promoter agreement dates the promoter's contract, unless an admin already set it.
+    // Once all parties sign a promoter agreement, the promoter becomes active and
+    // its contract is dated (unless an admin already set the date). This only
+    // happens on the first signature, so a later manual deactivation sticks.
     if (newlySigned && contract.promoterId !== null) {
       const promoter = await storage.getPromoter(contract.promoterId);
-      if (promoter && !promoter.contractDate) {
-        await storage.updatePromoter(promoter.id, { contractDate: now.toISOString().slice(0, 10) });
+      if (promoter) {
+        await storage.updatePromoter(promoter.id, {
+          active: true,
+          ...(promoter.contractDate ? {} : { contractDate: now.toISOString().slice(0, 10) }),
+        });
       }
     }
     res.json(serializeContract(updated!, config));
@@ -1107,85 +1117,85 @@ export async function registerRoutes(
     res.status(201).json(invite);
   });
 
-  app.get("/api/spvs", async (req, res) => {
+  app.get("/api/vehicles", async (req, res) => {
     const me = await storage.getAccount(getAuthAccountId(req)!);
     if (!me) return res.status(401).json({ message: "Account not found" });
 
     if (isAdmin(me)) {
-      const spvsList = await storage.getAllSpvs();
-      return res.json(spvsList);
+      const vehiclesList = await storage.getAllVehicles();
+      return res.json(vehiclesList);
     }
 
-    const [spvIds, organizerOrgIds, allSpvs] = await Promise.all([
-      storage.getSpvIdsForAccount(me.id),
+    const [vehicleIds, organizerOrgIds, allVehicles] = await Promise.all([
+      storage.getVehicleIdsForAccount(me.id),
       storage.getOrganizationIdsAsOrganizer(me.id),
-      storage.getAllSpvs(),
+      storage.getAllVehicles(),
     ]);
-    const investedSet = new Set(spvIds);
+    const investedSet = new Set(vehicleIds);
     const organizerOrgSet = new Set(organizerOrgIds);
-    return res.json(allSpvs.filter(s => investedSet.has(s.id) || organizerOrgSet.has(s.organizationId)));
+    return res.json(allVehicles.filter(s => investedSet.has(s.id) || organizerOrgSet.has(s.organizationId)));
   });
 
-  app.get("/api/organizations/:id/spvs", async (req, res) => {
+  app.get("/api/organizations/:id/vehicles", async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
     const me = await storage.getAccount(getAuthAccountId(req)!);
     if (!me) return res.status(401).json({ message: "Account not found" });
 
-    const spvsList = await storage.getSpvs(id);
-    if (isAdmin(me)) return res.json(spvsList);
+    const vehiclesList = await storage.getVehicles(id);
+    if (isAdmin(me)) return res.json(vehiclesList);
 
     const orgIds = await storage.getOrganizationIdsForAccount(me.id);
     if (!orgIds.includes(id)) {
       return res.status(403).json({ message: "Access denied" });
     }
-    // Organizers of the org see every SPV in the org. Plain members see only
-    // SPVs they invest in (directly or via owned entities).
+    // Organizers of the org see every Vehicle in the org. Plain members see only
+    // Vehicles they invest in (directly or via owned entities).
     const organizerOrgIds = await storage.getOrganizationIdsAsOrganizer(me.id);
-    if (organizerOrgIds.includes(id)) return res.json(spvsList);
-    const investedSpvIds = await storage.getSpvIdsForAccount(me.id);
-    res.json(spvsList.filter(s => investedSpvIds.includes(s.id)));
+    if (organizerOrgIds.includes(id)) return res.json(vehiclesList);
+    const investedVehicleIds = await storage.getVehicleIdsForAccount(me.id);
+    res.json(vehiclesList.filter(s => investedVehicleIds.includes(s.id)));
   });
 
-  app.get("/api/spvs/:id", async (req, res) => {
+  app.get("/api/vehicles/:id", async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
     const me = await storage.getAccount(getAuthAccountId(req)!);
     if (!me) return res.status(401).json({ message: "Account not found" });
 
     if (!isAdmin(me)) {
-      const spvIds = await storage.getSpvIdsForAccount(me.id);
-      if (!spvIds.includes(id)) {
+      const vehicleIds = await storage.getVehicleIdsForAccount(me.id);
+      if (!vehicleIds.includes(id)) {
         return res.status(403).json({ message: "Access denied" });
       }
     }
 
-    const spv = await storage.getSpv(id);
-    if (!spv) return res.status(404).json({ message: "SPV not found" });
-    res.json(spv);
+    const vehicle = await storage.getVehicle(id);
+    if (!vehicle) return res.status(404).json({ message: "Vehicle not found" });
+    res.json(vehicle);
   });
 
-  app.post("/api/organizations/:id/spvs", async (req, res) => {
+  app.post("/api/organizations/:id/vehicles", async (req, res) => {
     const orgId = parseInt(req.params.id);
     if (isNaN(orgId)) return res.status(400).json({ message: "Invalid ID" });
     const me = await storage.getAccount(getAuthAccountId(req)!);
     if (!me) return res.status(401).json({ message: "Account not found" });
 
     if (!(await canManageOrg(me, orgId))) {
-      return res.status(403).json({ message: "Only admins or organizers of this organization can create SPVs" });
+      return res.status(403).json({ message: "Only admins or organizers of this organization can create Vehicles" });
     }
 
     const org = await storage.getOrganization(orgId);
     if (!org) return res.status(404).json({ message: "Organization not found" });
     try {
-      const data = insertSpvSchema.parse({ ...req.body, organizationId: orgId });
+      const data = insertVehicleSchema.parse({ ...req.body, organizationId: orgId });
       const currency = data.currency || "USD";
       const activeCodes = await storage.getActiveCurrencyCodes();
       if (!activeCodes.includes(currency)) {
         return res.status(400).json({ message: `Currency must be one of the active currencies: ${activeCodes.join(", ")}` });
       }
-      const spv = await storage.createSpv({ ...data, currency });
-      res.status(201).json(spv);
+      const vehicle = await storage.createVehicle({ ...data, currency });
+      res.status(201).json(vehicle);
     } catch (e) {
       if (e instanceof ZodError) {
         return res.status(400).json({ message: fromZodError(e).message });
@@ -1194,24 +1204,24 @@ export async function registerRoutes(
     }
   });
 
-  app.patch("/api/spvs/:id", async (req, res) => {
+  app.patch("/api/vehicles/:id", async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
     const me = await storage.getAccount(getAuthAccountId(req)!);
     if (!me) return res.status(401).json({ message: "Account not found" });
 
     if (!isAdmin(me)) {
-      const spvIds = await storage.getSpvIdsForAccount(me.id);
-      if (!spvIds.includes(id)) {
+      const vehicleIds = await storage.getVehicleIdsForAccount(me.id);
+      if (!vehicleIds.includes(id)) {
         return res.status(403).json({ message: "Access denied" });
       }
     }
 
     try {
-      const data = updateSpvSchema.parse(req.body);
-      const spv = await storage.updateSpv(id, data);
-      if (!spv) return res.status(404).json({ message: "SPV not found" });
-      res.json(spv);
+      const data = updateVehicleSchema.parse(req.body);
+      const vehicle = await storage.updateVehicle(id, data);
+      if (!vehicle) return res.status(404).json({ message: "Vehicle not found" });
+      res.json(vehicle);
     } catch (e) {
       if (e instanceof ZodError) {
         return res.status(400).json({ message: fromZodError(e).message });
@@ -1220,27 +1230,27 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/spvs/:id", requireAdmin as any, async (req: Request, res: Response) => {
+  app.delete("/api/vehicles/:id", requireAdmin as any, async (req: Request, res: Response) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
-    const deleted = await storage.deleteSpv(id);
-    if (!deleted) return res.status(404).json({ message: "SPV not found" });
-    res.json({ message: "SPV deleted" });
+    const deleted = await storage.deleteVehicle(id);
+    if (!deleted) return res.status(404).json({ message: "Vehicle not found" });
+    res.json({ message: "Vehicle deleted" });
   });
 
-  app.get("/api/spvs/:id/members", async (req, res) => {
+  app.get("/api/vehicles/:id/members", async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
     const me = await storage.getAccount(getAuthAccountId(req)!);
     if (!me) return res.status(401).json({ message: "Account not found" });
 
-    const members = await storage.getSpvMembers(id);
-    if (isAdmin(me) || (await canManageSpv(me, id))) {
+    const members = await storage.getVehicleMembers(id);
+    if (isAdmin(me) || (await canManageVehicle(me, id))) {
       return res.json(members);
     }
 
-    const spvIds = await storage.getSpvIdsForAccount(me.id);
-    if (!spvIds.includes(id)) {
+    const vehicleIds = await storage.getVehicleIdsForAccount(me.id);
+    if (!vehicleIds.includes(id)) {
       return res.status(403).json({ message: "Access denied" });
     }
     const [ownedEntityIds, managedEntityIds] = await Promise.all([
@@ -1296,14 +1306,14 @@ export async function registerRoutes(
     return { ok: true, data: out };
   }
 
-  app.post("/api/spvs/:id/members", async (req, res) => {
+  app.post("/api/vehicles/:id/members", async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
     const me = await storage.getAccount(getAuthAccountId(req)!);
     if (!me) return res.status(401).json({ message: "Account not found" });
 
-    if (!(await canManageSpv(me, id))) {
-      return res.status(403).json({ message: "Only admins or organization organizers can add SPV investments" });
+    if (!(await canManageVehicle(me, id))) {
+      return res.status(403).json({ message: "Only admins or organization organizers can add Vehicle investments" });
     }
 
     const { accountId, entityId } = req.body;
@@ -1317,14 +1327,14 @@ export async function registerRoutes(
     if (!validation.ok) return res.status(400).json({ message: validation.error });
     if (!validation.data.date) return res.status(400).json({ message: "date is required" });
 
-    const spv = await storage.getSpv(id);
-    if (!spv) return res.status(404).json({ message: "SPV not found" });
+    const vehicle = await storage.getVehicle(id);
+    if (!vehicle) return res.status(404).json({ message: "Vehicle not found" });
 
-    if (spv.autoDeploy) {
-      const assets = await storage.getSpvAssets(id);
+    if (vehicle.autoDeploy) {
+      const assets = await storage.getVehicleAssets(id);
       const hasDefault = assets.some(a => a.isDefault);
       if (!hasDefault) {
-        return res.status(400).json({ message: "AutoDeploy is enabled but the SPV has no default asset. Mark an asset as default before adding investors." });
+        return res.status(400).json({ message: "AutoDeploy is enabled but the Vehicle has no default asset. Mark an asset as default before adding investors." });
       }
     }
 
@@ -1334,9 +1344,9 @@ export async function registerRoutes(
       if (!Number.isInteger(aid) || aid <= 0) return res.status(400).json({ message: "Invalid accountId" });
       const acct = await storage.getAccount(aid);
       if (!acct) return res.status(404).json({ message: "Account not found" });
-      const orgMembership = await storage.getMember(spv.organizationId, aid);
+      const orgMembership = await storage.getMember(vehicle.organizationId, aid);
       if (!orgMembership || orgMembership.status !== "approved") {
-        return res.status(400).json({ message: "Account must be an approved member of the SPV's organization" });
+        return res.status(400).json({ message: "Account must be an approved member of the Vehicle's organization" });
       }
       investor = { accountId: aid };
     } else {
@@ -1347,40 +1357,40 @@ export async function registerRoutes(
       investor = { entityId: eid };
     }
 
-    const member = await storage.addSpvMember(id, investor, validation.data);
+    const member = await storage.addVehicleMember(id, investor, validation.data);
     res.status(201).json(member);
   });
 
-  app.patch("/api/spvs/:id/members/:memberId", async (req, res) => {
+  app.patch("/api/vehicles/:id/members/:memberId", async (req, res) => {
     const id = parseInt(req.params.id);
     const memberId = parseInt(req.params.memberId);
     if (isNaN(id) || isNaN(memberId)) return res.status(400).json({ message: "Invalid ID" });
     const me = await storage.getAccount(getAuthAccountId(req)!);
     if (!me) return res.status(401).json({ message: "Account not found" });
 
-    if (!(await canManageSpv(me, id))) {
-      return res.status(403).json({ message: "Only admins or organization organizers can edit SPV investments" });
+    if (!(await canManageVehicle(me, id))) {
+      return res.status(403).json({ message: "Only admins or organization organizers can edit Vehicle investments" });
     }
 
     const validation = validateInvestmentFields(req.body);
     if (!validation.ok) return res.status(400).json({ message: validation.error });
 
-    const member = await storage.updateSpvMemberById(id, memberId, validation.data);
-    if (!member) return res.status(404).json({ message: "SPV member not found" });
+    const member = await storage.updateVehicleMemberById(id, memberId, validation.data);
+    if (!member) return res.status(404).json({ message: "Vehicle member not found" });
     res.json(member);
   });
 
-  // === SPV Assets ===
-  app.get("/api/spvs/:id/assets", async (req, res) => {
+  // === Vehicle Assets ===
+  app.get("/api/vehicles/:id/assets", async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
     const me = await storage.getAccount(getAuthAccountId(req)!);
     if (!me) return res.status(401).json({ message: "Account not found" });
     if (!isAdmin(me)) {
-      const spvIds = await storage.getSpvIdsForAccount(me.id);
-      if (!spvIds.includes(id)) return res.status(403).json({ message: "Access denied" });
+      const vehicleIds = await storage.getVehicleIdsForAccount(me.id);
+      if (!vehicleIds.includes(id)) return res.status(403).json({ message: "Access denied" });
     }
-    const assets = await storage.getSpvAssets(id);
+    const assets = await storage.getVehicleAssets(id);
     res.json(assets);
   });
 
@@ -1418,78 +1428,78 @@ export async function registerRoutes(
     return { ok: true, data: out };
   }
 
-  app.post("/api/spvs/:id/assets", async (req, res) => {
+  app.post("/api/vehicles/:id/assets", async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
     const me = await storage.getAccount(getAuthAccountId(req)!);
     if (!me) return res.status(401).json({ message: "Account not found" });
-    if (!(await canManageSpv(me, id))) {
-      return res.status(403).json({ message: "Only admins or organization organizers can add SPV assets" });
+    if (!(await canManageVehicle(me, id))) {
+      return res.status(403).json({ message: "Only admins or organization organizers can add Vehicle assets" });
     }
-    const spv = await storage.getSpv(id);
-    if (!spv) return res.status(404).json({ message: "SPV not found" });
+    const vehicle = await storage.getVehicle(id);
+    if (!vehicle) return res.status(404).json({ message: "Vehicle not found" });
     const v = validateAssetFields(req.body, true);
     if (!v.ok) return res.status(400).json({ message: v.error });
-    const asset = await storage.createSpvAsset(id, v.data);
+    const asset = await storage.createVehicleAsset(id, v.data);
     res.status(201).json(asset);
   });
 
-  app.patch("/api/spvs/:id/assets/:assetId", async (req, res) => {
+  app.patch("/api/vehicles/:id/assets/:assetId", async (req, res) => {
     const id = parseInt(req.params.id);
     const assetId = parseInt(req.params.assetId);
     if (isNaN(id) || isNaN(assetId)) return res.status(400).json({ message: "Invalid ID" });
     const me = await storage.getAccount(getAuthAccountId(req)!);
     if (!me) return res.status(401).json({ message: "Account not found" });
-    if (!(await canManageSpv(me, id))) {
-      return res.status(403).json({ message: "Only admins or organization organizers can edit SPV assets" });
+    if (!(await canManageVehicle(me, id))) {
+      return res.status(403).json({ message: "Only admins or organization organizers can edit Vehicle assets" });
     }
     const v = validateAssetFields(req.body, false);
     if (!v.ok) return res.status(400).json({ message: v.error });
-    const asset = await storage.updateSpvAsset(id, assetId, v.data);
+    const asset = await storage.updateVehicleAsset(id, assetId, v.data);
     if (!asset) return res.status(404).json({ message: "Asset not found" });
     res.json(asset);
   });
 
-  app.delete("/api/spvs/:id/assets/:assetId", async (req, res) => {
+  app.delete("/api/vehicles/:id/assets/:assetId", async (req, res) => {
     const id = parseInt(req.params.id);
     const assetId = parseInt(req.params.assetId);
     if (isNaN(id) || isNaN(assetId)) return res.status(400).json({ message: "Invalid ID" });
     const me = await storage.getAccount(getAuthAccountId(req)!);
     if (!me) return res.status(401).json({ message: "Account not found" });
-    if (!(await canManageSpv(me, id))) {
-      return res.status(403).json({ message: "Only admins or organization organizers can remove SPV assets" });
+    if (!(await canManageVehicle(me, id))) {
+      return res.status(403).json({ message: "Only admins or organization organizers can remove Vehicle assets" });
     }
-    const removed = await storage.deleteSpvAsset(id, assetId);
+    const removed = await storage.deleteVehicleAsset(id, assetId);
     if (!removed) return res.status(404).json({ message: "Asset not found" });
     res.json({ message: "Asset removed" });
   });
 
-  app.get("/api/spvs/:id/assets/:assetId/valuations", async (req, res) => {
+  app.get("/api/vehicles/:id/assets/:assetId/valuations", async (req, res) => {
     const id = parseInt(req.params.id);
     const assetId = parseInt(req.params.assetId);
     if (isNaN(id) || isNaN(assetId)) return res.status(400).json({ message: "Invalid ID" });
     const me = await storage.getAccount(getAuthAccountId(req)!);
     if (!me) return res.status(401).json({ message: "Account not found" });
     if (!isAdmin(me)) {
-      const spvIds = await storage.getSpvIdsForAccount(me.id);
-      if (!spvIds.includes(id)) return res.status(403).json({ message: "Access denied" });
+      const vehicleIds = await storage.getVehicleIdsForAccount(me.id);
+      if (!vehicleIds.includes(id)) return res.status(403).json({ message: "Access denied" });
     }
-    const asset = await storage.getSpvAsset(id, assetId);
+    const asset = await storage.getVehicleAsset(id, assetId);
     if (!asset) return res.status(404).json({ message: "Asset not found" });
     const vals = await storage.getAssetValuations(assetId);
     res.json(vals);
   });
 
-  app.post("/api/spvs/:id/assets/:assetId/valuations", async (req, res) => {
+  app.post("/api/vehicles/:id/assets/:assetId/valuations", async (req, res) => {
     const id = parseInt(req.params.id);
     const assetId = parseInt(req.params.assetId);
     if (isNaN(id) || isNaN(assetId)) return res.status(400).json({ message: "Invalid ID" });
     const me = await storage.getAccount(getAuthAccountId(req)!);
     if (!me) return res.status(401).json({ message: "Account not found" });
-    if (!(await canManageSpv(me, id))) {
+    if (!(await canManageVehicle(me, id))) {
       return res.status(403).json({ message: "Only admins or organization organizers can add valuations" });
     }
-    const asset = await storage.getSpvAsset(id, assetId);
+    const asset = await storage.getVehicleAsset(id, assetId);
     if (!asset) return res.status(404).json({ message: "Asset not found" });
     const { date, value, note } = req.body || {};
     if (!date) return res.status(400).json({ message: "date is required" });
@@ -1502,14 +1512,14 @@ export async function registerRoutes(
     res.status(201).json(v);
   });
 
-  app.delete("/api/spvs/:id/assets/:assetId/valuations/:valuationId", async (req, res) => {
+  app.delete("/api/vehicles/:id/assets/:assetId/valuations/:valuationId", async (req, res) => {
     const id = parseInt(req.params.id);
     const assetId = parseInt(req.params.assetId);
     const valuationId = parseInt(req.params.valuationId);
     if (isNaN(id) || isNaN(assetId) || isNaN(valuationId)) return res.status(400).json({ message: "Invalid ID" });
     const me = await storage.getAccount(getAuthAccountId(req)!);
     if (!me) return res.status(401).json({ message: "Account not found" });
-    if (!(await canManageSpv(me, id))) {
+    if (!(await canManageVehicle(me, id))) {
       return res.status(403).json({ message: "Only admins or organization organizers can remove valuations" });
     }
     const removed = await storage.removeAssetValuation(assetId, valuationId);
@@ -1517,20 +1527,20 @@ export async function registerRoutes(
     res.json({ message: "Valuation removed" });
   });
 
-  app.delete("/api/spvs/:id/members/:memberId", async (req, res) => {
+  app.delete("/api/vehicles/:id/members/:memberId", async (req, res) => {
     const id = parseInt(req.params.id);
     const memberId = parseInt(req.params.memberId);
     if (isNaN(id) || isNaN(memberId)) return res.status(400).json({ message: "Invalid ID" });
     const me = await storage.getAccount(getAuthAccountId(req)!);
     if (!me) return res.status(401).json({ message: "Account not found" });
 
-    if (!(await canManageSpv(me, id))) {
-      return res.status(403).json({ message: "Only admins or organization organizers can remove SPV investments" });
+    if (!(await canManageVehicle(me, id))) {
+      return res.status(403).json({ message: "Only admins or organization organizers can remove Vehicle investments" });
     }
 
-    const removed = await storage.removeSpvMemberById(id, memberId);
-    if (!removed) return res.status(404).json({ message: "SPV member not found" });
-    res.json({ message: "Member removed from SPV" });
+    const removed = await storage.removeVehicleMemberById(id, memberId);
+    if (!removed) return res.status(404).json({ message: "Vehicle member not found" });
+    res.json({ message: "Member removed from Vehicle" });
   });
 
   app.get("/api/portfolio", async (req, res) => {

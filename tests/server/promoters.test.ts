@@ -73,6 +73,13 @@ describe("Promoters API", () => {
       });
     });
 
+    it("always creates promoters inactive, ignoring a requested active flag", async () => {
+      const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
+      mockStorage.createPromoter.mockResolvedValue({ id: 3, active: false });
+      expect((await agent.post("/api/promoters").send({ accountId: 2, active: true })).status).toBe(201);
+      expect(mockStorage.createPromoter).toHaveBeenCalledWith({ accountId: 2 });
+    });
+
     it("returns 404 for an unknown account", async () => {
       const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
       mockStorage.getAccount.mockImplementation(async (id: number) => id === fixtures.adminAccount.id ? fixtures.adminAccount : null);
@@ -97,10 +104,31 @@ describe("Promoters API", () => {
   describe("PATCH/DELETE /api/promoters/:id", () => {
     it("updates status, contract date and notes", async () => {
       const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
+      mockStorage.getPromoter.mockResolvedValue({ id: 3, active: true, hasSignedContract: true });
       mockStorage.updatePromoter.mockResolvedValue({ id: 3, active: false });
       const res = await agent.patch("/api/promoters/3").send({ active: false, contractDate: null });
       expect(res.status).toBe(200);
       expect(mockStorage.updatePromoter).toHaveBeenCalledWith(3, { active: false, contractDate: null });
+    });
+
+    it("refuses to activate a promoter without a signed agreement", async () => {
+      const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
+      mockStorage.getPromoter.mockResolvedValue({ id: 3, active: false, hasSignedContract: false });
+      const res = await agent.patch("/api/promoters/3").send({ active: true });
+      expect(res.status).toBe(409);
+      expect(res.body.message).toContain("signed");
+      expect(mockStorage.updatePromoter).not.toHaveBeenCalled();
+      // Other fields can still be edited while inactive.
+      mockStorage.updatePromoter.mockResolvedValue({ id: 3 });
+      expect((await agent.patch("/api/promoters/3").send({ active: false, notes: "x" })).status).toBe(200);
+    });
+
+    it("reactivates a promoter whose agreement is signed", async () => {
+      const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
+      mockStorage.getPromoter.mockResolvedValue({ id: 3, active: false, hasSignedContract: true });
+      mockStorage.updatePromoter.mockResolvedValue({ id: 3, active: true });
+      expect((await agent.patch("/api/promoters/3").send({ active: true })).status).toBe(200);
+      expect(mockStorage.updatePromoter).toHaveBeenCalledWith(3, { active: true });
     });
 
     it("returns 404 when missing", async () => {

@@ -253,7 +253,7 @@ describe("Contracts API", () => {
       expect(mockStorage.updatePromoter).not.toHaveBeenCalled();
     });
 
-    it("on signature, follows the signed copy and dates the promoter's contract", async () => {
+    it("on signature, follows the signed copy, activates the promoter and dates its contract", async () => {
       const agent = await admin();
       mockStorage.getContract.mockResolvedValue(contract());
       mockStorage.getPromoter.mockResolvedValue(promoter());
@@ -263,14 +263,33 @@ describe("Contracts API", () => {
       expect(res.status).toBe(200);
       expect(res.body).toMatchObject({ status: "SIGNED", concordUid: "doc2" });
       expect(res.body.signedAt).toBeTruthy();
-      expect(mockStorage.updatePromoter).toHaveBeenCalledWith(3, { contractDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) });
+      expect(mockStorage.updatePromoter).toHaveBeenCalledWith(3, { active: true, contractDate: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/) });
     });
 
     it("keeps a contract date an admin already set", async () => {
       const agent = await admin();
       mockStorage.getContract.mockResolvedValue(contract());
-      mockStorage.getPromoter.mockResolvedValue(promoter({ contractDate: "2026-01-01" }));
+      mockStorage.getPromoter.mockResolvedValue(promoter({ active: false, contractDate: "2026-01-01" }));
       concord.getStatus.mockResolvedValue({ status: "SIGNED", uid: "doc1" });
+      mockStorage.updateContract.mockImplementation(async (_id: number, data: any) => contract(data));
+      await agent.post("/api/contracts/9/refresh");
+      expect(mockStorage.updatePromoter).toHaveBeenCalledWith(3, { active: true });
+    });
+
+    it("doesn't reactivate a promoter when an already-signed contract is checked again", async () => {
+      const agent = await admin();
+      mockStorage.getContract.mockResolvedValue(contract({ status: "SIGNED", signedAt: new Date("2026-10-05T00:00:00Z") }));
+      mockStorage.getPromoter.mockResolvedValue(promoter({ active: false }));
+      concord.getStatus.mockResolvedValue({ status: "SIGNED", uid: "doc1" });
+      mockStorage.updateContract.mockImplementation(async (_id: number, data: any) => contract(data));
+      expect((await agent.post("/api/contracts/9/refresh")).status).toBe(200);
+      expect(mockStorage.updatePromoter).not.toHaveBeenCalled();
+    });
+
+    it("doesn't activate the promoter while signatures are pending", async () => {
+      const agent = await admin();
+      mockStorage.getContract.mockResolvedValue(contract());
+      concord.getStatus.mockResolvedValue({ status: "SIGNING", uid: "doc1" });
       mockStorage.updateContract.mockImplementation(async (_id: number, data: any) => contract(data));
       await agent.post("/api/contracts/9/refresh");
       expect(mockStorage.updatePromoter).not.toHaveBeenCalled();

@@ -88,9 +88,9 @@ const investmentSortAccessors = (name: (inv: PortfolioInvestment) => string): So
   date: inv => toDate(inv.date),
 });
 const byInvestorName = investmentSortAccessors(inv => inv.investorName);
-const bySpvName = investmentSortAccessors(inv => inv.spvName);
+const byVehicleName = investmentSortAccessors(inv => inv.vehicleName);
 
-function SpvPieCard({
+function VehiclePieCard({
   title, subtitle, data,
   valueFormatter = (v) => `$${v.toFixed(2)}`,
   legendFormatter,
@@ -184,7 +184,7 @@ export default function Dashboard() {
   const { user, isAdmin } = useAuth();
   const [search, setSearch] = useState("");
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
-  const [groupBy, setGroupBy] = useState<"spv" | "beneficiary">("spv");
+  const [groupBy, setGroupBy] = useState<"vehicle" | "beneficiary">("vehicle");
   const [selectedBeneficiaryKeys, setSelectedBeneficiaryKeys] = useState<Set<string> | null>(null);
   const [displayCurrency, setDisplayCurrency] = useState("USD");
   const { t } = useTranslation();
@@ -276,7 +276,7 @@ export default function Dashboard() {
     if (!search.trim()) return items;
     const q = search.toLowerCase();
     return items.filter(i =>
-      i.spvName.toLowerCase().includes(q) ||
+      i.vehicleName.toLowerCase().includes(q) ||
       i.investmentCompanyName.toLowerCase().includes(q) ||
       i.investmentType.toLowerCase().includes(q) ||
       i.organizationName.toLowerCase().includes(q) ||
@@ -285,7 +285,7 @@ export default function Dashboard() {
     );
   }, [beneficiaryFiltered, search]);
 
-  // Every investment carries its own SPV's currency (fixed at SPV creation),
+  // Every investment carries its own Vehicle's currency (fixed at Vehicle creation),
   // so amounts can't be summed across investments directly. This converts
   // each investment's monetary fields into the selected display currency
   // before any aggregation below touches them.
@@ -319,10 +319,10 @@ export default function Dashboard() {
     return { initial, current, distributions, roi, moic, tvpi, dpi, count: convertedFiltered.length };
   }, [convertedFiltered]);
 
-  const spvBreakdown = useMemo(() => {
+  const vehicleBreakdown = useMemo(() => {
     const map = new Map<string, { name: string; initial: number; current: number }>();
     for (const inv of convertedFiltered) {
-      const key = inv.spvName || t("common.untitled");
+      const key = inv.vehicleName || t("common.untitled");
       const cur = map.get(key) ?? { name: key, initial: 0, current: 0 };
       cur.initial += parseFloat(inv.totalCalled || "0");
       cur.current += parseFloat(inv.currentValue || "0");
@@ -331,21 +331,21 @@ export default function Dashboard() {
     return Array.from(map.values()).sort((a, b) => b.current - a.current);
   }, [convertedFiltered, t]);
 
-  const spvGradientId = useMemo(() =>
-    new Map(spvBreakdown.map((s, i) => [s.name, PIE_GRADIENTS[i % PIE_GRADIENTS.length].id])),
-    [spvBreakdown]);
+  const vehicleGradientId = useMemo(() =>
+    new Map(vehicleBreakdown.map((s, i) => [s.name, PIE_GRADIENTS[i % PIE_GRADIENTS.length].id])),
+    [vehicleBreakdown]);
 
-  const initialPie = spvBreakdown.filter(s => s.initial > 0).map(s => ({ name: s.name, value: s.initial, gradientId: spvGradientId.get(s.name)! }));
-  const currentPie = spvBreakdown.filter(s => s.current > 0).map(s => ({ name: s.name, value: s.current, gradientId: spvGradientId.get(s.name)! }));
-  const growthPie = spvBreakdown
+  const initialPie = vehicleBreakdown.filter(s => s.initial > 0).map(s => ({ name: s.name, value: s.initial, gradientId: vehicleGradientId.get(s.name)! }));
+  const currentPie = vehicleBreakdown.filter(s => s.current > 0).map(s => ({ name: s.name, value: s.current, gradientId: vehicleGradientId.get(s.name)! }));
+  const growthPie = vehicleBreakdown
     .filter(s => s.initial > 0 && s.current > s.initial)
-    .map(s => ({ name: s.name, value: ((s.current - s.initial) / s.initial) * 100, gradientId: spvGradientId.get(s.name)! }))
+    .map(s => ({ name: s.name, value: ((s.current - s.initial) / s.initial) * 100, gradientId: vehicleGradientId.get(s.name)! }))
     .sort((a, b) => b.value - a.value);
 
   const groupedByCompany = useMemo<CompanyGroup[]>(() => {
     const map = new Map<string, CompanyGroup>();
     for (const inv of convertedFiltered) {
-      const key = (inv.investmentCompanyName || inv.spvName).trim() || t("common.untitled");
+      const key = (inv.investmentCompanyName || inv.vehicleName).trim() || t("common.untitled");
       if (!map.has(key)) {
         map.set(key, {
           key, name: key,
@@ -538,11 +538,11 @@ export default function Dashboard() {
         </CardContent>
       </Card>
 
-      {!isLoading && spvBreakdown.length > 0 && (
+      {!isLoading && vehicleBreakdown.length > 0 && (
         <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-          <SpvPieCard title={t("dashboard.pieInitialTitle")} subtitle={t("dashboard.pieInitialSubtitle")} data={initialPie} valueFormatter={fmtAmt} />
-          <SpvPieCard title={t("dashboard.pieCurrentTitle")} subtitle={t("dashboard.pieCurrentSubtitle")} data={currentPie} valueFormatter={fmtAmt} />
-          <SpvPieCard title={t("dashboard.pieGrowthTitle")} subtitle={t("dashboard.pieGrowthSubtitle")} data={growthPie} valueFormatter={(v) => fmtPct(v)} legendFormatter={(v) => fmtPct(v)} />
+          <VehiclePieCard title={t("dashboard.pieInitialTitle")} subtitle={t("dashboard.pieInitialSubtitle")} data={initialPie} valueFormatter={fmtAmt} />
+          <VehiclePieCard title={t("dashboard.pieCurrentTitle")} subtitle={t("dashboard.pieCurrentSubtitle")} data={currentPie} valueFormatter={fmtAmt} />
+          <VehiclePieCard title={t("dashboard.pieGrowthTitle")} subtitle={t("dashboard.pieGrowthSubtitle")} data={growthPie} valueFormatter={(v) => fmtPct(v)} legendFormatter={(v) => fmtPct(v)} />
         </div>
       )}
 
@@ -553,13 +553,13 @@ export default function Dashboard() {
             <div className="flex items-center gap-2 flex-wrap">
               {isMultiBeneficiary && (
                 <>
-                  <Select value={groupBy} onValueChange={v => setGroupBy(v as "spv" | "beneficiary")}>
+                  <Select value={groupBy} onValueChange={v => setGroupBy(v as "vehicle" | "beneficiary")}>
                     <SelectTrigger className="h-9 w-auto gap-1" data-testid="select-group-by">
                       <span className="text-muted-foreground text-xs mr-0.5">{t("dashboard.groupBy")}:</span>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="spv">{t("dashboard.groupBySpv")}</SelectItem>
+                      <SelectItem value="vehicle">{t("dashboard.groupByVehicle")}</SelectItem>
                       <SelectItem value="beneficiary">{t("dashboard.groupByBeneficiary")}</SelectItem>
                     </SelectContent>
                   </Select>
@@ -616,14 +616,14 @@ export default function Dashboard() {
         <CardContent>
           {isLoading ? (
             <div className="space-y-2">{[1,2,3,4].map(i => <Skeleton key={i} className="h-12 w-full" />)}</div>
-          ) : (groupBy === "spv" ? groupedByCompany.length : groupedByBeneficiary.length) === 0 ? (
+          ) : (groupBy === "vehicle" ? groupedByCompany.length : groupedByBeneficiary.length) === 0 ? (
             <div className="text-center py-12">
               <Briefcase className="h-12 w-12 mx-auto text-muted-foreground mb-3" />
               <p className="text-sm text-muted-foreground">
                 {search ? t("dashboard.noInvestmentsSearch") : isAdmin ? t("dashboard.noInvestmentsAdmin") : t("dashboard.noInvestmentsUser")}
               </p>
             </div>
-          ) : groupBy === "spv" ? (
+          ) : groupBy === "vehicle" ? (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 {portfolioHeader}
@@ -743,7 +743,7 @@ export default function Dashboard() {
                       </tr>
                     );
                     if (isOpen) {
-                      sortItems(group.investments, bySpvName, portfolioSort.sort).forEach(inv => {
+                      sortItems(group.investments, byVehicleName, portfolioSort.sort).forEach(inv => {
                         const { initial, current, distributions, roi } = investmentFigures(inv);
                         rows.push(
                           <tr
@@ -753,9 +753,9 @@ export default function Dashboard() {
                           >
                             <td className="py-2 pr-3"></td>
                             <td className="py-2 pr-3 pl-10">
-                              <Link href={lp("spvDetail", { id: inv.spvId })}>
-                                <span className="text-muted-foreground hover:text-foreground cursor-pointer" data-testid={`text-spv-${inv.memberId}`}>
-                                  {inv.spvName}
+                              <Link href={lp("vehicleDetail", { id: inv.vehicleId })}>
+                                <span className="text-muted-foreground hover:text-foreground cursor-pointer" data-testid={`text-vehicle-${inv.memberId}`}>
+                                  {inv.vehicleName}
                                   <span className="ml-1.5 text-xs opacity-60">{inv.organizationName}</span>
                                 </span>
                               </Link>

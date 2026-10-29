@@ -36,8 +36,8 @@ const US_STATES = [
   "Wisconsin", "Wyoming",
 ];
 
-export default function CreateSpv() {
-  const [, params] = useRoute(ROUTE_PATTERNS.organizationSpvNew[useLocale()]);
+export default function CreateVehicle() {
+  const [, params] = useRoute(ROUTE_PATTERNS.organizationVehicleNew[useLocale()]);
   const orgId = params?.orgId;
   const [, navigate] = useLocation();
   const lp = useLocalePath();
@@ -45,15 +45,15 @@ export default function CreateSpv() {
   const { toast } = useToast();
 
   const allocationLabel = (m: string) => {
-    if (m === "By Commitment") return t("createSpv.allocationByCommitment");
-    if (m === "By Capital Invested") return t("createSpv.allocationByCapital");
-    if (m === "Custom") return t("createSpv.allocationCustom");
+    if (m === "By Commitment") return t("createVehicle.allocationByCommitment");
+    if (m === "By Capital Invested") return t("createVehicle.allocationByCapital");
+    if (m === "Custom") return t("createVehicle.allocationCustom");
     return m;
   };
   const allocationHelp = (m: string) => {
-    if (m === "By Commitment") return t("createSpv.allocationHelpByCommitment");
-    if (m === "By Capital Invested") return t("createSpv.allocationHelpByCapital");
-    if (m === "Custom") return t("createSpv.allocationHelpCustom");
+    if (m === "By Commitment") return t("createVehicle.allocationHelpByCommitment");
+    if (m === "By Capital Invested") return t("createVehicle.allocationHelpByCapital");
+    if (m === "Custom") return t("createVehicle.allocationHelpCustom");
     return "";
   };
 
@@ -118,16 +118,16 @@ export default function CreateSpv() {
       if (!payload.dateEstablished) payload.dateEstablished = null;
       if (!payload.dateEnded) payload.dateEnded = null;
       if (!payload.expectedClosingDate) payload.expectedClosingDate = null;
-      const res = await apiRequest("POST", `/api/organizations/${orgId}/spvs`, payload);
+      const res = await apiRequest("POST", `/api/organizations/${orgId}/vehicles`, payload);
       return res.json();
     },
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/organizations", orgId, "spvs"] });
-      toast({ title: t("createSpv.successTitle") });
-      navigate(lp("spvDetail", { id: data.id }));
+      queryClient.invalidateQueries({ queryKey: ["/api/organizations", orgId, "vehicles"] });
+      toast({ title: t("createVehicle.successTitle") });
+      navigate(lp("vehicleDetail", { id: data.id }));
     },
     onError: (error: Error) => {
-      toast({ title: t("createSpv.errorTitle"), description: error.message, variant: "destructive" });
+      toast({ title: t("createVehicle.errorTitle"), description: error.message, variant: "destructive" });
     },
   });
 
@@ -143,7 +143,7 @@ export default function CreateSpv() {
   if (!org) {
     return (
       <div className="p-6">
-        <p className="text-muted-foreground">{t("createSpv.orgNotFound")}</p>
+        <p className="text-muted-foreground">{t("createVehicle.orgNotFound")}</p>
       </div>
     );
   }
@@ -155,45 +155,45 @@ export default function CreateSpv() {
       <Link href={lp("organizationDetail", { id: orgId! })}>
         <Button variant="ghost" className="gap-2 -ml-2" data-testid="button-back">
           <ArrowLeft className="h-4 w-4" />
-          {t("createSpv.backToOrg", { name: org.name })}
+          {t("createVehicle.backToOrg", { name: org.name })}
         </Button>
       </Link>
 
       <div>
-        <h1 className="text-2xl font-semibold">{t("createSpv.title")}</h1>
-        <p className="text-muted-foreground mt-1">{t("createSpv.subtitleWithOrg", { name: org.name })}</p>
+        <h1 className="text-2xl font-semibold">{t("createVehicle.title")}</h1>
+        <p className="text-muted-foreground mt-1">{t("createVehicle.subtitleWithOrg", { name: org.name })}</p>
       </div>
 
       <Card>
         <CardHeader>
-          <h2 className="text-lg font-semibold">{t("createSpv.generalStructure")}</h2>
+          <h2 className="text-lg font-semibold">{t("createVehicle.generalStructure")}</h2>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="legalName">{t("createSpv.legalNameRequired")}</Label>
+            <Label htmlFor="legalName">{t("createVehicle.legalNameRequired")}</Label>
             <Input
               id="legalName"
               value={form.legalName}
               onChange={e => updateField("legalName", e.target.value)}
-              placeholder={t("createSpv.legalNamePlaceholder")}
+              placeholder={t("createVehicle.legalNamePlaceholder")}
               data-testid="input-legal-name"
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="displayName">{t("createSpv.displayNameRequired")}</Label>
+            <Label htmlFor="displayName">{t("createVehicle.displayNameRequired")}</Label>
             <Input
               id="displayName"
               value={form.displayName}
               onChange={e => updateField("displayName", e.target.value)}
-              placeholder={t("createSpv.displayNamePlaceholder")}
+              placeholder={t("createVehicle.displayNamePlaceholder")}
               data-testid="input-display-name"
             />
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>{t("createSpv.entityType")}</Label>
+              <Label>{t("createVehicle.entityType")}</Label>
               <Select value={form.entityType} onValueChange={v => updateField("entityType", v)}>
                 <SelectTrigger data-testid="select-entity-type">
                   <SelectValue />
@@ -206,13 +206,13 @@ export default function CreateSpv() {
               </Select>
             </div>
             <div className="space-y-2">
-              <Label>{t("createSpv.stateOfIncorporation")}</Label>
+              <Label>{t("createVehicle.stateOfIncorporation")}</Label>
               <Select value={form.stateOfIncorporation || "placeholder"} onValueChange={v => updateField("stateOfIncorporation", v === "placeholder" ? "" : v)}>
                 <SelectTrigger data-testid="select-state-incorporation">
-                  <SelectValue placeholder={t("createSpv.selectState")} />
+                  <SelectValue placeholder={t("createVehicle.selectState")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="placeholder" disabled>{t("createSpv.selectState")}</SelectItem>
+                  <SelectItem value="placeholder" disabled>{t("createVehicle.selectState")}</SelectItem>
                   {US_STATES.map(s => (
                     <SelectItem key={s} value={s}>{s}</SelectItem>
                   ))}
@@ -222,19 +222,19 @@ export default function CreateSpv() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="ein">{t("createSpv.ein")}</Label>
+            <Label htmlFor="ein">{t("createVehicle.ein")}</Label>
             <Input
               id="ein"
               value={form.ein}
               onChange={e => updateField("ein", e.target.value)}
-              placeholder={t("createSpv.einPlaceholder")}
+              placeholder={t("createVehicle.einPlaceholder")}
               data-testid="input-ein"
             />
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="dateEstablished">{t("createSpv.dateEstablished")} *</Label>
+              <Label htmlFor="dateEstablished">{t("createVehicle.dateEstablished")} *</Label>
               <Input
                 id="dateEstablished"
                 type="date"
@@ -244,7 +244,7 @@ export default function CreateSpv() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="dateEnded">{t("createSpv.dateEnded")}</Label>
+              <Label htmlFor="dateEnded">{t("createVehicle.dateEnded")}</Label>
               <Input
                 id="dateEnded"
                 type="date"
@@ -258,7 +258,7 @@ export default function CreateSpv() {
           <Separator />
 
           <div className="space-y-2">
-            <Label>{t("createSpv.allocationMethod")}</Label>
+            <Label>{t("createVehicle.allocationMethod")}</Label>
             <Select value={form.allocationMethod} onValueChange={v => updateField("allocationMethod", v)}>
               <SelectTrigger data-testid="select-allocation-method">
                 <SelectValue />
@@ -275,7 +275,7 @@ export default function CreateSpv() {
           </div>
 
           <div className="space-y-2">
-            <Label>{t("createSpv.currency")}</Label>
+            <Label>{t("createVehicle.currency")}</Label>
             <Select value={form.currency} onValueChange={v => updateField("currency", v)}>
               <SelectTrigger data-testid="select-currency">
                 <SelectValue />
@@ -287,13 +287,13 @@ export default function CreateSpv() {
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground" data-testid="text-currency-help">
-              {t("createSpv.currencyHelp")}
+              {t("createVehicle.currencyHelp")}
             </p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="managementFeePercent">{t("createSpv.managementFeePercent")}</Label>
+              <Label htmlFor="managementFeePercent">{t("createVehicle.managementFeePercent")}</Label>
               <Input
                 id="managementFeePercent"
                 type="number"
@@ -304,7 +304,7 @@ export default function CreateSpv() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="carriedInterestPercent">{t("createSpv.carriedInterestPercent")}</Label>
+              <Label htmlFor="carriedInterestPercent">{t("createVehicle.carriedInterestPercent")}</Label>
               <Input
                 id="carriedInterestPercent"
                 type="number"
@@ -315,7 +315,7 @@ export default function CreateSpv() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="preferredReturnPercent">{t("createSpv.preferredReturnPercent")}</Label>
+              <Label htmlFor="preferredReturnPercent">{t("createVehicle.preferredReturnPercent")}</Label>
               <Input
                 id="preferredReturnPercent"
                 type="number"
@@ -331,7 +331,7 @@ export default function CreateSpv() {
 
       <Card>
         <CardHeader>
-          <h2 className="text-lg font-semibold">{t("createSpv.addressSection")}</h2>
+          <h2 className="text-lg font-semibold">{t("createVehicle.addressSection")}</h2>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
@@ -344,7 +344,7 @@ export default function CreateSpv() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="streetAddress">{t("createSpv.street")}</Label>
+            <Label htmlFor="streetAddress">{t("createVehicle.street")}</Label>
             <Input
               id="streetAddress"
               value={form.streetAddress}
@@ -353,7 +353,7 @@ export default function CreateSpv() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="streetAddress2">{t("createSpv.streetAddress2")}</Label>
+            <Label htmlFor="streetAddress2">{t("createVehicle.streetAddress2")}</Label>
             <Input
               id="streetAddress2"
               value={form.streetAddress2}
@@ -363,18 +363,18 @@ export default function CreateSpv() {
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="spvCity">{t("common.city")}</Label>
+              <Label htmlFor="vehicleCity">{t("common.city")}</Label>
               <Input
-                id="spvCity"
+                id="vehicleCity"
                 value={form.city}
                 onChange={e => updateField("city", e.target.value)}
                 data-testid="input-city"
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="spvStateProvince">{t("common.state")}</Label>
+              <Label htmlFor="vehicleStateProvince">{t("common.state")}</Label>
               <Input
-                id="spvStateProvince"
+                id="vehicleStateProvince"
                 value={form.stateProvince}
                 onChange={e => updateField("stateProvince", e.target.value)}
                 data-testid="input-state-province"
@@ -383,7 +383,7 @@ export default function CreateSpv() {
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="zipPostalCode">{t("createSpv.zipPostalCode")}</Label>
+              <Label htmlFor="zipPostalCode">{t("createVehicle.zipPostalCode")}</Label>
               <Input
                 id="zipPostalCode"
                 value={form.zipPostalCode}
@@ -392,7 +392,7 @@ export default function CreateSpv() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="county">{t("createSpv.county")}</Label>
+              <Label htmlFor="county">{t("createVehicle.county")}</Label>
               <Input
                 id="county"
                 value={form.county}
@@ -406,17 +406,17 @@ export default function CreateSpv() {
 
       <Card>
         <CardHeader>
-          <h2 className="text-lg font-semibold">{t("createSpv.administration")}</h2>
+          <h2 className="text-lg font-semibold">{t("createVehicle.administration")}</h2>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label>{t("createSpv.spvManagerLabel")}</Label>
+            <Label>{t("createVehicle.vehicleManagerLabel")}</Label>
             <Select value={form.managerId || "none"} onValueChange={v => updateField("managerId", v)}>
               <SelectTrigger data-testid="select-manager">
-                <SelectValue placeholder={t("createSpv.selectManager")} />
+                <SelectValue placeholder={t("createVehicle.selectManager")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="none">{t("createSpv.notAssigned")}</SelectItem>
+                <SelectItem value="none">{t("createVehicle.notAssigned")}</SelectItem>
                 {organizers.map((o: OrganizerAccount) => (
                   <SelectItem key={o.accountId} value={String(o.accountId)}>
                     {o.account.firstName} {o.account.lastName} ({o.account.email})
@@ -426,13 +426,13 @@ export default function CreateSpv() {
             </Select>
           </div>
           <div className="space-y-2">
-            <Label>{t("createSpv.signatoryLabel")}</Label>
+            <Label>{t("createVehicle.signatoryLabel")}</Label>
             <Select value={form.signatoryId || "none"} onValueChange={v => updateField("signatoryId", v)}>
               <SelectTrigger data-testid="select-signatory">
-                <SelectValue placeholder={t("createSpv.selectSignatory")} />
+                <SelectValue placeholder={t("createVehicle.selectSignatory")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="none">{t("createSpv.notAssigned")}</SelectItem>
+                <SelectItem value="none">{t("createVehicle.notAssigned")}</SelectItem>
                 {organizers.map((o: OrganizerAccount) => (
                   <SelectItem key={o.accountId} value={String(o.accountId)}>
                     {o.account.firstName} {o.account.lastName} ({o.account.email})
@@ -446,73 +446,73 @@ export default function CreateSpv() {
 
       <Card>
         <CardHeader>
-          <h2 className="text-lg font-semibold">{t("createSpv.bankDetails")}</h2>
-          <p className="text-sm text-muted-foreground">{t("createSpv.bankDetailsHelp")}</p>
+          <h2 className="text-lg font-semibold">{t("createVehicle.bankDetails")}</h2>
+          <p className="text-sm text-muted-foreground">{t("createVehicle.bankDetailsHelp")}</p>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="bankName">{t("createSpv.bankName")}</Label>
+            <Label htmlFor="bankName">{t("createVehicle.bankName")}</Label>
             <Input id="bankName" value={form.bankName} onChange={e => updateField("bankName", e.target.value)} data-testid="input-bank-name" />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="bankAddress">{t("createSpv.bankAddress")}</Label>
+            <Label htmlFor="bankAddress">{t("createVehicle.bankAddress")}</Label>
             <Textarea id="bankAddress" value={form.bankAddress} onChange={e => updateField("bankAddress", e.target.value)} data-testid="input-bank-address" />
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="bankRoutingNumber">{t("createSpv.bankRoutingNumber")}</Label>
+              <Label htmlFor="bankRoutingNumber">{t("createVehicle.bankRoutingNumber")}</Label>
               <Input id="bankRoutingNumber" value={form.bankRoutingNumber} onChange={e => updateField("bankRoutingNumber", e.target.value)} data-testid="input-routing" />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="bankSwiftCode">{t("createSpv.bankSwiftCode")}</Label>
+              <Label htmlFor="bankSwiftCode">{t("createVehicle.bankSwiftCode")}</Label>
               <Input id="bankSwiftCode" value={form.bankSwiftCode} onChange={e => updateField("bankSwiftCode", e.target.value)} data-testid="input-swift" />
             </div>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="bankAccountNumber">{t("createSpv.bankAccountNumber")}</Label>
+            <Label htmlFor="bankAccountNumber">{t("createVehicle.bankAccountNumber")}</Label>
             <Input id="bankAccountNumber" value={form.bankAccountNumber} onChange={e => updateField("bankAccountNumber", e.target.value)} data-testid="input-account-number" />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="bankAccountName">{t("createSpv.bankAccountName")}</Label>
+            <Label htmlFor="bankAccountName">{t("createVehicle.bankAccountName")}</Label>
             <Input id="bankAccountName" value={form.bankAccountName} onChange={e => updateField("bankAccountName", e.target.value)} data-testid="input-account-name" />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="forFurtherCreditTo">{t("createSpv.forFurtherCreditTo")}</Label>
+            <Label htmlFor="forFurtherCreditTo">{t("createVehicle.forFurtherCreditTo")}</Label>
             <Input id="forFurtherCreditTo" value={form.forFurtherCreditTo} onChange={e => updateField("forFurtherCreditTo", e.target.value)} data-testid="input-ffc" />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="wiringInstructions">{t("createSpv.wiringInstructions")}</Label>
-            <Textarea id="wiringInstructions" value={form.wiringInstructions} onChange={e => updateField("wiringInstructions", e.target.value)} placeholder={t("createSpv.wiringInstructionsPlaceholder")} data-testid="input-wiring" />
+            <Label htmlFor="wiringInstructions">{t("createVehicle.wiringInstructions")}</Label>
+            <Textarea id="wiringInstructions" value={form.wiringInstructions} onChange={e => updateField("wiringInstructions", e.target.value)} placeholder={t("createVehicle.wiringInstructionsPlaceholder")} data-testid="input-wiring" />
           </div>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader>
-          <h2 className="text-lg font-semibold">{t("createSpv.investmentDetails")}</h2>
-          <p className="text-sm text-muted-foreground">{t("createSpv.investmentDetailsHelp")}</p>
+          <h2 className="text-lg font-semibold">{t("createVehicle.investmentDetails")}</h2>
+          <p className="text-sm text-muted-foreground">{t("createVehicle.investmentDetailsHelp")}</p>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="investmentCompanyName">{t("createSpv.companyName")}</Label>
+            <Label htmlFor="investmentCompanyName">{t("createVehicle.companyName")}</Label>
             <Input id="investmentCompanyName" value={form.investmentCompanyName} onChange={e => updateField("investmentCompanyName", e.target.value)} data-testid="input-company-name" />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="investmentType">{t("createSpv.typeOfInvestment")}</Label>
+            <Label htmlFor="investmentType">{t("createVehicle.typeOfInvestment")}</Label>
             <Input id="investmentType" value={form.investmentType} onChange={e => updateField("investmentType", e.target.value)} data-testid="input-investment-type" />
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="totalBeingRaised">{t("createSpv.totalBeingRaised")}</Label>
+              <Label htmlFor="totalBeingRaised">{t("createVehicle.totalBeingRaised")}</Label>
               <Input id="totalBeingRaised" type="number" step="0.01" value={form.totalBeingRaised} onChange={e => updateField("totalBeingRaised", e.target.value)} data-testid="input-total-raised" />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="minimumInvestment">{t("createSpv.minimumInvestment")}</Label>
+              <Label htmlFor="minimumInvestment">{t("createVehicle.minimumInvestment")}</Label>
               <Input id="minimumInvestment" type="number" step="0.01" value={form.minimumInvestment} onChange={e => updateField("minimumInvestment", e.target.value)} data-testid="input-min-investment" />
             </div>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="expectedClosingDate">{t("createSpv.expectedClosingDate")}</Label>
+            <Label htmlFor="expectedClosingDate">{t("createVehicle.expectedClosingDate")}</Label>
             <Input id="expectedClosingDate" type="date" value={form.expectedClosingDate} onChange={e => updateField("expectedClosingDate", e.target.value)} data-testid="input-closing-date" />
           </div>
         </CardContent>
@@ -525,9 +525,9 @@ export default function CreateSpv() {
         <Button
           onClick={() => createMutation.mutate()}
           disabled={createMutation.isPending || !form.legalName || !form.displayName || !form.dateEstablished}
-          data-testid="button-create-spv"
+          data-testid="button-create-vehicle"
         >
-          {createMutation.isPending ? t("common.creating") : t("createSpv.createBtn")}
+          {createMutation.isPending ? t("common.creating") : t("createVehicle.createBtn")}
         </Button>
       </div>
     </div>

@@ -44,7 +44,7 @@ test.describe("permission gating", () => {
 
     await expect(page.getByTestId("tab-settings")).toBeVisible();
     await expect(page.getByTestId("tab-organizers")).toBeVisible();
-    await expect(page.getByTestId("tab-spvs")).toHaveCount(0);
+    await expect(page.getByTestId("tab-vehicles")).toHaveCount(0);
     await expect(page.getByTestId("tab-members")).toHaveCount(0);
     await expect(page.getByTestId("tab-invites")).toHaveCount(0);
 
@@ -61,7 +61,7 @@ test.describe("permission gating", () => {
 
     await expect(page.getByTestId("tab-settings")).toBeVisible();
     await expect(page.getByTestId("tab-organizers")).toBeVisible();
-    await expect(page.getByTestId("tab-spvs")).toBeVisible();
+    await expect(page.getByTestId("tab-vehicles")).toBeVisible();
     await expect(page.getByTestId("tab-members")).toBeVisible();
     await expect(page.getByTestId("tab-invites")).toBeVisible();
 

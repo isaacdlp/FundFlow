@@ -2,15 +2,15 @@ import { eq, ilike, or, sql, and, lt, inArray, desc } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import {
   accounts, roles, accountRoles, organizations, organizationOrganizers,
-  organizationMembers, organizationInvites, spvs, spvMembers,
-  spvAssets, spvAssetValuations,
+  organizationMembers, organizationInvites, vehicles, vehicleMembers,
+  vehicleAssets, vehicleAssetValuations,
   entities, entityOwners, entityManagers, introductions, promoters, promoterIncentives, contracts, passwordResetTokens,
   apiTokens, currencies, appSettings, PASSWORD_RESET_TTL_MS,
   type Account, type Role, type InsertAccount, type UpdateAccount,
   type Organization, type InsertOrganization, type UpdateOrganization,
   type OrganizationMember, type OrganizationInvite,
-  type Spv, type SpvMember, type InsertSpv, type UpdateSpv,
-  type SpvAsset, type SpvAssetValuation,
+  type Vehicle, type VehicleMember, type InsertVehicle, type UpdateVehicle,
+  type VehicleAsset, type VehicleAssetValuation,
   type Entity, type EntityOwner, type EntityManager,
   type Introduction, type CreateIntroductionInput, type UpdateIntroductionInput,
   type Promoter, type PromoterIncentive, type CreatePromoterInput, type UpdatePromoterInput,
@@ -45,7 +45,7 @@ export type AssetFields = {
   isDefault?: boolean;
 };
 
-export interface SpvAssetWithCurrent extends SpvAsset {
+export interface VehicleAssetWithCurrent extends VehicleAsset {
   currentValue: string;
 }
 
@@ -79,7 +79,7 @@ export interface InviteWithAccount extends OrganizationInvite {
   usedByAccount?: { id: number; email: string; firstName: string; lastName: string } | null;
 }
 
-export interface SpvWithDetails extends Spv {
+export interface VehicleWithDetails extends Vehicle {
   manager?: { id: number; email: string; firstName: string; lastName: string } | null;
   signatory?: { id: number; email: string; firstName: string; lastName: string } | null;
   memberCount: number;
@@ -89,7 +89,7 @@ export interface SpvWithDetails extends Spv {
   currentValue: string;
 }
 
-export interface SpvMemberWithAccount extends SpvMember {
+export interface VehicleMemberWithAccount extends VehicleMember {
   investorType: "account" | "entity";
   account: { id: number; email: string; firstName: string; lastName: string } | null;
   entity: { id: number; name: string; entityType: string } | null;
@@ -98,8 +98,8 @@ export interface SpvMemberWithAccount extends SpvMember {
 
 export interface PortfolioInvestment {
   memberId: number;
-  spvId: number;
-  spvName: string;
+  vehicleId: number;
+  vehicleName: string;
   investmentCompanyName: string;
   investmentType: string;
   organizationId: number;
@@ -154,6 +154,8 @@ export interface PromoterWithDetails extends Promoter {
   incentives: PromoterIncentive[];
   /** Introductions made by the promoter's account, inherited entity credit included. */
   introductionCount: number;
+  /** Whether a promoter agreement is signed; a promoter can only be active then. */
+  hasSignedContract: boolean;
 }
 
 export type NewContract = Pick<Contract, "kind" | "concordUid" | "title" | "status" | "signers">
@@ -190,23 +192,23 @@ export interface IStorage {
   getInviteByToken(token: string): Promise<InviteWithAccount | undefined>;
   useInvite(token: string, accountId: number): Promise<void>;
 
-  getAllSpvs(): Promise<SpvWithDetails[]>;
-  getSpvs(organizationId: number): Promise<SpvWithDetails[]>;
-  getSpv(id: number): Promise<SpvWithDetails | undefined>;
-  createSpv(data: InsertSpv): Promise<SpvWithDetails>;
-  updateSpv(id: number, data: UpdateSpv): Promise<SpvWithDetails | undefined>;
-  deleteSpv(id: number): Promise<boolean>;
-  getSpvMembers(spvId: number): Promise<SpvMemberWithAccount[]>;
-  addSpvMember(spvId: number, investor: { accountId: number } | { entityId: number }, investment?: InvestmentFields): Promise<SpvMemberWithAccount>;
-  updateSpvMemberById(spvId: number, memberId: number, investment: InvestmentFields): Promise<SpvMemberWithAccount | undefined>;
-  removeSpvMemberById(spvId: number, memberId: number): Promise<boolean>;
-  getSpvAssets(spvId: number): Promise<SpvAssetWithCurrent[]>;
-  getSpvAsset(spvId: number, assetId: number): Promise<SpvAssetWithCurrent | undefined>;
-  createSpvAsset(spvId: number, data: AssetFields & { companyName: string }): Promise<SpvAssetWithCurrent>;
-  updateSpvAsset(spvId: number, assetId: number, data: AssetFields): Promise<SpvAssetWithCurrent | undefined>;
-  deleteSpvAsset(spvId: number, assetId: number): Promise<boolean>;
-  getAssetValuations(assetId: number): Promise<SpvAssetValuation[]>;
-  addAssetValuation(assetId: number, data: { date: string; value: string; note?: string }): Promise<SpvAssetValuation>;
+  getAllVehicles(): Promise<VehicleWithDetails[]>;
+  getVehicles(organizationId: number): Promise<VehicleWithDetails[]>;
+  getVehicle(id: number): Promise<VehicleWithDetails | undefined>;
+  createVehicle(data: InsertVehicle): Promise<VehicleWithDetails>;
+  updateVehicle(id: number, data: UpdateVehicle): Promise<VehicleWithDetails | undefined>;
+  deleteVehicle(id: number): Promise<boolean>;
+  getVehicleMembers(vehicleId: number): Promise<VehicleMemberWithAccount[]>;
+  addVehicleMember(vehicleId: number, investor: { accountId: number } | { entityId: number }, investment?: InvestmentFields): Promise<VehicleMemberWithAccount>;
+  updateVehicleMemberById(vehicleId: number, memberId: number, investment: InvestmentFields): Promise<VehicleMemberWithAccount | undefined>;
+  removeVehicleMemberById(vehicleId: number, memberId: number): Promise<boolean>;
+  getVehicleAssets(vehicleId: number): Promise<VehicleAssetWithCurrent[]>;
+  getVehicleAsset(vehicleId: number, assetId: number): Promise<VehicleAssetWithCurrent | undefined>;
+  createVehicleAsset(vehicleId: number, data: AssetFields & { companyName: string }): Promise<VehicleAssetWithCurrent>;
+  updateVehicleAsset(vehicleId: number, assetId: number, data: AssetFields): Promise<VehicleAssetWithCurrent | undefined>;
+  deleteVehicleAsset(vehicleId: number, assetId: number): Promise<boolean>;
+  getAssetValuations(assetId: number): Promise<VehicleAssetValuation[]>;
+  addAssetValuation(assetId: number, data: { date: string; value: string; note?: string }): Promise<VehicleAssetValuation>;
   removeAssetValuation(assetId: number, valuationId: number): Promise<boolean>;
   getPortfolio(filter?: { accountIds?: number[]; entityIds?: number[] }): Promise<PortfolioInvestment[]>;
   getEntityIdsOwnedByAccount(accountId: number): Promise<number[]>;
@@ -259,7 +261,7 @@ export interface IStorage {
   getOrganizationIdsForAccount(accountId: number): Promise<number[]>;
   getOrganizationIdsAsOrganizer(accountId: number): Promise<number[]>;
   getEntityIdsForAccount(accountId: number): Promise<number[]>;
-  getSpvIdsForAccount(accountId: number): Promise<number[]>;
+  getVehicleIdsForAccount(accountId: number): Promise<number[]>;
 
   createPasswordResetToken(accountId: number, ttlMs?: number): Promise<string>;
   getPasswordResetToken(token: string): Promise<PasswordResetToken | undefined>;
@@ -653,18 +655,18 @@ export class DatabaseStorage implements IStorage {
       .where(eq(organizationInvites.token, token));
   }
 
-  private async computeSpvFinancials(spvId: number): Promise<{ cash: string; assetValue: string; currentValue: string; totalCalled: number }> {
-    const memberRows = await db.select({ totalCalled: spvMembers.totalCalled }).from(spvMembers).where(eq(spvMembers.spvId, spvId));
+  private async computeVehicleFinancials(vehicleId: number): Promise<{ cash: string; assetValue: string; currentValue: string; totalCalled: number }> {
+    const memberRows = await db.select({ totalCalled: vehicleMembers.totalCalled }).from(vehicleMembers).where(eq(vehicleMembers.vehicleId, vehicleId));
     const totalCalled = memberRows.reduce((s, r) => s + parseFloat(r.totalCalled || "0"), 0);
 
-    const assetList = await db.select().from(spvAssets).where(eq(spvAssets.spvId, spvId));
+    const assetList = await db.select().from(vehicleAssets).where(eq(vehicleAssets.vehicleId, vehicleId));
     let assetCost = 0;
     let assetValue = 0;
     for (const a of assetList) {
       assetCost += parseFloat(a.cost || "0");
-      const [latest] = await db.select().from(spvAssetValuations)
-        .where(eq(spvAssetValuations.assetId, a.id))
-        .orderBy(sql`${spvAssetValuations.date} DESC, ${spvAssetValuations.id} DESC`)
+      const [latest] = await db.select().from(vehicleAssetValuations)
+        .where(eq(vehicleAssetValuations.assetId, a.id))
+        .orderBy(sql`${vehicleAssetValuations.date} DESC, ${vehicleAssetValuations.id} DESC`)
         .limit(1);
       assetValue += latest ? parseFloat(latest.value || "0") : parseFloat(a.cost || "0");
     }
@@ -677,7 +679,7 @@ export class DatabaseStorage implements IStorage {
     };
   }
 
-  private computeMemberShares(members: SpvMember[], allocationMethod: string | null | undefined): Record<number, number> {
+  private computeMemberShares(members: VehicleMember[], allocationMethod: string | null | undefined): Record<number, number> {
     const method = allocationMethod || "By Commitment";
     const out: Record<number, number> = {};
     if (method === "Custom") {
@@ -699,49 +701,49 @@ export class DatabaseStorage implements IStorage {
     return out;
   }
 
-  private async enrichSpv(spv: Spv): Promise<SpvWithDetails> {
-    const manager = spv.managerId ? await getAccountSummary(spv.managerId) : null;
-    const signatory = spv.signatoryId ? await getAccountSummary(spv.signatoryId) : null;
-    const members = await db.select().from(spvMembers).where(eq(spvMembers.spvId, spv.id));
-    const fin = await this.computeSpvFinancials(spv.id);
-    return { ...spv, manager, signatory, memberCount: members.length, cash: fin.cash, assetValue: fin.assetValue, currentValue: fin.currentValue };
+  private async enrichVehicle(vehicle: Vehicle): Promise<VehicleWithDetails> {
+    const manager = vehicle.managerId ? await getAccountSummary(vehicle.managerId) : null;
+    const signatory = vehicle.signatoryId ? await getAccountSummary(vehicle.signatoryId) : null;
+    const members = await db.select().from(vehicleMembers).where(eq(vehicleMembers.vehicleId, vehicle.id));
+    const fin = await this.computeVehicleFinancials(vehicle.id);
+    return { ...vehicle, manager, signatory, memberCount: members.length, cash: fin.cash, assetValue: fin.assetValue, currentValue: fin.currentValue };
   }
 
-  async getAllSpvs(): Promise<SpvWithDetails[]> {
-    const spvList = await db.select().from(spvs)
-      .orderBy(sql`${spvs.createdAt} DESC`);
-    const enriched = await Promise.all(spvList.map(s => this.enrichSpv(s)));
-    for (const spv of enriched) {
+  async getAllVehicles(): Promise<VehicleWithDetails[]> {
+    const vehicleList = await db.select().from(vehicles)
+      .orderBy(sql`${vehicles.createdAt} DESC`);
+    const enriched = await Promise.all(vehicleList.map(s => this.enrichVehicle(s)));
+    for (const vehicle of enriched) {
       const [org] = await db.select({
         id: organizations.id,
         name: organizations.name,
         slug: organizations.slug,
-      }).from(organizations).where(eq(organizations.id, spv.organizationId));
-      spv.organization = org || null;
+      }).from(organizations).where(eq(organizations.id, vehicle.organizationId));
+      vehicle.organization = org || null;
     }
     return enriched;
   }
 
-  async getSpvs(organizationId: number): Promise<SpvWithDetails[]> {
-    const spvList = await db.select().from(spvs)
-      .where(eq(spvs.organizationId, organizationId))
-      .orderBy(sql`${spvs.createdAt} DESC`);
-    return Promise.all(spvList.map(s => this.enrichSpv(s)));
+  async getVehicles(organizationId: number): Promise<VehicleWithDetails[]> {
+    const vehicleList = await db.select().from(vehicles)
+      .where(eq(vehicles.organizationId, organizationId))
+      .orderBy(sql`${vehicles.createdAt} DESC`);
+    return Promise.all(vehicleList.map(s => this.enrichVehicle(s)));
   }
 
-  async getSpv(id: number): Promise<SpvWithDetails | undefined> {
-    const [spv] = await db.select().from(spvs).where(eq(spvs.id, id));
-    if (!spv) return undefined;
-    return this.enrichSpv(spv);
+  async getVehicle(id: number): Promise<VehicleWithDetails | undefined> {
+    const [vehicle] = await db.select().from(vehicles).where(eq(vehicles.id, id));
+    if (!vehicle) return undefined;
+    return this.enrichVehicle(vehicle);
   }
 
-  async createSpv(data: InsertSpv): Promise<SpvWithDetails> {
-    const [spv] = await db.insert(spvs).values(data).returning();
-    return this.enrichSpv(spv);
+  async createVehicle(data: InsertVehicle): Promise<VehicleWithDetails> {
+    const [vehicle] = await db.insert(vehicles).values(data).returning();
+    return this.enrichVehicle(vehicle);
   }
 
-  async updateSpv(id: number, data: UpdateSpv): Promise<SpvWithDetails | undefined> {
-    const existing = await this.getSpv(id);
+  async updateVehicle(id: number, data: UpdateVehicle): Promise<VehicleWithDetails | undefined> {
+    const existing = await this.getVehicle(id);
     if (!existing) return undefined;
 
     const updateFields: Record<string, unknown> = {};
@@ -753,30 +755,30 @@ export class DatabaseStorage implements IStorage {
 
     if (Object.keys(updateFields).length > 0) {
       updateFields.updatedAt = new Date();
-      await db.update(spvs).set(updateFields).where(eq(spvs.id, id));
+      await db.update(vehicles).set(updateFields).where(eq(vehicles.id, id));
     }
 
-    return this.getSpv(id);
+    return this.getVehicle(id);
   }
 
-  async deleteSpv(id: number): Promise<boolean> {
-    const result = await db.delete(spvs).where(eq(spvs.id, id)).returning();
+  async deleteVehicle(id: number): Promise<boolean> {
+    const result = await db.delete(vehicles).where(eq(vehicles.id, id)).returning();
     return result.length > 0;
   }
 
-  async getSpvMembers(spvId: number): Promise<SpvMemberWithAccount[]> {
-    const members = await db.select().from(spvMembers)
-      .where(eq(spvMembers.spvId, spvId))
-      .orderBy(sql`${spvMembers.createdAt} DESC`);
+  async getVehicleMembers(vehicleId: number): Promise<VehicleMemberWithAccount[]> {
+    const members = await db.select().from(vehicleMembers)
+      .where(eq(vehicleMembers.vehicleId, vehicleId))
+      .orderBy(sql`${vehicleMembers.createdAt} DESC`);
 
-    const [spvRow] = await db.select().from(spvs).where(eq(spvs.id, spvId));
-    const fin = await this.computeSpvFinancials(spvId);
-    const spvCurrent = parseFloat(fin.currentValue);
-    const shares = this.computeMemberShares(members, spvRow?.allocationMethod);
+    const [vehicleRow] = await db.select().from(vehicles).where(eq(vehicles.id, vehicleId));
+    const fin = await this.computeVehicleFinancials(vehicleId);
+    const vehicleCurrent = parseFloat(fin.currentValue);
+    const shares = this.computeMemberShares(members, vehicleRow?.allocationMethod);
 
-    const result: SpvMemberWithAccount[] = [];
+    const result: VehicleMemberWithAccount[] = [];
     for (const m of members) {
-      const currentValue = (shares[m.id] * spvCurrent).toFixed(2);
+      const currentValue = (shares[m.id] * vehicleCurrent).toFixed(2);
       if (m.accountId !== null) {
         const acct = await getAccountSummary(m.accountId);
         if (acct) {
@@ -792,47 +794,47 @@ export class DatabaseStorage implements IStorage {
     return result;
   }
 
-  async addSpvMember(
-    spvId: number,
+  async addVehicleMember(
+    vehicleId: number,
     investor: { accountId: number } | { entityId: number },
     investment?: InvestmentFields
-  ): Promise<SpvMemberWithAccount> {
-    const values: any = { spvId };
+  ): Promise<VehicleMemberWithAccount> {
+    const values: any = { vehicleId };
     if ("accountId" in investor) values.accountId = investor.accountId;
     else values.entityId = investor.entityId;
     if (investment) Object.assign(values, investment);
 
     const member = await db.transaction(async (tx) => {
-      const [spvRow] = await tx.select().from(spvs).where(eq(spvs.id, spvId));
+      const [vehicleRow] = await tx.select().from(vehicles).where(eq(vehicles.id, vehicleId));
       // AutoDeploy: auto-call the net capital (committed − management fee) and deploy it into the default asset
-      if (spvRow?.autoDeploy) {
+      if (vehicleRow?.autoDeploy) {
         const committed = parseFloat(values.committed ?? "0");
         const mgmtFee = parseFloat(values.managementFee ?? "0");
         const capital = Math.max(0, committed - mgmtFee);
         // AutoDeploy always overrides totalCalled to match the net capital, even when zero.
         values.totalCalled = capital.toFixed(2);
         if (capital > 0) {
-          const [defaultAsset] = await tx.select().from(spvAssets)
-            .where(and(eq(spvAssets.spvId, spvId), eq(spvAssets.isDefault, true)));
+          const [defaultAsset] = await tx.select().from(vehicleAssets)
+            .where(and(eq(vehicleAssets.vehicleId, vehicleId), eq(vehicleAssets.isDefault, true)));
           if (!defaultAsset) {
-            throw new Error("AutoDeploy is enabled but the SPV has no default asset.");
+            throw new Error("AutoDeploy is enabled but the Vehicle has no default asset.");
           }
-          const [inserted] = await tx.insert(spvMembers).values(values).returning();
+          const [inserted] = await tx.insert(vehicleMembers).values(values).returning();
           const newCost = (parseFloat(defaultAsset.cost || "0") + capital).toFixed(2);
-          await tx.update(spvAssets).set({ cost: newCost })
-            .where(eq(spvAssets.id, defaultAsset.id));
+          await tx.update(vehicleAssets).set({ cost: newCost })
+            .where(eq(vehicleAssets.id, defaultAsset.id));
           return inserted;
         }
       }
-      const [inserted] = await tx.insert(spvMembers).values(values).returning();
+      const [inserted] = await tx.insert(vehicleMembers).values(values).returning();
       return inserted;
     });
 
     // Recompute share/currentValue with the new member included
-    const all = await db.select().from(spvMembers).where(eq(spvMembers.spvId, spvId));
-    const [spvRow] = await db.select().from(spvs).where(eq(spvs.id, spvId));
-    const fin = await this.computeSpvFinancials(spvId);
-    const shares = this.computeMemberShares(all, spvRow?.allocationMethod);
+    const all = await db.select().from(vehicleMembers).where(eq(vehicleMembers.vehicleId, vehicleId));
+    const [vehicleRow] = await db.select().from(vehicles).where(eq(vehicles.id, vehicleId));
+    const fin = await this.computeVehicleFinancials(vehicleId);
+    const shares = this.computeMemberShares(all, vehicleRow?.allocationMethod);
     const currentValue = ((shares[member.id] || 0) * parseFloat(fin.currentValue)).toFixed(2);
 
     if ("accountId" in investor) {
@@ -844,25 +846,25 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
-  async updateSpvMemberById(
-    spvId: number,
+  async updateVehicleMemberById(
+    vehicleId: number,
     memberId: number,
     investment: InvestmentFields
-  ): Promise<SpvMemberWithAccount | undefined> {
-    const memberWhere = and(eq(spvMembers.spvId, spvId), eq(spvMembers.id, memberId));
+  ): Promise<VehicleMemberWithAccount | undefined> {
+    const memberWhere = and(eq(vehicleMembers.vehicleId, vehicleId), eq(vehicleMembers.id, memberId));
     const updates: any = { ...investment };
     let row;
     if (Object.keys(updates).length === 0) {
-      [row] = await db.select().from(spvMembers).where(memberWhere);
+      [row] = await db.select().from(vehicleMembers).where(memberWhere);
     } else {
-      [row] = await db.update(spvMembers).set(updates).where(memberWhere).returning();
+      [row] = await db.update(vehicleMembers).set(updates).where(memberWhere).returning();
     }
     if (!row) return undefined;
 
-    const all = await db.select().from(spvMembers).where(eq(spvMembers.spvId, spvId));
-    const [spvRow] = await db.select().from(spvs).where(eq(spvs.id, spvId));
-    const fin = await this.computeSpvFinancials(spvId);
-    const shares = this.computeMemberShares(all, spvRow?.allocationMethod);
+    const all = await db.select().from(vehicleMembers).where(eq(vehicleMembers.vehicleId, vehicleId));
+    const [vehicleRow] = await db.select().from(vehicles).where(eq(vehicles.id, vehicleId));
+    const fin = await this.computeVehicleFinancials(vehicleId);
+    const shares = this.computeMemberShares(all, vehicleRow?.allocationMethod);
     const currentValue = ((shares[row.id] || 0) * parseFloat(fin.currentValue)).toFixed(2);
 
     if (row.accountId !== null) {
@@ -874,9 +876,9 @@ export class DatabaseStorage implements IStorage {
     }
   }
 
-  async removeSpvMemberById(spvId: number, memberId: number): Promise<boolean> {
-    const result = await db.delete(spvMembers)
-      .where(and(eq(spvMembers.spvId, spvId), eq(spvMembers.id, memberId)))
+  async removeVehicleMemberById(vehicleId: number, memberId: number): Promise<boolean> {
+    const result = await db.delete(vehicleMembers)
+      .where(and(eq(vehicleMembers.vehicleId, vehicleId), eq(vehicleMembers.id, memberId)))
       .returning();
     return result.length > 0;
   }
@@ -886,10 +888,10 @@ export class DatabaseStorage implements IStorage {
     if (filter !== undefined) {
       const conds: any[] = [];
       if (filter.accountIds !== undefined && filter.accountIds.length > 0) {
-        conds.push(inArray(spvMembers.accountId, filter.accountIds));
+        conds.push(inArray(vehicleMembers.accountId, filter.accountIds));
       }
       if (filter.entityIds !== undefined && filter.entityIds.length > 0) {
-        conds.push(inArray(spvMembers.entityId, filter.entityIds));
+        conds.push(inArray(vehicleMembers.entityId, filter.entityIds));
       }
       if (conds.length === 0) return [];
       where = conds.length === 1 ? conds[0] : or(...conds);
@@ -899,58 +901,58 @@ export class DatabaseStorage implements IStorage {
 
     const rows = await db
       .select({
-        memberId: spvMembers.id,
-        spvId: spvs.id,
-        spvName: spvs.displayName,
-        investmentCompanyName: spvs.investmentCompanyName,
-        investmentType: spvs.investmentType,
+        memberId: vehicleMembers.id,
+        vehicleId: vehicles.id,
+        vehicleName: vehicles.displayName,
+        investmentCompanyName: vehicles.investmentCompanyName,
+        investmentType: vehicles.investmentType,
         organizationId: organizations.id,
         organizationName: organizations.name,
         organizationSlug: organizations.slug,
-        accountId: spvMembers.accountId,
-        entityId: spvMembers.entityId,
+        accountId: vehicleMembers.accountId,
+        entityId: vehicleMembers.entityId,
         accountFirstName: accounts.firstName,
         accountLastName: accounts.lastName,
         accountEmail: accounts.email,
         entityName: entities.name,
         entityType: entities.entityType,
-        committed: spvMembers.committed,
-        managementFee: spvMembers.managementFee,
-        otherFee: spvMembers.otherFee,
-        carry: spvMembers.carry,
-        totalCalled: spvMembers.totalCalled,
-        distributed: spvMembers.distributed,
-        ownershipPercent: spvMembers.ownershipPercent,
-        date: spvMembers.date,
-        allocationMethod: spvs.allocationMethod,
-        currency: spvs.currency,
+        committed: vehicleMembers.committed,
+        managementFee: vehicleMembers.managementFee,
+        otherFee: vehicleMembers.otherFee,
+        carry: vehicleMembers.carry,
+        totalCalled: vehicleMembers.totalCalled,
+        distributed: vehicleMembers.distributed,
+        ownershipPercent: vehicleMembers.ownershipPercent,
+        date: vehicleMembers.date,
+        allocationMethod: vehicles.allocationMethod,
+        currency: vehicles.currency,
       })
-      .from(spvMembers)
-      .innerJoin(spvs, eq(spvs.id, spvMembers.spvId))
-      .innerJoin(organizations, eq(organizations.id, spvs.organizationId))
-      .leftJoin(accounts, eq(accounts.id, spvMembers.accountId))
-      .leftJoin(entities, eq(entities.id, spvMembers.entityId))
+      .from(vehicleMembers)
+      .innerJoin(vehicles, eq(vehicles.id, vehicleMembers.vehicleId))
+      .innerJoin(organizations, eq(organizations.id, vehicles.organizationId))
+      .leftJoin(accounts, eq(accounts.id, vehicleMembers.accountId))
+      .leftJoin(entities, eq(entities.id, vehicleMembers.entityId))
       .where(where)
-      .orderBy(sql`${spvs.displayName} ASC`);
+      .orderBy(sql`${vehicles.displayName} ASC`);
 
-    // Group rows by spv so we can compute member share against full SPV roster
-    const spvCache = new Map<number, { fin: { currentValue: string }; allMembers: SpvMember[]; allocationMethod: string | null }>();
+    // Group rows by vehicle so we can compute member share against full Vehicle roster
+    const vehicleCache = new Map<number, { fin: { currentValue: string }; allMembers: VehicleMember[]; allocationMethod: string | null }>();
     const out: PortfolioInvestment[] = [];
     for (const r of rows) {
-      let cached = spvCache.get(r.spvId);
+      let cached = vehicleCache.get(r.vehicleId);
       if (!cached) {
-        const allMembers = await db.select().from(spvMembers).where(eq(spvMembers.spvId, r.spvId));
-        const fin = await this.computeSpvFinancials(r.spvId);
+        const allMembers = await db.select().from(vehicleMembers).where(eq(vehicleMembers.vehicleId, r.vehicleId));
+        const fin = await this.computeVehicleFinancials(r.vehicleId);
         cached = { fin: { currentValue: fin.currentValue }, allMembers, allocationMethod: r.allocationMethod };
-        spvCache.set(r.spvId, cached);
+        vehicleCache.set(r.vehicleId, cached);
       }
       const shares = this.computeMemberShares(cached.allMembers, cached.allocationMethod);
       const currentValue = ((shares[r.memberId] || 0) * parseFloat(cached.fin.currentValue)).toFixed(2);
       const isAccount = r.accountId !== null;
       out.push({
         memberId: r.memberId,
-        spvId: r.spvId,
-        spvName: r.spvName,
+        vehicleId: r.vehicleId,
+        vehicleName: r.vehicleName,
         investmentCompanyName: r.investmentCompanyName ?? "",
         investmentType: r.investmentType ?? "",
         organizationId: r.organizationId,
@@ -977,15 +979,15 @@ export class DatabaseStorage implements IStorage {
     return out;
   }
 
-  async getSpvAssets(spvId: number): Promise<SpvAssetWithCurrent[]> {
-    const list = await db.select().from(spvAssets)
-      .where(eq(spvAssets.spvId, spvId))
-      .orderBy(sql`${spvAssets.purchaseDate} DESC NULLS LAST, ${spvAssets.id} DESC`);
-    const out: SpvAssetWithCurrent[] = [];
+  async getVehicleAssets(vehicleId: number): Promise<VehicleAssetWithCurrent[]> {
+    const list = await db.select().from(vehicleAssets)
+      .where(eq(vehicleAssets.vehicleId, vehicleId))
+      .orderBy(sql`${vehicleAssets.purchaseDate} DESC NULLS LAST, ${vehicleAssets.id} DESC`);
+    const out: VehicleAssetWithCurrent[] = [];
     for (const a of list) {
-      const [latest] = await db.select().from(spvAssetValuations)
-        .where(eq(spvAssetValuations.assetId, a.id))
-        .orderBy(sql`${spvAssetValuations.date} DESC, ${spvAssetValuations.id} DESC`)
+      const [latest] = await db.select().from(vehicleAssetValuations)
+        .where(eq(vehicleAssetValuations.assetId, a.id))
+        .orderBy(sql`${vehicleAssetValuations.date} DESC, ${vehicleAssetValuations.id} DESC`)
         .limit(1);
       const currentValue = latest ? (latest.value || "0") : (a.cost || "0");
       out.push({ ...a, currentValue: parseFloat(currentValue).toFixed(2) });
@@ -993,22 +995,22 @@ export class DatabaseStorage implements IStorage {
     return out;
   }
 
-  async getSpvAsset(spvId: number, assetId: number): Promise<SpvAssetWithCurrent | undefined> {
-    const [a] = await db.select().from(spvAssets)
-      .where(and(eq(spvAssets.spvId, spvId), eq(spvAssets.id, assetId)));
+  async getVehicleAsset(vehicleId: number, assetId: number): Promise<VehicleAssetWithCurrent | undefined> {
+    const [a] = await db.select().from(vehicleAssets)
+      .where(and(eq(vehicleAssets.vehicleId, vehicleId), eq(vehicleAssets.id, assetId)));
     if (!a) return undefined;
-    const [latest] = await db.select().from(spvAssetValuations)
-      .where(eq(spvAssetValuations.assetId, a.id))
-      .orderBy(sql`${spvAssetValuations.date} DESC, ${spvAssetValuations.id} DESC`)
+    const [latest] = await db.select().from(vehicleAssetValuations)
+      .where(eq(vehicleAssetValuations.assetId, a.id))
+      .orderBy(sql`${vehicleAssetValuations.date} DESC, ${vehicleAssetValuations.id} DESC`)
       .limit(1);
     const currentValue = latest ? (latest.value || "0") : (a.cost || "0");
     return { ...a, currentValue: parseFloat(currentValue).toFixed(2) };
   }
 
-  async createSpvAsset(spvId: number, data: AssetFields & { companyName: string }): Promise<SpvAssetWithCurrent> {
+  async createVehicleAsset(vehicleId: number, data: AssetFields & { companyName: string }): Promise<VehicleAssetWithCurrent> {
     const created = await db.transaction(async (tx) => {
-      const [row] = await tx.insert(spvAssets).values({
-        spvId,
+      const [row] = await tx.insert(vehicleAssets).values({
+        vehicleId,
         companyName: data.companyName,
         instrumentType: data.instrumentType ?? "Equity",
         purchaseDate: data.purchaseDate ?? null,
@@ -1017,10 +1019,10 @@ export class DatabaseStorage implements IStorage {
         isDefault: false,
       }).returning();
       if (data.isDefault) {
-        await tx.update(spvAssets).set({ isDefault: false })
-          .where(and(eq(spvAssets.spvId, spvId), sql`${spvAssets.id} <> ${row.id}`));
-        const [promoted] = await tx.update(spvAssets).set({ isDefault: true })
-          .where(eq(spvAssets.id, row.id)).returning();
+        await tx.update(vehicleAssets).set({ isDefault: false })
+          .where(and(eq(vehicleAssets.vehicleId, vehicleId), sql`${vehicleAssets.id} <> ${row.id}`));
+        const [promoted] = await tx.update(vehicleAssets).set({ isDefault: true })
+          .where(eq(vehicleAssets.id, row.id)).returning();
         return promoted;
       }
       return row;
@@ -1028,40 +1030,40 @@ export class DatabaseStorage implements IStorage {
     return { ...created, currentValue: parseFloat(created.cost || "0").toFixed(2) };
   }
 
-  async updateSpvAsset(spvId: number, assetId: number, data: AssetFields): Promise<SpvAssetWithCurrent | undefined> {
+  async updateVehicleAsset(vehicleId: number, assetId: number, data: AssetFields): Promise<VehicleAssetWithCurrent | undefined> {
     const updates: any = {};
     for (const [k, v] of Object.entries(data)) if (v !== undefined) updates[k] = v;
-    if (Object.keys(updates).length === 0) return this.getSpvAsset(spvId, assetId);
+    if (Object.keys(updates).length === 0) return this.getVehicleAsset(vehicleId, assetId);
     const ok = await db.transaction(async (tx) => {
       // Clear other defaults FIRST to avoid the partial unique index transiently seeing two true rows.
       if (updates.isDefault === true) {
-        await tx.update(spvAssets).set({ isDefault: false })
-          .where(and(eq(spvAssets.spvId, spvId), sql`${spvAssets.id} <> ${assetId}`, eq(spvAssets.isDefault, true)));
+        await tx.update(vehicleAssets).set({ isDefault: false })
+          .where(and(eq(vehicleAssets.vehicleId, vehicleId), sql`${vehicleAssets.id} <> ${assetId}`, eq(vehicleAssets.isDefault, true)));
       }
-      const [updated] = await tx.update(spvAssets).set(updates)
-        .where(and(eq(spvAssets.spvId, spvId), eq(spvAssets.id, assetId)))
+      const [updated] = await tx.update(vehicleAssets).set(updates)
+        .where(and(eq(vehicleAssets.vehicleId, vehicleId), eq(vehicleAssets.id, assetId)))
         .returning();
       if (!updated) return false;
       return true;
     });
     if (!ok) return undefined;
-    return this.getSpvAsset(spvId, assetId);
+    return this.getVehicleAsset(vehicleId, assetId);
   }
 
-  async deleteSpvAsset(spvId: number, assetId: number): Promise<boolean> {
-    const res = await db.delete(spvAssets)
-      .where(and(eq(spvAssets.spvId, spvId), eq(spvAssets.id, assetId))).returning();
+  async deleteVehicleAsset(vehicleId: number, assetId: number): Promise<boolean> {
+    const res = await db.delete(vehicleAssets)
+      .where(and(eq(vehicleAssets.vehicleId, vehicleId), eq(vehicleAssets.id, assetId))).returning();
     return res.length > 0;
   }
 
-  async getAssetValuations(assetId: number): Promise<SpvAssetValuation[]> {
-    return await db.select().from(spvAssetValuations)
-      .where(eq(spvAssetValuations.assetId, assetId))
-      .orderBy(sql`${spvAssetValuations.date} DESC, ${spvAssetValuations.id} DESC`);
+  async getAssetValuations(assetId: number): Promise<VehicleAssetValuation[]> {
+    return await db.select().from(vehicleAssetValuations)
+      .where(eq(vehicleAssetValuations.assetId, assetId))
+      .orderBy(sql`${vehicleAssetValuations.date} DESC, ${vehicleAssetValuations.id} DESC`);
   }
 
-  async addAssetValuation(assetId: number, data: { date: string; value: string; note?: string }): Promise<SpvAssetValuation> {
-    const [v] = await db.insert(spvAssetValuations).values({
+  async addAssetValuation(assetId: number, data: { date: string; value: string; note?: string }): Promise<VehicleAssetValuation> {
+    const [v] = await db.insert(vehicleAssetValuations).values({
       assetId,
       date: data.date,
       value: data.value,
@@ -1071,8 +1073,8 @@ export class DatabaseStorage implements IStorage {
   }
 
   async removeAssetValuation(assetId: number, valuationId: number): Promise<boolean> {
-    const res = await db.delete(spvAssetValuations)
-      .where(and(eq(spvAssetValuations.assetId, assetId), eq(spvAssetValuations.id, valuationId)))
+    const res = await db.delete(vehicleAssetValuations)
+      .where(and(eq(vehicleAssetValuations.assetId, assetId), eq(vehicleAssetValuations.id, valuationId)))
       .returning();
     return res.length > 0;
   }
@@ -1408,7 +1410,7 @@ export class DatabaseStorage implements IStorage {
     const row = await db.transaction(async (tx) => {
       const [created] = await tx.insert(promoters).values({
         accountId: data.accountId,
-        active: data.active ?? true,
+        active: false,
         contractDate: data.contractDate ?? null,
         notes: data.notes ?? "",
       }).onConflictDoNothing().returning();
@@ -1509,7 +1511,7 @@ export class DatabaseStorage implements IStorage {
     if (rows.length === 0) return [];
     const ids = rows.map(r => r.id);
     const accountIds = rows.map(r => r.accountId);
-    const [accts, incentives, counts] = await Promise.all([
+    const [accts, incentives, counts, signed] = await Promise.all([
       db.select({ id: accounts.id, email: accounts.email, firstName: accounts.firstName, lastName: accounts.lastName })
         .from(accounts).where(inArray(accounts.id, accountIds)),
       db.select().from(promoterIncentives).where(inArray(promoterIncentives.promoterId, ids))
@@ -1517,14 +1519,18 @@ export class DatabaseStorage implements IStorage {
       db.select({ accountId: introductions.introducerAccountId, count: sql<number>`count(*)::int` })
         .from(introductions).where(inArray(introductions.introducerAccountId, accountIds))
         .groupBy(introductions.introducerAccountId),
+      db.selectDistinct({ promoterId: contracts.promoterId }).from(contracts)
+        .where(and(inArray(contracts.promoterId, ids), eq(contracts.status, "SIGNED"))),
     ]);
     const acctMap = new Map(accts.map(a => [a.id, a]));
     const countMap = new Map(counts.map(c => [c.accountId, c.count]));
+    const signedIds = new Set(signed.map(s => s.promoterId));
     return rows.map(r => ({
       ...r,
       account: acctMap.get(r.accountId)!,
       incentives: incentives.filter(i => i.promoterId === r.id),
       introductionCount: countMap.get(r.accountId) ?? 0,
+      hasSignedContract: signedIds.has(r.id),
     }));
   }
 
@@ -1629,18 +1635,18 @@ export class DatabaseStorage implements IStorage {
     return managed.map(r => r.id);
   }
 
-  async getSpvIdsForAccount(accountId: number): Promise<number[]> {
+  async getVehicleIdsForAccount(accountId: number): Promise<number[]> {
     const [ownedEntityIds, managedEntityIds] = await Promise.all([
       this.getEntityIdsOwnedByAccount(accountId),
       this.getEntityIdsForAccount(accountId),
     ]);
     const allEntityIds = Array.from(new Set([...ownedEntityIds, ...managedEntityIds]));
-    const conds: any[] = [eq(spvMembers.accountId, accountId)];
+    const conds: any[] = [eq(vehicleMembers.accountId, accountId)];
     if (allEntityIds.length > 0) {
-      conds.push(inArray(spvMembers.entityId, allEntityIds));
+      conds.push(inArray(vehicleMembers.entityId, allEntityIds));
     }
-    const memberOf = await db.select({ id: spvMembers.spvId })
-      .from(spvMembers)
+    const memberOf = await db.select({ id: vehicleMembers.vehicleId })
+      .from(vehicleMembers)
       .where(or(...conds));
     return Array.from(new Set(memberOf.map(r => r.id)));
   }

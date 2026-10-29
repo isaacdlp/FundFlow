@@ -83,7 +83,7 @@ export const organizationInvites = pgTable("organization_invites", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const spvs = pgTable("spvs", {
+export const vehicles = pgTable("vehicles", {
   id: serial("id").primaryKey(),
   organizationId: integer("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
   legalName: varchar("legal_name", { length: 500 }).notNull(),
@@ -94,9 +94,9 @@ export const spvs = pgTable("spvs", {
   dateEstablished: date("date_established"),
   dateEnded: date("date_ended"),
   allocationMethod: varchar("allocation_method", { length: 100 }).default("By Commitment"),
-  // ISO 4217 currency code (e.g. "USD", "EUR"). Set once at SPV creation and
-  // never changed afterward — every investment into the SPV is denominated
-  // in this currency. See updateSpvSchema, which omits this field. Column
+  // ISO 4217 currency code (e.g. "USD", "EUR"). Set once at Vehicle creation and
+  // never changed afterward — every investment into the Vehicle is denominated
+  // in this currency. See updateVehicleSchema, which omits this field. Column
   // width is kept generous (rather than shrunk to 3) so existing legacy
   // values (e.g. "USD ($)") don't fail a width-reducing migration; they're
   // normalized to ISO codes in code (see server/currency.ts) instead.
@@ -196,11 +196,12 @@ export const introductions = pgTable("introductions", {
 ]);
 
 // Vetted introducers under contract who earn commissions on what the
-// accounts/entities they introduced pay us. One row per account.
+// accounts/entities they introduced pay us. One row per account. They start
+// inactive and can only be active once a promoter agreement is signed.
 export const promoters = pgTable("promoters", {
   id: serial("id").primaryKey(),
   accountId: integer("account_id").notNull().unique().references(() => accounts.id, { onDelete: "cascade" }),
-  active: boolean("active").default(true).notNull(),
+  active: boolean("active").default(false).notNull(),
   contractDate: date("contract_date"),
   notes: text("notes").default(""),
   createdAt: timestamp("created_at").defaultNow(),
@@ -248,9 +249,9 @@ export const contracts = pgTable("contracts", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-export const spvMembers = pgTable("spv_members", {
+export const vehicleMembers = pgTable("vehicle_members", {
   id: serial("id").primaryKey(),
-  spvId: integer("spv_id").notNull().references(() => spvs.id, { onDelete: "cascade" }),
+  vehicleId: integer("vehicle_id").notNull().references(() => vehicles.id, { onDelete: "cascade" }),
   accountId: integer("account_id").references(() => accounts.id, { onDelete: "cascade" }),
   entityId: integer("entity_id").references(() => entities.id, { onDelete: "cascade" }),
   committed: numeric("committed", { precision: 15, scale: 2 }).default("0"),
@@ -263,12 +264,12 @@ export const spvMembers = pgTable("spv_members", {
   date: date("date"),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
-  check("spv_member_investor_xor", sql`(account_id IS NOT NULL)::int + (entity_id IS NOT NULL)::int = 1`),
+  check("vehicle_member_investor_xor", sql`(account_id IS NOT NULL)::int + (entity_id IS NOT NULL)::int = 1`),
 ]);
 
-export const spvAssets = pgTable("spv_assets", {
+export const vehicleAssets = pgTable("vehicle_assets", {
   id: serial("id").primaryKey(),
-  spvId: integer("spv_id").notNull().references(() => spvs.id, { onDelete: "cascade" }),
+  vehicleId: integer("vehicle_id").notNull().references(() => vehicles.id, { onDelete: "cascade" }),
   companyName: varchar("company_name", { length: 255 }).notNull(),
   instrumentType: varchar("instrument_type", { length: 100 }).notNull().default("Equity"),
   purchaseDate: date("purchase_date"),
@@ -277,12 +278,12 @@ export const spvAssets = pgTable("spv_assets", {
   isDefault: boolean("is_default").default(false).notNull(),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
-  uniqueIndex("spv_default_asset_unique").on(table.spvId).where(sql`is_default = true`),
+  uniqueIndex("vehicle_default_asset_unique").on(table.vehicleId).where(sql`is_default = true`),
 ]);
 
-export const spvAssetValuations = pgTable("spv_asset_valuations", {
+export const vehicleAssetValuations = pgTable("vehicle_asset_valuations", {
   id: serial("id").primaryKey(),
-  assetId: integer("asset_id").notNull().references(() => spvAssets.id, { onDelete: "cascade" }),
+  assetId: integer("asset_id").notNull().references(() => vehicleAssets.id, { onDelete: "cascade" }),
   date: date("date").notNull(),
   value: numeric("value", { precision: 15, scale: 2 }).notNull().default("0"),
   note: text("note").default(""),
@@ -327,7 +328,7 @@ export const appSettings = pgTable("app_settings", {
 });
 
 // Catalog of currencies the platform knows about. `active` currencies are
-// the ones selectable when creating an SPV and offered in the dashboard's
+// the ones selectable when creating a Vehicle and offered in the dashboard's
 // "view in" dropdown. USD is the pivot currency for exchange rates and can
 // never be deactivated (enforced in the route handler).
 export const currencies = pgTable("currencies", {
@@ -409,7 +410,7 @@ export const updateOrganizationSchema = createInsertSchema(organizations).omit({
   updatedAt: true,
 }).partial();
 
-export const insertSpvSchema = createInsertSchema(spvs).omit({
+export const insertVehicleSchema = createInsertSchema(vehicles).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
@@ -419,11 +420,11 @@ export const insertSpvSchema = createInsertSchema(spvs).omit({
 });
 
 // `currency` is intentionally omitted here (not just made optional): it is
-// fixed at SPV creation time and can never change afterward, since every
-// investment into the SPV is denominated in it. Any `currency` sent in a
+// fixed at Vehicle creation time and can never change afterward, since every
+// investment into the Vehicle is denominated in it. Any `currency` sent in a
 // PATCH body is silently ignored, same as `roles` on non-admin account
 // updates.
-export const updateSpvSchema = createInsertSchema(spvs).omit({
+export const updateVehicleSchema = createInsertSchema(vehicles).omit({
   id: true,
   organizationId: true,
   currency: true,
@@ -450,10 +451,10 @@ export type Organization = typeof organizations.$inferSelect;
 export type OrganizationOrganizer = typeof organizationOrganizers.$inferSelect;
 export type OrganizationMember = typeof organizationMembers.$inferSelect;
 export type OrganizationInvite = typeof organizationInvites.$inferSelect;
-export type Spv = typeof spvs.$inferSelect;
-export type SpvMember = typeof spvMembers.$inferSelect;
-export type SpvAsset = typeof spvAssets.$inferSelect;
-export type SpvAssetValuation = typeof spvAssetValuations.$inferSelect;
+export type Vehicle = typeof vehicles.$inferSelect;
+export type VehicleMember = typeof vehicleMembers.$inferSelect;
+export type VehicleAsset = typeof vehicleAssets.$inferSelect;
+export type VehicleAssetValuation = typeof vehicleAssetValuations.$inferSelect;
 export type InsertAccount = z.infer<typeof insertAccountSchema>;
 export type UpdateAccount = z.infer<typeof updateAccountSchema>;
 export type InsertOrganization = z.infer<typeof insertOrganizationSchema>;
@@ -465,8 +466,8 @@ export type Introduction = typeof introductions.$inferSelect;
 export type Promoter = typeof promoters.$inferSelect;
 export type PromoterIncentive = typeof promoterIncentives.$inferSelect;
 export type Contract = typeof contracts.$inferSelect;
-export type InsertSpv = z.infer<typeof insertSpvSchema>;
-export type UpdateSpv = z.infer<typeof updateSpvSchema>;
+export type InsertVehicle = z.infer<typeof insertVehicleSchema>;
+export type UpdateVehicle = z.infer<typeof updateVehicleSchema>;
 export type InsertEntity = z.infer<typeof insertEntitySchema>;
 export type UpdateEntity = z.infer<typeof updateEntitySchema>;
 export type PasswordResetToken = typeof passwordResetTokens.$inferSelect;
@@ -531,11 +532,12 @@ export const createIncentiveSchema = z.object({
 export const updateIncentiveSchema = z.object(incentiveDetails).partial();
 
 const promoterDetails = {
-  active: z.boolean().optional(),
   contractDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "contractDate must be YYYY-MM-DD").nullable().optional(),
   notes: z.string().max(2000).optional(),
 };
 
+// New promoters are always inactive (no `active` here): they become active
+// when their promoter agreement is signed.
 export const createPromoterSchema = z.object({
   accountId: z.number().int().positive(),
   ...promoterDetails,
@@ -545,7 +547,7 @@ export const createPromoterSchema = z.object({
     }),
 });
 
-export const updatePromoterSchema = z.object(promoterDetails);
+export const updatePromoterSchema = z.object({ ...promoterDetails, active: z.boolean().optional() });
 
 export type CreateIncentiveInput = z.infer<typeof createIncentiveSchema>;
 export type UpdateIncentiveInput = z.infer<typeof updateIncentiveSchema>;

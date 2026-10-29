@@ -3,7 +3,7 @@ import { useRoute, Link, useLocation, useSearch } from "wouter";
 import { useTranslation } from "react-i18next";
 import { useLocalePath, useLocale } from "@/i18n/hooks";
 import { ROUTE_PATTERNS } from "@/i18n/routes";
-import type { OrganizationWithOrganizers, AccountWithRoles, MemberInfo, InviteInfo, SpvInfo } from "@shared/types";
+import type { OrganizationWithOrganizers, AccountWithRoles, MemberInfo, InviteInfo, VehicleInfo } from "@shared/types";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -224,33 +224,33 @@ function MembersTab({ orgId, canEdit }: { orgId: string; canEdit: boolean }) {
   );
 }
 
-function SpvsTab({ orgId, canEdit }: { orgId: string; canEdit: boolean }) {
+function VehiclesTab({ orgId, canEdit }: { orgId: string; canEdit: boolean }) {
   const { toast } = useToast();
   const { t } = useTranslation();
   const [, navigate] = useLocation();
-  const lpSpv = useLocalePath();
+  const lpVehicle = useLocalePath();
 
-  const { data: spvsList, isLoading } = useQuery<SpvInfo[]>({
-    queryKey: ["/api/organizations", orgId, "spvs"],
+  const { data: vehiclesList, isLoading } = useQuery<VehicleInfo[]>({
+    queryKey: ["/api/organizations", orgId, "vehicles"],
   });
-  const sort = useSort(spvsList, {
-    name: spv => spv.displayName,
-    entityType: spv => spv.entityType || "LLC",
-    manager: spv => spv.manager ? `${spv.manager.firstName} ${spv.manager.lastName}` : null,
+  const sort = useSort(vehiclesList, {
+    name: vehicle => vehicle.displayName,
+    entityType: vehicle => vehicle.entityType || "LLC",
+    manager: vehicle => vehicle.manager ? `${vehicle.manager.firstName} ${vehicle.manager.lastName}` : null,
   });
   const pagination = usePagination(sort.sorted, sort.sort);
 
   const deleteMutation = useMutation({
-    mutationFn: async (spvId: number) => {
-      const res = await apiRequest("DELETE", `/api/spvs/${spvId}`);
+    mutationFn: async (vehicleId: number) => {
+      const res = await apiRequest("DELETE", `/api/vehicles/${vehicleId}`);
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/organizations", orgId, "spvs"] });
-      toast({ title: t("spvs.deleted") });
+      queryClient.invalidateQueries({ queryKey: ["/api/organizations", orgId, "vehicles"] });
+      toast({ title: t("vehicles.deleted") });
     },
     onError: (error: Error) => {
-      toast({ title: t("spvs.deleteFailed"), description: error.message, variant: "destructive" });
+      toast({ title: t("vehicles.deleteFailed"), description: error.message, variant: "destructive" });
     },
   });
 
@@ -261,67 +261,67 @@ function SpvsTab({ orgId, canEdit }: { orgId: string; canEdit: boolean }) {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0">
           <div>
-            <h2 className="text-lg font-semibold">{t("spvs.title")}</h2>
+            <h2 className="text-lg font-semibold">{t("vehicles.title")}</h2>
             <p className="text-sm text-muted-foreground mt-1">
-              {t("organizationDetail.spvsTabDescription")}
+              {t("organizationDetail.vehiclesTabDescription")}
             </p>
           </div>
           {canEdit && (
-            <Link href={lpSpv("organizationSpvNew", { orgId })}>
-              <Button data-testid="button-add-spv">
+            <Link href={lpVehicle("organizationVehicleNew", { orgId })}>
+              <Button data-testid="button-add-vehicle">
                 <Plus className="h-4 w-4 mr-2" />
-                {t("organizationDetail.addSpv")}
+                {t("organizationDetail.addVehicle")}
               </Button>
             </Link>
           )}
         </CardHeader>
         <CardContent>
-          {spvsList && spvsList.length > 0 ? (
+          {vehiclesList && vehiclesList.length > 0 ? (
             <div className="rounded-md border">
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <SortableTableHead control={sort} column="name">{t("spvs.tableName")}</SortableTableHead>
-                    <SortableTableHead control={sort} column="entityType">{t("spvs.tableEntityType")}</SortableTableHead>
-                    <SortableTableHead control={sort} column="manager">{t("spvs.tableManager")}</SortableTableHead>
+                    <SortableTableHead control={sort} column="name">{t("vehicles.tableName")}</SortableTableHead>
+                    <SortableTableHead control={sort} column="entityType">{t("vehicles.tableEntityType")}</SortableTableHead>
+                    <SortableTableHead control={sort} column="manager">{t("vehicles.tableManager")}</SortableTableHead>
                     <TableHead className="text-right">{t("common.actions")}</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {pagination.items.map(spv => (
-                    <TableRow key={spv.id} data-testid={`spv-row-${spv.id}`}>
+                  {pagination.items.map(vehicle => (
+                    <TableRow key={vehicle.id} data-testid={`vehicle-row-${vehicle.id}`}>
                       <TableCell>
-                        <Link href={lpSpv("spvDetail", { id: spv.id })}>
+                        <Link href={lpVehicle("vehicleDetail", { id: vehicle.id })}>
                           <div className="cursor-pointer">
-                            <p className="text-sm font-medium hover:underline" data-testid={`text-spv-name-${spv.id}`}>
-                              {spv.displayName}
+                            <p className="text-sm font-medium hover:underline" data-testid={`text-vehicle-name-${vehicle.id}`}>
+                              {vehicle.displayName}
                             </p>
-                            <p className="text-xs text-muted-foreground">{spv.legalName}</p>
+                            <p className="text-xs text-muted-foreground">{vehicle.legalName}</p>
                           </div>
                         </Link>
                       </TableCell>
                       <TableCell>
-                        <Badge variant="outline">{spv.entityType || "LLC"}</Badge>
+                        <Badge variant="outline">{vehicle.entityType || "LLC"}</Badge>
                       </TableCell>
                       <TableCell>
-                        {spv.manager ? (
-                          <span className="text-sm">{spv.manager.firstName} {spv.manager.lastName}</span>
+                        {vehicle.manager ? (
+                          <span className="text-sm">{vehicle.manager.firstName} {vehicle.manager.lastName}</span>
                         ) : (
-                          <span className="text-sm text-muted-foreground">{t("spvs.notAssigned")}</span>
+                          <span className="text-sm text-muted-foreground">{t("vehicles.notAssigned")}</span>
                         )}
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex gap-1 justify-end">
-                          <Button variant="ghost" size="icon" onClick={() => navigate(lpSpv("spvDetail", { id: spv.id }))} data-testid={`button-view-spv-${spv.id}`}>
+                          <Button variant="ghost" size="icon" onClick={() => navigate(lpVehicle("vehicleDetail", { id: vehicle.id }))} data-testid={`button-view-vehicle-${vehicle.id}`}>
                             <FileText className="h-4 w-4" />
                           </Button>
                           {canEdit && (
                             <Button
                               variant="ghost"
                               size="icon"
-                              onClick={() => deleteMutation.mutate(spv.id)}
+                              onClick={() => deleteMutation.mutate(vehicle.id)}
                               disabled={deleteMutation.isPending}
-                              data-testid={`button-delete-spv-${spv.id}`}
+                              data-testid={`button-delete-vehicle-${vehicle.id}`}
                             >
                               <Trash2 className="h-4 w-4 text-destructive" />
                             </Button>
@@ -337,7 +337,7 @@ function SpvsTab({ orgId, canEdit }: { orgId: string; canEdit: boolean }) {
           ) : (
             <div className="text-center py-12">
               <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-              <p className="text-muted-foreground">{t("organizationDetail.noSpvsHint")}</p>
+              <p className="text-muted-foreground">{t("organizationDetail.noVehiclesHint")}</p>
             </div>
           )}
         </CardContent>
@@ -640,7 +640,7 @@ export default function OrganizationDetail() {
         <TabsList>
           <TabsTrigger value="settings" data-testid="tab-settings">{t("organizationDetail.tabSettings")}</TabsTrigger>
           <TabsTrigger value="organizers" data-testid="tab-organizers">{t("organizationDetail.organizersTitle")}</TabsTrigger>
-          {canEdit && <TabsTrigger value="spvs" data-testid="tab-spvs">{t("organizationDetail.tabSpvs")}</TabsTrigger>}
+          {canEdit && <TabsTrigger value="vehicles" data-testid="tab-vehicles">{t("organizationDetail.tabVehicles")}</TabsTrigger>}
           {canEdit && <TabsTrigger value="members" data-testid="tab-members">{t("organizationDetail.tabMembers")}</TabsTrigger>}
           {canEdit && <TabsTrigger value="invites" data-testid="tab-invites">{t("organizationDetail.tabInvites")}</TabsTrigger>}
         </TabsList>
@@ -858,8 +858,8 @@ export default function OrganizationDetail() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="spvs" className="mt-6">
-          <SpvsTab orgId={orgId!} canEdit={canEdit} />
+        <TabsContent value="vehicles" className="mt-6">
+          <VehiclesTab orgId={orgId!} canEdit={canEdit} />
         </TabsContent>
 
         {/* Member list and invites are organizer/admin-only (the API returns 403 otherwise). */}

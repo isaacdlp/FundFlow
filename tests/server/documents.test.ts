@@ -252,12 +252,12 @@ describe("/api/documents", () => {
       dbMock.queueInsertReturning([{
         id: 42,
         name: "Pitch Deck",
-        folderPath: "SPVs/Acme",
+        folderPath: "Vehicles/Acme",
         ownerType: "account",
         accountId: 2,
         entityId: null,
         fileName: "deck.pdf",
-        storedPath: "account/2/SPVs/Acme/deck-x.pdf",
+        storedPath: "account/2/Vehicles/Acme/deck-x.pdf",
         mimeType: "application/pdf",
         sizeBytes: 5,
         uploadedBy: 1,
@@ -270,7 +270,7 @@ describe("/api/documents", () => {
       const res = await agent
         .post("/api/documents")
         .field("name", "Pitch Deck")
-        .field("folderPath", "SPVs/Acme")
+        .field("folderPath", "Vehicles/Acme")
         .field("ownerType", "account")
         .field("accountId", "2")
         .attach("file", Buffer.from("hello"), "deck.pdf");
@@ -279,7 +279,7 @@ describe("/api/documents", () => {
       expect(res.body).toMatchObject({
         id: 42,
         name: "Pitch Deck",
-        folderPath: "SPVs/Acme",
+        folderPath: "Vehicles/Acme",
         ownerType: "account",
         accountId: 2,
         owner: { id: 2, type: "account", name: "Member User" },
@@ -293,7 +293,7 @@ describe("/api/documents", () => {
       expect(inserted).toBeDefined();
       expect(inserted.accountId).toBe(2);
       expect(inserted.entityId).toBeNull();
-      expect(inserted.storedPath).toMatch(/^account\/2\/SPVs\/Acme\//);
+      expect(inserted.storedPath).toMatch(/^account\/2\/Vehicles\/Acme\//);
       expect(inserted.uploadedBy).toBe(1);
     });
 

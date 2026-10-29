@@ -8,6 +8,7 @@
     "build": "tsx script/build.ts",
     "start": "NODE_ENV=production node dist/index.cjs",
     "check": "tsc",
+    "predb:push": "tsx script/db-renames.ts",
     "db:push": "drizzle-kit push",
     "dev-data:export": "tsx --env-file=.env script/dev-data.ts export",
     "dev-data:seed": "NODE_ENV=development tsx --env-file=.env script/dev-data.ts seed",

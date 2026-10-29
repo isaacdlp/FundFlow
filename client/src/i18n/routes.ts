@@ -21,10 +21,10 @@ export type RouteKey =
   | "accountDetail"
   | "organizations"
   | "organizationNew"
-  | "organizationSpvNew"
+  | "organizationVehicleNew"
   | "organizationDetail"
-  | "spvs"
-  | "spvDetail"
+  | "vehicles"
+  | "vehicleDetail"
   | "entities"
   | "entityNew"
   | "entityDetail"
@@ -48,10 +48,10 @@ export const ROUTE_PATTERNS: Record<RouteKey, Record<Locale, string>> = {
   accountDetail:       { en: "/accounts/:id",                    es: "/cuentas/:id",                     fr: "/comptes/:id" },
   organizations:       { en: "/organizations",                   es: "/organizaciones",                  fr: "/organisations" },
   organizationNew:     { en: "/organizations/new",               es: "/organizaciones/nueva",            fr: "/organisations/nouvelle" },
-  organizationSpvNew:  { en: "/organizations/:orgId/spvs/new",   es: "/organizaciones/:orgId/spvs/nuevo", fr: "/organisations/:orgId/spvs/nouveau" },
+  organizationVehicleNew: { en: "/organizations/:orgId/vehicles/new", es: "/organizaciones/:orgId/vehiculos/nuevo", fr: "/organisations/:orgId/vehicules/nouveau" },
   organizationDetail:  { en: "/organizations/:id",               es: "/organizaciones/:id",              fr: "/organisations/:id" },
-  spvs:                { en: "/spvs",                            es: "/spvs",                            fr: "/spvs" },
-  spvDetail:           { en: "/spvs/:id",                        es: "/spvs/:id",                        fr: "/spvs/:id" },
+  vehicles:            { en: "/vehicles",                        es: "/vehiculos",                       fr: "/vehicules" },
+  vehicleDetail:       { en: "/vehicles/:id",                    es: "/vehiculos/:id",                   fr: "/vehicules/:id" },
   entities:            { en: "/entities",                        es: "/entidades",                       fr: "/entites" },
   entityNew:           { en: "/entities/new",                    es: "/entidades/nueva",                 fr: "/entites/nouvelle" },
   entityDetail:        { en: "/entities/:id",                    es: "/entidades/:id",                   fr: "/entites/:id" },

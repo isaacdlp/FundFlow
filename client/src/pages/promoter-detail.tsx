@@ -208,7 +208,7 @@ export default function PromoterDetail() {
   const [, params] = useRoute<{ id: string }>(ROUTE_PATTERNS.promoterDetail[locale]);
   const promoterId = params?.id;
 
-  const [active, setActive] = useState(true);
+  const [active, setActive] = useState(false);
   const [contractDate, setContractDate] = useState("");
   const [notes, setNotes] = useState("");
 
@@ -331,10 +331,19 @@ export default function PromoterDetail() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-center gap-3">
-            <Switch id="promoter-active" checked={active} onCheckedChange={setActive} data-testid="switch-promoter-active" />
+            <Switch
+              id="promoter-active"
+              checked={active}
+              onCheckedChange={setActive}
+              // Turning a promoter on needs a signed agreement; turning them off is always allowed.
+              disabled={!active && !promoter.hasSignedContract}
+              data-testid="switch-promoter-active"
+            />
             <Label htmlFor="promoter-active">{t("promoters.activeLabel")}</Label>
           </div>
-          <p className="text-xs text-muted-foreground -mt-2">{t("promoters.activeHint")}</p>
+          <p className="text-xs text-muted-foreground -mt-2" data-testid="text-promoter-active-hint">
+            {promoter.hasSignedContract ? t("promoters.activeHint") : t("promoters.activeNeedsContract")}
+          </p>
           <div className="space-y-2 max-w-xs">
             <Label htmlFor="promoter-contract-date">{t("promoters.contractDate")}</Label>
             <Input id="promoter-contract-date" type="date" value={contractDate} onChange={e => setContractDate(e.target.value)} data-testid="input-promoter-contract-date" />
@@ -356,8 +365,8 @@ export default function PromoterDetail() {
         draftUrl={`/api/promoters/${promoter.id}/contracts/draft`}
         createUrl={`/api/promoters/${promoter.id}/contracts`}
         hint={t("promoters.contractsHint")}
-        // Signing sets the contract date when it's empty.
-        onChange={() => queryClient.invalidateQueries({ queryKey: ["/api/promoters", promoterId] })}
+        // Signing activates the promoter and sets the contract date when it's empty.
+        onChange={() => queryClient.invalidateQueries({ queryKey: ["/api/promoters"] })}
       />
     </div>
   );

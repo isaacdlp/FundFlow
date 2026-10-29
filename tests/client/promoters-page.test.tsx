@@ -26,6 +26,7 @@ const promoter = (overrides: Partial<PromoterInfo> = {}): PromoterInfo => ({
     { id: 2, promoterId: 1, type: "success_fee", percent: "12.50", notes: "", createdAt: "" },
   ],
   introductionCount: 3,
+  hasSignedContract: true,
   ...overrides,
 });
 

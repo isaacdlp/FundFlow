@@ -1,6 +1,6 @@
 /**
  * Development dataset: a snapshot of one organization (its people, entities and
- * a chosen set of SPVs) exported from a running FundFlow instance through the
+ * a chosen set of Vehicles) exported from a running FundFlow instance through the
  * REST API, and imported into a local development database.
  *
  * IDs in the snapshot are the source instance's IDs and are only used as
@@ -34,7 +34,7 @@ export interface DevEntity {
   owners: { ownerType: string; accountRef: number | null; entityRef: number | null; ownershipPercent: string | null }[];
 }
 
-export interface DevSpvMember {
+export interface DevVehicleMember {
   accountRef: number | null;
   entityRef: number | null;
   committed: string | null;
@@ -47,7 +47,7 @@ export interface DevSpvMember {
   date: string | null;
 }
 
-export interface DevSpvAsset {
+export interface DevVehicleAsset {
   companyName: string;
   instrumentType: string;
   purchaseDate: string | null;
@@ -57,12 +57,12 @@ export interface DevSpvAsset {
   valuations: { date: string; value: string; note: string | null }[];
 }
 
-export interface DevSpv {
+export interface DevVehicle {
   fields: Record<string, unknown>;
   managerRef: number | null;
   signatoryRef: number | null;
-  members: DevSpvMember[];
-  assets: DevSpvAsset[];
+  members: DevVehicleMember[];
+  assets: DevVehicleAsset[];
 }
 
 export interface DevDataset {
@@ -73,11 +73,11 @@ export interface DevDataset {
   organizers: number[];
   members: { accountRef: number; status: string }[];
   entities: DevEntity[];
-  spvs: DevSpv[];
+  vehicles: DevVehicle[];
 }
 
 export const DEFAULT_DEV_ORG_SLUG = "rapid-scale";
-export const DEFAULT_DEV_SPVS = ["Kapital", "Kushki", "Modelia"];
+export const DEFAULT_DEV_VEHICLES = ["Kapital", "Kushki", "Modelia"];
 
 // Fields never copied out of the source instance (beyond passwordHash, which
 // the API never returns anyway).
@@ -93,9 +93,9 @@ function pick(obj: Record<string, any>, omit: string[]): Record<string, unknown>
   return out;
 }
 
-/** True when an SPV's names contain any of the (case-insensitive) patterns. */
-export function spvMatches(spv: { displayName?: string; legalName?: string; investmentCompanyName?: string }, patterns: string[]): boolean {
-  const haystack = [spv.displayName, spv.legalName, spv.investmentCompanyName].filter(Boolean).join(" ").toLowerCase();
+/** True when a Vehicle's names contain any of the (case-insensitive) patterns. */
+export function vehicleMatches(vehicle: { displayName?: string; legalName?: string; investmentCompanyName?: string }, patterns: string[]): boolean {
+  const haystack = [vehicle.displayName, vehicle.legalName, vehicle.investmentCompanyName].filter(Boolean).join(" ").toLowerCase();
   return patterns.some(p => haystack.includes(p.toLowerCase()));
 }
 
@@ -103,19 +103,19 @@ export type ApiGet = (path: string) => Promise<any>;
 
 export async function exportDevData(
   get: ApiGet,
-  opts: { source: string; orgSlug?: string; spvPatterns?: string[] },
+  opts: { source: string; orgSlug?: string; vehiclePatterns?: string[] },
 ): Promise<DevDataset> {
   const orgSlug = opts.orgSlug ?? DEFAULT_DEV_ORG_SLUG;
-  const patterns = opts.spvPatterns ?? DEFAULT_DEV_SPVS;
+  const patterns = opts.vehiclePatterns ?? DEFAULT_DEV_VEHICLES;
 
   const org = await get(`/api/organizations/by-slug/${encodeURIComponent(orgSlug)}`);
   const orgMembers: any[] = await get(`/api/organizations/${org.id}/members`);
-  const allSpvs: any[] = await get(`/api/organizations/${org.id}/spvs`);
+  const allVehicles: any[] = await get(`/api/organizations/${org.id}/vehicles`);
 
-  const missing = patterns.filter(p => !allSpvs.some(s => spvMatches(s, [p])));
+  const missing = patterns.filter(p => !allVehicles.some(s => vehicleMatches(s, [p])));
   if (missing.length) {
-    const names = allSpvs.map(s => s.displayName).join(", ");
-    throw new Error(`No SPV in "${org.name}" matches: ${missing.join(", ")}. Available: ${names}`);
+    const names = allVehicles.map(s => s.displayName).join(", ");
+    throw new Error(`No Vehicle in "${org.name}" matches: ${missing.join(", ")}. Available: ${names}`);
   }
 
   const accountRefs = new Set<number>();
@@ -125,13 +125,13 @@ export async function exportDevData(
   const members = orgMembers.map(m => ({ accountRef: m.accountId as number, status: m.status as string }));
   members.forEach(m => accountRefs.add(m.accountRef));
 
-  const spvs: DevSpv[] = [];
-  for (const spv of allSpvs.filter(s => spvMatches(s, patterns))) {
-    const spvMembers: any[] = await get(`/api/spvs/${spv.id}/members`);
-    const assets: any[] = await get(`/api/spvs/${spv.id}/assets`);
-    const devAssets: DevSpvAsset[] = [];
+  const vehicles: DevVehicle[] = [];
+  for (const vehicle of allVehicles.filter(s => vehicleMatches(s, patterns))) {
+    const vehicleMembers: any[] = await get(`/api/vehicles/${vehicle.id}/members`);
+    const assets: any[] = await get(`/api/vehicles/${vehicle.id}/assets`);
+    const devAssets: DevVehicleAsset[] = [];
     for (const asset of assets) {
-      const vals: any[] = await get(`/api/spvs/${spv.id}/assets/${asset.id}/valuations`);
+      const vals: any[] = await get(`/api/vehicles/${vehicle.id}/assets/${asset.id}/valuations`);
       devAssets.push({
         companyName: asset.companyName,
         instrumentType: asset.instrumentType,
@@ -143,19 +143,19 @@ export async function exportDevData(
       });
     }
 
-    if (spv.managerId) accountRefs.add(spv.managerId);
-    if (spv.signatoryId) accountRefs.add(spv.signatoryId);
-    for (const m of spvMembers) {
+    if (vehicle.managerId) accountRefs.add(vehicle.managerId);
+    if (vehicle.signatoryId) accountRefs.add(vehicle.signatoryId);
+    for (const m of vehicleMembers) {
       if (m.accountId) accountRefs.add(m.accountId);
       if (m.entityId) entityRefs.add(m.entityId);
     }
 
-    spvs.push({
-      fields: pick(spv, [...SERVER_FIELDS, "organizationId", "managerId", "signatoryId",
+    vehicles.push({
+      fields: pick(vehicle, [...SERVER_FIELDS, "organizationId", "managerId", "signatoryId",
         "manager", "signatory", "memberCount", "organization", "cash", "assetValue", "currentValue"]),
-      managerRef: spv.managerId ?? null,
-      signatoryRef: spv.signatoryId ?? null,
-      members: spvMembers.map(m => ({
+      managerRef: vehicle.managerId ?? null,
+      signatoryRef: vehicle.signatoryId ?? null,
+      members: vehicleMembers.map(m => ({
         accountRef: m.accountId ?? null,
         entityRef: m.entityId ?? null,
         committed: m.committed,
@@ -231,7 +231,7 @@ export async function exportDevData(
     organizers,
     members,
     entities,
-    spvs,
+    vehicles,
   };
 }
 
@@ -247,9 +247,9 @@ export interface DevDataSink {
   insertEntity(fields: Record<string, unknown>): Promise<number>;
   addEntityManager(entityId: number, accountId: number): Promise<void>;
   addEntityOwner(entityId: number, owner: { ownerType: string; ownerAccountId: number | null; ownerEntityId: number | null; ownershipPercent: string | null }): Promise<void>;
-  insertSpv(fields: Record<string, unknown>): Promise<number>;
-  insertSpvMember(spvId: number, member: Omit<DevSpvMember, "accountRef" | "entityRef"> & { accountId: number | null; entityId: number | null }): Promise<void>;
-  insertSpvAsset(spvId: number, asset: Omit<DevSpvAsset, "valuations">): Promise<number>;
+  insertVehicle(fields: Record<string, unknown>): Promise<number>;
+  insertVehicleMember(vehicleId: number, member: Omit<DevVehicleMember, "accountRef" | "entityRef"> & { accountId: number | null; entityId: number | null }): Promise<void>;
+  insertVehicleAsset(vehicleId: number, asset: Omit<DevVehicleAsset, "valuations">): Promise<number>;
   insertValuation(assetId: number, valuation: { date: string; value: string; note: string | null }): Promise<void>;
 }
 
@@ -257,12 +257,12 @@ export interface DevImportResult {
   accountsCreated: number;
   accountsReused: number;
   entities: number;
-  spvs: number;
-  spvMembers: number;
+  vehicles: number;
+  vehicleMembers: number;
 }
 
 export async function importDevData(data: DevDataset, sink: DevDataSink): Promise<DevImportResult> {
-  const result: DevImportResult = { accountsCreated: 0, accountsReused: 0, entities: 0, spvs: 0, spvMembers: 0 };
+  const result: DevImportResult = { accountsCreated: 0, accountsReused: 0, entities: 0, vehicles: 0, vehicleMembers: 0 };
 
   const accountIds = new Map<number, number>();
   for (const { ref, isAdmin, ...account } of data.accounts) {
@@ -313,20 +313,20 @@ export async function importDevData(data: DevDataset, sink: DevDataSink): Promis
     }
   }
 
-  for (const spv of data.spvs) {
-    const spvId = await sink.insertSpv({
-      ...spv.fields,
+  for (const vehicle of data.vehicles) {
+    const vehicleId = await sink.insertVehicle({
+      ...vehicle.fields,
       organizationId: orgId,
-      managerId: account(spv.managerRef),
-      signatoryId: account(spv.signatoryRef),
+      managerId: account(vehicle.managerRef),
+      signatoryId: account(vehicle.signatoryRef),
     });
-    result.spvs++;
-    for (const { accountRef, entityRef, ...investment } of spv.members) {
-      await sink.insertSpvMember(spvId, { ...investment, accountId: account(accountRef), entityId: entity(entityRef) });
-      result.spvMembers++;
+    result.vehicles++;
+    for (const { accountRef, entityRef, ...investment } of vehicle.members) {
+      await sink.insertVehicleMember(vehicleId, { ...investment, accountId: account(accountRef), entityId: entity(entityRef) });
+      result.vehicleMembers++;
     }
-    for (const { valuations, ...asset } of spv.assets) {
-      const assetId = await sink.insertSpvAsset(spvId, asset);
+    for (const { valuations, ...asset } of vehicle.assets) {
+      const assetId = await sink.insertVehicleAsset(vehicleId, asset);
       for (const v of valuations) await sink.insertValuation(assetId, v);
     }
   }

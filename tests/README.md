@@ -18,8 +18,8 @@ tests/
     organizers.test.ts    # add/remove organizers
     members.test.ts       # request (public), list, approve/reject, remove
     invites.test.ts       # public GET/accept + authenticated list/create
-    spvs.test.ts          # CRUD, list-all vs by-org, member-vs-admin scope
-    spv-members.test.ts   # add/edit/remove account- and entity-investors
+    vehicles.test.ts          # CRUD, list-all vs by-org, member-vs-admin scope
+    vehicle-members.test.ts   # add/edit/remove account- and entity-investors
     portfolio.test.ts     # admin/owner/manager scoping + filter validation
     entities.test.ts      # CRUD + manager/owner gating
     entity-owners.test.ts # owner add/remove + payload validation
@@ -50,7 +50,7 @@ Configs live at the repo root: `vitest.config.ts` (with `test.projects` for serv
 
 ## Coverage at a glance
 
-- **Backend**: every route in `server/routes.ts` (~50 endpoints) has at least one happy-path and one negative-path test, including auth gating (401), role gating (403 for non-admin where required), validation errors (400), missing-resource handling (404), conflict handling (409 for unique-key violations), and gone-status (410 for used invites). Permission helpers (`isAdmin`, `requireAdmin`, `canManageSpv`, `getOrganizationIdsForAccount`, `getEntityIdsForAccount`, `getSpvIdsForAccount`, `getEntityIdsOwnedByAccount`) are exercised through real route invocations rather than direct unit tests so behavior is verified end-to-end through the Express middleware chain.
+- **Backend**: every route in `server/routes.ts` (~50 endpoints) has at least one happy-path and one negative-path test, including auth gating (401), role gating (403 for non-admin where required), validation errors (400), missing-resource handling (404), conflict handling (409 for unique-key violations), and gone-status (410 for used invites). Permission helpers (`isAdmin`, `requireAdmin`, `canManageVehicle`, `getOrganizationIdsForAccount`, `getEntityIdsForAccount`, `getVehicleIdsForAccount`, `getEntityIdsOwnedByAccount`) are exercised through real route invocations rather than direct unit tests so behavior is verified end-to-end through the Express middleware chain.
 - **Frontend**: hooks (`useAuth`, `useOrgPermissions`), library helpers (`apiRequest`, `getQueryFn`, `cn`), and at least one component-level gating test. Add component tests by following the `permission-gating.test.tsx` pattern.
 - **E2E**: real-stack happy paths only (login, role-based UI visibility). Heavy data flows are covered at the integration layer instead of E2E to keep the browser suite fast and deterministic.
 

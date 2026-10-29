@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Switch, Route, Link, Router as WouterRouter } from "wouter";
+import { Switch, Route, Link, Redirect, Router as WouterRouter } from "wouter";
 import { useTranslation } from "react-i18next";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -19,9 +19,9 @@ import Organizations from "@/pages/organizations";
 import OrganizationDetail from "@/pages/organization-detail";
 import CreateOrganization from "@/pages/create-organization";
 import OrgLanding from "@/pages/org-landing";
-import Spvs from "@/pages/spvs";
-import CreateSpv from "@/pages/create-spv";
-import SpvDetail from "@/pages/spv-detail";
+import Vehicles from "@/pages/vehicles";
+import CreateVehicle from "@/pages/create-vehicle";
+import VehicleDetail from "@/pages/vehicle-detail";
 import Entities from "@/pages/entities";
 import CreateEntity from "@/pages/create-entity";
 import EntityDetail from "@/pages/entity-detail";
@@ -46,17 +46,22 @@ import { getLangCookie } from "@/i18n/config";
 
 function AdminRouter({ locale }: { locale: Locale }) {
   const r = ROUTE_PATTERNS;
+  const lp = useLocalePath();
   return (
     <Switch>
       <Route path={r.accountNew[locale]} component={CreateAccount} />
       <Route path={r.accountDetail[locale]} component={AccountDetail} />
       <Route path={r.accounts[locale]} component={Accounts} />
       <Route path={r.organizationNew[locale]} component={CreateOrganization} />
-      <Route path={r.organizationSpvNew[locale]} component={CreateSpv} />
+      <Route path={r.organizationVehicleNew[locale]} component={CreateVehicle} />
       <Route path={r.organizationDetail[locale]} component={OrganizationDetail} />
       <Route path={r.organizations[locale]} component={Organizations} />
-      <Route path={r.spvDetail[locale]} component={SpvDetail} />
-      <Route path={r.spvs[locale]} component={Spvs} />
+      <Route path={r.vehicleDetail[locale]} component={VehicleDetail} />
+      <Route path={r.vehicles[locale]} component={Vehicles} />
+      {/* Vehicles were called SPVs (at /spvs) before; old bookmarks and email links still point there */}
+      <Route path="/spvs/:id?">
+        {(params) => <Redirect replace to={params.id ? lp("vehicleDetail", { id: params.id }) : lp("vehicles")} />}
+      </Route>
       <Route path={r.entityNew[locale]} component={CreateEntity} />
       <Route path={r.entityDetail[locale]} component={EntityDetail} />
       <Route path={r.entities[locale]} component={Entities} />

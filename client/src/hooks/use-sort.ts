@@ -5,7 +5,7 @@ export type SortValue = string | number | boolean | Date | null | undefined;
 export type SortAccessors<T, K extends string> = Record<K, (item: T) => SortValue>;
 export interface SortState<K extends string> { key: K; direction: SortDirection }
 
-// Accent- and case-insensitive, numeric-aware ("SPV 2" < "SPV 10")
+// Accent- and case-insensitive, numeric-aware ("Vehicle 2" < "Vehicle 10")
 const collator = new Intl.Collator(undefined, { sensitivity: "base", numeric: true });
 
 function isEmpty(v: SortValue): v is null | undefined | "" {

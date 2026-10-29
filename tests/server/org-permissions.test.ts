@@ -41,7 +41,7 @@ describe("Organization management requires organizer or admin", () => {
     ["remove a member", (a) => a.delete(`/api/organizations/${orgA.id}/members/${fixtures.outsiderAccount.id}`)],
     ["list invites", (a) => a.get(`/api/organizations/${orgA.id}/invites`)],
     ["create an invite", (a) => a.post(`/api/organizations/${orgA.id}/invites`)],
-    ["create an SPV", (a) => a.post(`/api/organizations/${orgA.id}/spvs`).send({ legalName: "X LLC", displayName: "X", dateEstablished: "2025-01-01" })],
+    ["create a Vehicle", (a) => a.post(`/api/organizations/${orgA.id}/vehicles`).send({ legalName: "X LLC", displayName: "X", dateEstablished: "2025-01-01" })],
     ["add another account as member", (a) => a.post(`/api/organizations/${orgA.id}/members/request`).send({ accountId: fixtures.outsiderAccount.id })],
   ];
 
@@ -58,7 +58,7 @@ describe("Organization management requires organizer or admin", () => {
       expect(mockStorage.removeMember).not.toHaveBeenCalled();
       expect(mockStorage.getInvites).not.toHaveBeenCalled();
       expect(mockStorage.createInvite).not.toHaveBeenCalled();
-      expect(mockStorage.createSpv).not.toHaveBeenCalled();
+      expect(mockStorage.createVehicle).not.toHaveBeenCalled();
       expect(mockStorage.createMemberRequest).not.toHaveBeenCalled();
     });
   }

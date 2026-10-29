@@ -5,7 +5,7 @@ describe("compareSortValues", () => {
   it("compares strings ignoring case and accents, numbers within strings numerically", () => {
     expect(compareSortValues("álvaro", "Bea", "asc")).toBeLessThan(0);
     expect(compareSortValues("José", "jose", "asc")).toBe(0);
-    expect(compareSortValues("SPV 2", "SPV 10", "asc")).toBeLessThan(0);
+    expect(compareSortValues("Vehicle 2", "Vehicle 10", "asc")).toBeLessThan(0);
   });
 
   it("compares numbers, booleans and dates", () => {

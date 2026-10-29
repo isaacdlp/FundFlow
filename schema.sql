@@ -521,10 +521,10 @@ CREATE TABLE public.session (
 
 
 --
--- Name: spv_asset_valuations; Type: TABLE; Schema: public; Owner: -
+-- Name: vehicle_asset_valuations; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.spv_asset_valuations (
+CREATE TABLE public.vehicle_asset_valuations (
     id integer NOT NULL,
     asset_id integer NOT NULL,
     date date NOT NULL,
@@ -535,10 +535,10 @@ CREATE TABLE public.spv_asset_valuations (
 
 
 --
--- Name: spv_asset_valuations_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+-- Name: vehicle_asset_valuations_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
-CREATE SEQUENCE public.spv_asset_valuations_id_seq
+CREATE SEQUENCE public.vehicle_asset_valuations_id_seq
     AS integer
     START WITH 1
     INCREMENT BY 1
@@ -548,19 +548,19 @@ CREATE SEQUENCE public.spv_asset_valuations_id_seq
 
 
 --
--- Name: spv_asset_valuations_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+-- Name: vehicle_asset_valuations_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
 --
 
-ALTER SEQUENCE public.spv_asset_valuations_id_seq OWNED BY public.spv_asset_valuations.id;
+ALTER SEQUENCE public.vehicle_asset_valuations_id_seq OWNED BY public.vehicle_asset_valuations.id;
 
 
 --
--- Name: spv_assets; Type: TABLE; Schema: public; Owner: -
+-- Name: vehicle_assets; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.spv_assets (
+CREATE TABLE public.vehicle_assets (
     id integer NOT NULL,
-    spv_id integer NOT NULL,
+    vehicle_id integer NOT NULL,
     company_name character varying(255) NOT NULL,
     instrument_type character varying(100) DEFAULT 'Equity'::character varying NOT NULL,
     purchase_date date,
@@ -572,10 +572,10 @@ CREATE TABLE public.spv_assets (
 
 
 --
--- Name: spv_assets_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+-- Name: vehicle_assets_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
-CREATE SEQUENCE public.spv_assets_id_seq
+CREATE SEQUENCE public.vehicle_assets_id_seq
     AS integer
     START WITH 1
     INCREMENT BY 1
@@ -585,19 +585,19 @@ CREATE SEQUENCE public.spv_assets_id_seq
 
 
 --
--- Name: spv_assets_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+-- Name: vehicle_assets_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
 --
 
-ALTER SEQUENCE public.spv_assets_id_seq OWNED BY public.spv_assets.id;
+ALTER SEQUENCE public.vehicle_assets_id_seq OWNED BY public.vehicle_assets.id;
 
 
 --
--- Name: spv_members; Type: TABLE; Schema: public; Owner: -
+-- Name: vehicle_members; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.spv_members (
+CREATE TABLE public.vehicle_members (
     id integer NOT NULL,
-    spv_id integer NOT NULL,
+    vehicle_id integer NOT NULL,
     account_id integer,
     created_at timestamp without time zone DEFAULT now(),
     committed numeric(15,2) DEFAULT 0,
@@ -609,15 +609,15 @@ CREATE TABLE public.spv_members (
     other_fee numeric(15,2) DEFAULT '0'::numeric,
     total_called numeric(15,2) DEFAULT '0'::numeric,
     carry numeric(5,2) DEFAULT '0'::numeric,
-    CONSTRAINT spv_member_investor_xor CHECK (((((account_id IS NOT NULL))::integer + ((entity_id IS NOT NULL))::integer) = 1))
+    CONSTRAINT vehicle_member_investor_xor CHECK (((((account_id IS NOT NULL))::integer + ((entity_id IS NOT NULL))::integer) = 1))
 );
 
 
 --
--- Name: spv_members_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+-- Name: vehicle_members_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
-CREATE SEQUENCE public.spv_members_id_seq
+CREATE SEQUENCE public.vehicle_members_id_seq
     AS integer
     START WITH 1
     INCREMENT BY 1
@@ -627,17 +627,17 @@ CREATE SEQUENCE public.spv_members_id_seq
 
 
 --
--- Name: spv_members_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+-- Name: vehicle_members_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
 --
 
-ALTER SEQUENCE public.spv_members_id_seq OWNED BY public.spv_members.id;
+ALTER SEQUENCE public.vehicle_members_id_seq OWNED BY public.vehicle_members.id;
 
 
 --
--- Name: spvs; Type: TABLE; Schema: public; Owner: -
+-- Name: vehicles; Type: TABLE; Schema: public; Owner: -
 --
 
-CREATE TABLE public.spvs (
+CREATE TABLE public.vehicles (
     id integer NOT NULL,
     organization_id integer NOT NULL,
     legal_name character varying(500) NOT NULL,
@@ -681,10 +681,10 @@ CREATE TABLE public.spvs (
 
 
 --
--- Name: spvs_id_seq; Type: SEQUENCE; Schema: public; Owner: -
+-- Name: vehicles_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
-CREATE SEQUENCE public.spvs_id_seq
+CREATE SEQUENCE public.vehicles_id_seq
     AS integer
     START WITH 1
     INCREMENT BY 1
@@ -694,10 +694,10 @@ CREATE SEQUENCE public.spvs_id_seq
 
 
 --
--- Name: spvs_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
+-- Name: vehicles_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
 --
 
-ALTER SEQUENCE public.spvs_id_seq OWNED BY public.spvs.id;
+ALTER SEQUENCE public.vehicles_id_seq OWNED BY public.vehicles.id;
 
 
 --
@@ -792,31 +792,31 @@ ALTER TABLE ONLY public.roles ALTER COLUMN id SET DEFAULT nextval('public.roles_
 
 
 --
--- Name: spv_asset_valuations id; Type: DEFAULT; Schema: public; Owner: -
+-- Name: vehicle_asset_valuations id; Type: DEFAULT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.spv_asset_valuations ALTER COLUMN id SET DEFAULT nextval('public.spv_asset_valuations_id_seq'::regclass);
-
-
---
--- Name: spv_assets id; Type: DEFAULT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.spv_assets ALTER COLUMN id SET DEFAULT nextval('public.spv_assets_id_seq'::regclass);
+ALTER TABLE ONLY public.vehicle_asset_valuations ALTER COLUMN id SET DEFAULT nextval('public.vehicle_asset_valuations_id_seq'::regclass);
 
 
 --
--- Name: spv_members id; Type: DEFAULT; Schema: public; Owner: -
+-- Name: vehicle_assets id; Type: DEFAULT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.spv_members ALTER COLUMN id SET DEFAULT nextval('public.spv_members_id_seq'::regclass);
+ALTER TABLE ONLY public.vehicle_assets ALTER COLUMN id SET DEFAULT nextval('public.vehicle_assets_id_seq'::regclass);
 
 
 --
--- Name: spvs id; Type: DEFAULT; Schema: public; Owner: -
+-- Name: vehicle_members id; Type: DEFAULT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.spvs ALTER COLUMN id SET DEFAULT nextval('public.spvs_id_seq'::regclass);
+ALTER TABLE ONLY public.vehicle_members ALTER COLUMN id SET DEFAULT nextval('public.vehicle_members_id_seq'::regclass);
+
+
+--
+-- Name: vehicles id; Type: DEFAULT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.vehicles ALTER COLUMN id SET DEFAULT nextval('public.vehicles_id_seq'::regclass);
 
 
 --
@@ -980,35 +980,35 @@ ALTER TABLE ONLY public.session
 
 
 --
--- Name: spv_asset_valuations spv_asset_valuations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: vehicle_asset_valuations vehicle_asset_valuations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.spv_asset_valuations
-    ADD CONSTRAINT spv_asset_valuations_pkey PRIMARY KEY (id);
-
-
---
--- Name: spv_assets spv_assets_pkey; Type: CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.spv_assets
-    ADD CONSTRAINT spv_assets_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.vehicle_asset_valuations
+    ADD CONSTRAINT vehicle_asset_valuations_pkey PRIMARY KEY (id);
 
 
 --
--- Name: spv_members spv_members_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: vehicle_assets vehicle_assets_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.spv_members
-    ADD CONSTRAINT spv_members_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.vehicle_assets
+    ADD CONSTRAINT vehicle_assets_pkey PRIMARY KEY (id);
 
 
 --
--- Name: spvs spvs_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+-- Name: vehicle_members vehicle_members_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.spvs
-    ADD CONSTRAINT spvs_pkey PRIMARY KEY (id);
+ALTER TABLE ONLY public.vehicle_members
+    ADD CONSTRAINT vehicle_members_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: vehicles vehicles_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.vehicles
+    ADD CONSTRAINT vehicles_pkey PRIMARY KEY (id);
 
 
 --
@@ -1068,24 +1068,24 @@ CREATE UNIQUE INDEX organizations_slug_unique ON public.organizations USING btre
 
 
 --
--- Name: spv_asset_valuations_asset_id_idx; Type: INDEX; Schema: public; Owner: -
+-- Name: vehicle_asset_valuations_asset_id_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE INDEX spv_asset_valuations_asset_id_idx ON public.spv_asset_valuations USING btree (asset_id);
-
-
---
--- Name: spv_assets_spv_id_idx; Type: INDEX; Schema: public; Owner: -
---
-
-CREATE INDEX spv_assets_spv_id_idx ON public.spv_assets USING btree (spv_id);
+CREATE INDEX vehicle_asset_valuations_asset_id_idx ON public.vehicle_asset_valuations USING btree (asset_id);
 
 
 --
--- Name: spv_default_asset_unique; Type: INDEX; Schema: public; Owner: -
+-- Name: vehicle_assets_vehicle_id_idx; Type: INDEX; Schema: public; Owner: -
 --
 
-CREATE UNIQUE INDEX spv_default_asset_unique ON public.spv_assets USING btree (spv_id) WHERE (is_default = true);
+CREATE INDEX vehicle_assets_vehicle_id_idx ON public.vehicle_assets USING btree (vehicle_id);
+
+
+--
+-- Name: vehicle_default_asset_unique; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX vehicle_default_asset_unique ON public.vehicle_assets USING btree (vehicle_id) WHERE (is_default = true);
 
 
 --
@@ -1225,67 +1225,67 @@ ALTER TABLE ONLY public.password_reset_tokens
 
 
 --
--- Name: spv_asset_valuations spv_asset_valuations_asset_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: vehicle_asset_valuations vehicle_asset_valuations_asset_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.spv_asset_valuations
-    ADD CONSTRAINT spv_asset_valuations_asset_id_fkey FOREIGN KEY (asset_id) REFERENCES public.spv_assets(id) ON DELETE CASCADE;
-
-
---
--- Name: spv_assets spv_assets_spv_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.spv_assets
-    ADD CONSTRAINT spv_assets_spv_id_fkey FOREIGN KEY (spv_id) REFERENCES public.spvs(id) ON DELETE CASCADE;
+ALTER TABLE ONLY public.vehicle_asset_valuations
+    ADD CONSTRAINT vehicle_asset_valuations_asset_id_fkey FOREIGN KEY (asset_id) REFERENCES public.vehicle_assets(id) ON DELETE CASCADE;
 
 
 --
--- Name: spv_members spv_members_account_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: vehicle_assets vehicle_assets_vehicle_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.spv_members
-    ADD CONSTRAINT spv_members_account_id_fkey FOREIGN KEY (account_id) REFERENCES public.accounts(id) ON DELETE CASCADE;
-
-
---
--- Name: spv_members spv_members_entity_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.spv_members
-    ADD CONSTRAINT spv_members_entity_id_fkey FOREIGN KEY (entity_id) REFERENCES public.entities(id) ON DELETE CASCADE;
+ALTER TABLE ONLY public.vehicle_assets
+    ADD CONSTRAINT vehicle_assets_vehicle_id_fkey FOREIGN KEY (vehicle_id) REFERENCES public.vehicles(id) ON DELETE CASCADE;
 
 
 --
--- Name: spv_members spv_members_spv_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: vehicle_members vehicle_members_account_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.spv_members
-    ADD CONSTRAINT spv_members_spv_id_fkey FOREIGN KEY (spv_id) REFERENCES public.spvs(id) ON DELETE CASCADE;
-
-
---
--- Name: spvs spvs_manager_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
---
-
-ALTER TABLE ONLY public.spvs
-    ADD CONSTRAINT spvs_manager_id_fkey FOREIGN KEY (manager_id) REFERENCES public.accounts(id);
+ALTER TABLE ONLY public.vehicle_members
+    ADD CONSTRAINT vehicle_members_account_id_fkey FOREIGN KEY (account_id) REFERENCES public.accounts(id) ON DELETE CASCADE;
 
 
 --
--- Name: spvs spvs_organization_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: vehicle_members vehicle_members_entity_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.spvs
-    ADD CONSTRAINT spvs_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES public.organizations(id) ON DELETE CASCADE;
+ALTER TABLE ONLY public.vehicle_members
+    ADD CONSTRAINT vehicle_members_entity_id_fkey FOREIGN KEY (entity_id) REFERENCES public.entities(id) ON DELETE CASCADE;
 
 
 --
--- Name: spvs spvs_signatory_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+-- Name: vehicle_members vehicle_members_vehicle_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
-ALTER TABLE ONLY public.spvs
-    ADD CONSTRAINT spvs_signatory_id_fkey FOREIGN KEY (signatory_id) REFERENCES public.accounts(id);
+ALTER TABLE ONLY public.vehicle_members
+    ADD CONSTRAINT vehicle_members_vehicle_id_fkey FOREIGN KEY (vehicle_id) REFERENCES public.vehicles(id) ON DELETE CASCADE;
+
+
+--
+-- Name: vehicles vehicles_manager_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.vehicles
+    ADD CONSTRAINT vehicles_manager_id_fkey FOREIGN KEY (manager_id) REFERENCES public.accounts(id);
+
+
+--
+-- Name: vehicles vehicles_organization_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.vehicles
+    ADD CONSTRAINT vehicles_organization_id_fkey FOREIGN KEY (organization_id) REFERENCES public.organizations(id) ON DELETE CASCADE;
+
+
+--
+-- Name: vehicles vehicles_signatory_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.vehicles
+    ADD CONSTRAINT vehicles_signatory_id_fkey FOREIGN KEY (signatory_id) REFERENCES public.accounts(id);
 
 
 --

@@ -320,8 +320,8 @@ export default function SettingsPage() {
                     <span className="text-muted-foreground"> — {t("settings.manageOrganizationsDescription")}</span>
                   </li>
                   <li>
-                    <a className="underline" href={lfp("spvs")} data-testid="link-mgmt-spvs">{t("settings.manageSpvs")}</a>
-                    <span className="text-muted-foreground"> — {t("settings.manageSpvsDescription")}</span>
+                    <a className="underline" href={lfp("vehicles")} data-testid="link-mgmt-vehicles">{t("settings.manageVehicles")}</a>
+                    <span className="text-muted-foreground"> — {t("settings.manageVehiclesDescription")}</span>
                   </li>
                   <li>
                     <a className="underline" href={lfp("entities")} data-testid="link-mgmt-entities">{t("settings.manageEntities")}</a>

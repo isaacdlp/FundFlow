@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { ZodError } from "zod";
 import { fromZodError } from "zod-validation-error";
 import { db, storage } from "./storage";
-import { currencies, exchangeRates, spvs, updateCurrencySchema } from "@shared/schema";
+import { currencies, exchangeRates, vehicles, updateCurrencySchema } from "@shared/schema";
 
 // Known currency catalog. USD and EUR start active per the initial rollout;
 // the rest are available for an admin to activate later from
@@ -18,9 +18,9 @@ const CATALOG: { code: string; name: string; symbol: string; active: boolean }[]
   { code: "AUD", name: "Australian Dollar", symbol: "$", active: false },
 ];
 
-// SPVs predate ISO-code currencies and stored a decorative label instead
+// Vehicles predate ISO-code currencies and stored a decorative label instead
 // (e.g. "USD ($)"). Maps those legacy values to the matching code so every
-// SPV lands on a valid, consistent value once this feature ships. Anything
+// Vehicle lands on a valid, consistent value once this feature ships. Anything
 // unrecognized is treated as USD, per the product assumption that all
 // pre-existing funds are USD-denominated.
 const LEGACY_CURRENCY_MAP: Record<string, string> = {
@@ -39,7 +39,7 @@ const CHECK_INTERVAL_MS = 60 * 60 * 1000; // but check hourly whether one has go
 
 /**
  * Seeds the currency catalog on first boot and normalizes any pre-ISO-code
- * SPV currency values left over from before this feature existed. Safe to
+ * Vehicle currency values left over from before this feature existed. Safe to
  * call on every startup — both steps are no-ops once data is already clean.
  */
 export async function initCurrencies(): Promise<void> {
@@ -49,11 +49,11 @@ export async function initCurrencies(): Promise<void> {
   }
 
   const validCodes = new Set((await db.select().from(currencies)).map(c => c.code));
-  const allSpvs = await db.select({ id: spvs.id, currency: spvs.currency }).from(spvs);
-  for (const s of allSpvs) {
+  const allVehicles = await db.select({ id: vehicles.id, currency: vehicles.currency }).from(vehicles);
+  for (const s of allVehicles) {
     if (validCodes.has(s.currency)) continue;
     const mapped = LEGACY_CURRENCY_MAP[s.currency] ?? "USD";
-    await db.update(spvs).set({ currency: mapped }).where(eq(spvs.id, s.id));
+    await db.update(vehicles).set({ currency: mapped }).where(eq(vehicles.id, s.id));
   }
 }
 
@@ -133,7 +133,7 @@ async function requireAdmin(req: Request, res: Response, next: NextFunction) {
 
 export function registerCurrencyRoutes(app: Express) {
   // Full catalog (active + inactive) — any authenticated user, since both
-  // SPV creation and the dashboard's currency dropdown need the active set.
+  // Vehicle creation and the dashboard's currency dropdown need the active set.
   app.get("/api/currencies", requireAuth, async (_req, res) => {
     const rows = await db.select().from(currencies).orderBy(currencies.code);
     res.json(rows);

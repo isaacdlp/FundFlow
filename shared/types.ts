@@ -74,7 +74,7 @@ export interface OrganizationPublic {
   stateProvince: string | null;
 }
 
-export interface SpvInfo {
+export interface VehicleInfo {
   id: number;
   organizationId: number;
   legalName: string;
@@ -123,9 +123,9 @@ export interface SpvInfo {
   currentValue: string;
 }
 
-export interface SpvAssetInfo {
+export interface VehicleAssetInfo {
   id: number;
-  spvId: number;
+  vehicleId: number;
   companyName: string;
   instrumentType: string;
   purchaseDate: string | null;
@@ -136,7 +136,7 @@ export interface SpvAssetInfo {
   currentValue: string;
 }
 
-export interface SpvAssetValuationInfo {
+export interface VehicleAssetValuationInfo {
   id: number;
   assetId: number;
   date: string;
@@ -145,9 +145,9 @@ export interface SpvAssetValuationInfo {
   createdAt: string;
 }
 
-export interface SpvMemberInfo {
+export interface VehicleMemberInfo {
   id: number;
-  spvId: number;
+  vehicleId: number;
   accountId: number | null;
   entityId: number | null;
   investorType: "account" | "entity";
@@ -176,8 +176,8 @@ export interface SpvMemberInfo {
 
 export interface PortfolioInvestment {
   memberId: number;
-  spvId: number;
-  spvName: string;
+  vehicleId: number;
+  vehicleName: string;
   investmentCompanyName: string;
   investmentType: string;
   organizationId: number;
@@ -336,6 +336,8 @@ export interface PromoterInfo {
   incentives: PromoterIncentiveInfo[];
   /** Accounts and entities credited to this promoter, inherited entity credit included. */
   introductionCount: number;
+  /** Whether a promoter agreement is signed; a promoter can only be active then. */
+  hasSignedContract: boolean;
 }
 
 export type ContractKind = "promoter_agreement";

@@ -9,12 +9,12 @@ vi.mock("../../server/email", () => ({ sendPasswordResetEmail: vi.fn() }));
 const { createTestApp } = await import("./setup/test-app");
 
 /**
- * canManageSpv requires admin OR org organizer.
- * Plain org members cannot mutate SPV investments.
+ * canManageVehicle requires admin OR org organizer.
+ * Plain org members cannot mutate Vehicle investments.
  */
-describe("SPV members", () => {
+describe("Vehicle members", () => {
   let app: Awaited<ReturnType<typeof createTestApp>>;
-  const spvA = fixtures.spv({ id: 100, organizationId: 10 });
+  const vehicleA = fixtures.vehicle({ id: 100, organizationId: 10 });
 
   function asOrganizerOf(orgId: number) {
     return fixtures.organization({
@@ -28,33 +28,33 @@ describe("SPV members", () => {
     app = await createTestApp();
   });
 
-  describe("GET /api/spvs/:id/members", () => {
-    it("non-admin without SPV access gets 403", async () => {
+  describe("GET /api/vehicles/:id/members", () => {
+    it("non-admin without Vehicle access gets 403", async () => {
       const agent = await loginAs(app, mockStorage, fixtures.outsiderAccount);
-      mockStorage.getSpvIdsForAccount.mockResolvedValue([]);
-      const res = await agent.get(`/api/spvs/${spvA.id}/members`);
+      mockStorage.getVehicleIdsForAccount.mockResolvedValue([]);
+      const res = await agent.get(`/api/vehicles/${vehicleA.id}/members`);
       expect(res.status).toBe(403);
     });
 
-    it("admin lists all SPV members", async () => {
+    it("admin lists all Vehicle members", async () => {
       const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
-      mockStorage.getSpvMembers.mockResolvedValue([
-        { id: 1, spvId: spvA.id, accountId: 2, entityId: null },
-        { id: 2, spvId: spvA.id, accountId: null, entityId: 200 },
+      mockStorage.getVehicleMembers.mockResolvedValue([
+        { id: 1, vehicleId: vehicleA.id, accountId: 2, entityId: null },
+        { id: 2, vehicleId: vehicleA.id, accountId: null, entityId: 200 },
       ]);
-      const res = await agent.get(`/api/spvs/${spvA.id}/members`);
+      const res = await agent.get(`/api/vehicles/${vehicleA.id}/members`);
       expect(res.status).toBe(200);
       expect(res.body).toHaveLength(2);
     });
   });
 
-  describe("POST /api/spvs/:id/members", () => {
-    it("plain member of org cannot add (canManageSpv requires organizer/admin)", async () => {
+  describe("POST /api/vehicles/:id/members", () => {
+    it("plain member of org cannot add (canManageVehicle requires organizer/admin)", async () => {
       const agent = await loginAs(app, mockStorage, fixtures.memberAccount);
-      mockStorage.getSpv.mockResolvedValue(spvA);
-      mockStorage.getOrganization.mockResolvedValue(asOrganizerOf(spvA.organizationId));
+      mockStorage.getVehicle.mockResolvedValue(vehicleA);
+      mockStorage.getOrganization.mockResolvedValue(asOrganizerOf(vehicleA.organizationId));
       const res = await agent
-        .post(`/api/spvs/${spvA.id}/members`)
+        .post(`/api/vehicles/${vehicleA.id}/members`)
         .send({ accountId: 2, committed: 1000 });
       expect(res.status).toBe(403);
     });
@@ -62,7 +62,7 @@ describe("SPV members", () => {
     it("returns 400 when both accountId and entityId provided", async () => {
       const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
       const res = await agent
-        .post(`/api/spvs/${spvA.id}/members`)
+        .post(`/api/vehicles/${vehicleA.id}/members`)
         .send({ accountId: 2, entityId: 200 });
       expect(res.status).toBe(400);
     });
@@ -70,7 +70,7 @@ describe("SPV members", () => {
     it("returns 400 when neither accountId nor entityId provided", async () => {
       const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
       const res = await agent
-        .post(`/api/spvs/${spvA.id}/members`)
+        .post(`/api/vehicles/${vehicleA.id}/members`)
         .send({ committed: 100 });
       expect(res.status).toBe(400);
     });
@@ -78,7 +78,7 @@ describe("SPV members", () => {
     it("returns 400 on negative committed", async () => {
       const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
       const res = await agent
-        .post(`/api/spvs/${spvA.id}/members`)
+        .post(`/api/vehicles/${vehicleA.id}/members`)
         .send({ accountId: 2, committed: -1 });
       expect(res.status).toBe(400);
     });
@@ -86,23 +86,23 @@ describe("SPV members", () => {
     it("returns 400 on invalid date", async () => {
       const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
       const res = await agent
-        .post(`/api/spvs/${spvA.id}/members`)
+        .post(`/api/vehicles/${vehicleA.id}/members`)
         .send({ accountId: 2, date: "not-a-date" });
       expect(res.status).toBe(400);
     });
 
-    it("returns 404 when SPV missing", async () => {
+    it("returns 404 when Vehicle missing", async () => {
       const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
-      mockStorage.getSpv.mockResolvedValue(null);
+      mockStorage.getVehicle.mockResolvedValue(null);
       const res = await agent
-        .post(`/api/spvs/${spvA.id}/members`)
+        .post(`/api/vehicles/${vehicleA.id}/members`)
         .send({ accountId: 2, date: "2025-01-15" });
       expect(res.status).toBe(404);
     });
 
-    it("rejects accountId when account is not an APPROVED member of the SPV's org", async () => {
+    it("rejects accountId when account is not an APPROVED member of the Vehicle's org", async () => {
       const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
-      mockStorage.getSpv.mockResolvedValue(spvA);
+      mockStorage.getVehicle.mockResolvedValue(vehicleA);
       mockStorage.getAccount.mockImplementation(async (id: number) =>
         id === fixtures.adminAccount.id ? fixtures.adminAccount : fixtures.memberAccount,
       );
@@ -110,7 +110,7 @@ describe("SPV members", () => {
         fixtures.member({ status: "pending" }),
       );
       const res = await agent
-        .post(`/api/spvs/${spvA.id}/members`)
+        .post(`/api/vehicles/${vehicleA.id}/members`)
         .send({ accountId: fixtures.memberAccount.id, date: "2025-01-15" });
       expect(res.status).toBe(400);
       expect(res.body.message).toMatch(/approved member/i);
@@ -118,78 +118,78 @@ describe("SPV members", () => {
 
     it("admin successfully adds an account investor", async () => {
       const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
-      mockStorage.getSpv.mockResolvedValue(spvA);
+      mockStorage.getVehicle.mockResolvedValue(vehicleA);
       mockStorage.getAccount.mockImplementation(async (id: number) =>
         id === fixtures.adminAccount.id ? fixtures.adminAccount : fixtures.memberAccount,
       );
       mockStorage.getMember.mockResolvedValue(
         fixtures.member({ status: "approved" }),
       );
-      mockStorage.addSpvMember.mockResolvedValue({
+      mockStorage.addVehicleMember.mockResolvedValue({
         id: 1,
-        spvId: spvA.id,
+        vehicleId: vehicleA.id,
         accountId: fixtures.memberAccount.id,
         entityId: null,
       });
       const res = await agent
-        .post(`/api/spvs/${spvA.id}/members`)
+        .post(`/api/vehicles/${vehicleA.id}/members`)
         .send({ accountId: fixtures.memberAccount.id, committed: 5000, date: "2025-01-15" });
       expect(res.status).toBe(201);
-      expect(mockStorage.addSpvMember).toHaveBeenCalled();
+      expect(mockStorage.addVehicleMember).toHaveBeenCalled();
     });
 
     it("admin can add an entity investor", async () => {
       const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
-      mockStorage.getSpv.mockResolvedValue(spvA);
+      mockStorage.getVehicle.mockResolvedValue(vehicleA);
       mockStorage.getEntity.mockResolvedValue(fixtures.entity());
-      mockStorage.addSpvMember.mockResolvedValue({
+      mockStorage.addVehicleMember.mockResolvedValue({
         id: 2,
-        spvId: spvA.id,
+        vehicleId: vehicleA.id,
         accountId: null,
         entityId: 200,
       });
       const res = await agent
-        .post(`/api/spvs/${spvA.id}/members`)
+        .post(`/api/vehicles/${vehicleA.id}/members`)
         .send({ entityId: 200, committed: 2500, date: "2025-01-15" });
       expect(res.status).toBe(201);
     });
 
     it("returns 404 when entity does not exist", async () => {
       const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
-      mockStorage.getSpv.mockResolvedValue(spvA);
+      mockStorage.getVehicle.mockResolvedValue(vehicleA);
       mockStorage.getEntity.mockResolvedValue(null);
       const res = await agent
-        .post(`/api/spvs/${spvA.id}/members`)
+        .post(`/api/vehicles/${vehicleA.id}/members`)
         .send({ entityId: 9999, date: "2025-01-15" });
       expect(res.status).toBe(404);
     });
   });
 
-  describe("PATCH /api/spvs/:id/members/:memberId", () => {
-    it("returns 404 when member not on the SPV", async () => {
+  describe("PATCH /api/vehicles/:id/members/:memberId", () => {
+    it("returns 404 when member not on the Vehicle", async () => {
       const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
-      mockStorage.updateSpvMemberById.mockResolvedValue(undefined);
+      mockStorage.updateVehicleMemberById.mockResolvedValue(undefined);
       const res = await agent
-        .patch(`/api/spvs/${spvA.id}/members/9999`)
+        .patch(`/api/vehicles/${vehicleA.id}/members/9999`)
         .send({ totalCalled: 100 });
       expect(res.status).toBe(404);
     });
 
     it("admin can update an account-investor's values", async () => {
       const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
-      mockStorage.updateSpvMemberById.mockResolvedValue({
+      mockStorage.updateVehicleMemberById.mockResolvedValue({
         id: 1,
-        spvId: spvA.id,
+        vehicleId: vehicleA.id,
         accountId: 2,
         entityId: null,
         totalCalled: "200.00",
       });
       const res = await agent
-        .patch(`/api/spvs/${spvA.id}/members/1`)
+        .patch(`/api/vehicles/${vehicleA.id}/members/1`)
         .send({ totalCalled: 200 });
       expect(res.status).toBe(200);
-      expect(mockStorage.updateSpvMemberById).toHaveBeenCalledWith(
-        spvA.id,
+      expect(mockStorage.updateVehicleMemberById).toHaveBeenCalledWith(
+        vehicleA.id,
         1,
         { totalCalled: "200.00" },
       );
@@ -197,38 +197,38 @@ describe("SPV members", () => {
 
     it("admin can update an entity-investor's values", async () => {
       const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
-      mockStorage.updateSpvMemberById.mockResolvedValue({
+      mockStorage.updateVehicleMemberById.mockResolvedValue({
         id: 2,
-        spvId: spvA.id,
+        vehicleId: vehicleA.id,
         accountId: null,
         entityId: 200,
       });
       const res = await agent
-        .patch(`/api/spvs/${spvA.id}/members/2`)
+        .patch(`/api/vehicles/${vehicleA.id}/members/2`)
         .send({ distributed: 50 });
       expect(res.status).toBe(200);
-      expect(mockStorage.updateSpvMemberById).toHaveBeenCalledWith(
-        spvA.id,
+      expect(mockStorage.updateVehicleMemberById).toHaveBeenCalledWith(
+        vehicleA.id,
         2,
         { distributed: "50.00" },
       );
     });
   });
 
-  describe("DELETE /api/spvs/:id/members/:memberId", () => {
-    it("returns 404 when member not on the SPV", async () => {
+  describe("DELETE /api/vehicles/:id/members/:memberId", () => {
+    it("returns 404 when member not on the Vehicle", async () => {
       const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
-      mockStorage.removeSpvMemberById.mockResolvedValue(false);
-      const res = await agent.delete(`/api/spvs/${spvA.id}/members/9999`);
+      mockStorage.removeVehicleMemberById.mockResolvedValue(false);
+      const res = await agent.delete(`/api/vehicles/${vehicleA.id}/members/9999`);
       expect(res.status).toBe(404);
     });
 
     it("admin can remove an account-investor", async () => {
       const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
-      mockStorage.removeSpvMemberById.mockResolvedValue(true);
-      const res = await agent.delete(`/api/spvs/${spvA.id}/members/1`);
+      mockStorage.removeVehicleMemberById.mockResolvedValue(true);
+      const res = await agent.delete(`/api/vehicles/${vehicleA.id}/members/1`);
       expect(res.status).toBe(200);
-      expect(mockStorage.removeSpvMemberById).toHaveBeenCalledWith(spvA.id, 1);
+      expect(mockStorage.removeVehicleMemberById).toHaveBeenCalledWith(vehicleA.id, 1);
     });
   });
 });

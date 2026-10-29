@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { useLocalePath, useLocale } from "@/i18n/hooks";
 import { fmtMoney } from "@/lib/format";
 import { ROUTE_PATTERNS } from "@/i18n/routes";
-import type { SpvInfo, SpvMemberInfo, MemberInfo, OrganizerAccount, EntityInfo, SpvAssetInfo, SpvAssetValuationInfo, CurrencyInfo } from "@shared/types";
+import type { VehicleInfo, VehicleMemberInfo, MemberInfo, OrganizerAccount, EntityInfo, VehicleAssetInfo, VehicleAssetValuationInfo, CurrencyInfo } from "@shared/types";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -36,7 +36,7 @@ function capitalOf(m: { committed: string | null; managementFee: string | null }
 }
 
 function computeOwnershipPercents(
-  members: SpvMemberInfo[],
+  members: VehicleMemberInfo[],
   method: string | null | undefined,
 ): Record<number, number | null> {
   const out: Record<number, number | null> = {};
@@ -64,7 +64,7 @@ function formatCurrency(value: string | number | null, symbol: string, locale: s
   return symbol + fmtMoney(num, locale);
 }
 
-function SpvMembersTab({ spvId, orgId, canEdit, allocationMethod, currencySymbol }: { spvId: string; orgId: number; canEdit: boolean; allocationMethod: string; currencySymbol: string }) {
+function VehicleMembersTab({ vehicleId, orgId, canEdit, allocationMethod, currencySymbol }: { vehicleId: string; orgId: number; canEdit: boolean; allocationMethod: string; currencySymbol: string }) {
   const { toast } = useToast();
   const { t } = useTranslation();
   const locale = useLocale();
@@ -84,8 +84,8 @@ function SpvMembersTab({ spvId, orgId, canEdit, allocationMethod, currencySymbol
   const [editValues, setEditValues] = useState<{ date: string; committed: string; managementFee: string; otherFee: string; carry: string; totalCalled: string; distributed: string; ownershipPercent: string }>({ date: "", committed: "", managementFee: "", otherFee: "", carry: "", totalCalled: "", distributed: "", ownershipPercent: "" });
   const showOwnership = allocationMethod === "Custom";
 
-  const { data: spvMembers, isLoading: membersLoading } = useQuery<SpvMemberInfo[]>({
-    queryKey: ["/api/spvs", spvId, "members"],
+  const { data: vehicleMembers, isLoading: membersLoading } = useQuery<VehicleMemberInfo[]>({
+    queryKey: ["/api/vehicles", vehicleId, "members"],
   });
 
   // Only organizers/admins can list org members (used for the add-investor picker).
@@ -99,62 +99,62 @@ function SpvMembersTab({ spvId, orgId, canEdit, allocationMethod, currencySymbol
   });
 
   const approvedOrgMembers = orgMembers?.filter(m => m.status === "approved") || [];
-  // Investors can hold multiple positions ("tranches") in the same SPV — do not filter out existing members.
+  // Investors can hold multiple positions ("tranches") in the same Vehicle — do not filter out existing members.
   const availableAccounts = approvedOrgMembers;
   const availableEntities = entitiesList || [];
 
   const addMutation = useMutation({
     mutationFn: async (payload: { accountId?: number; entityId?: number; date: string | null; committed: string; managementFee: string; otherFee: string; carry: string; totalCalled: string; distributed: string; ownershipPercent: string | null }) => {
-      const res = await apiRequest("POST", `/api/spvs/${spvId}/members`, payload);
+      const res = await apiRequest("POST", `/api/vehicles/${vehicleId}/members`, payload);
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/spvs", spvId, "members"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/spvs", spvId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/vehicles", vehicleId, "members"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/vehicles", vehicleId] });
       queryClient.invalidateQueries({ predicate: q => typeof q.queryKey[0] === "string" && (q.queryKey[0] as string).startsWith("/api/portfolio") });
       setSelectedAccountId(""); setSelectedEntityId("");
       setNewDate(""); setNewCommitted(""); setNewManagementFee(""); setNewOtherFee(""); setNewCarry(""); setNewTotalCalled(""); setNewDistributed(""); setNewOwnershipPercent("");
-      toast({ title: t("spvDetail.investmentAdded") });
+      toast({ title: t("vehicleDetail.investmentAdded") });
     },
     onError: (error: Error) => {
-      toast({ title: t("spvDetail.investmentAddFailed"), description: error.message, variant: "destructive" });
+      toast({ title: t("vehicleDetail.investmentAddFailed"), description: error.message, variant: "destructive" });
     },
   });
 
   const updateMutation = useMutation({
     mutationFn: async (payload: { memberId: number; date: string | null; committed: string; managementFee: string; otherFee: string; carry: string; totalCalled: string; distributed: string; ownershipPercent: string | null }) => {
       const { memberId, ...rest } = payload;
-      const res = await apiRequest("PATCH", `/api/spvs/${spvId}/members/${memberId}`, rest);
+      const res = await apiRequest("PATCH", `/api/vehicles/${vehicleId}/members/${memberId}`, rest);
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/spvs", spvId, "members"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/vehicles", vehicleId, "members"] });
       queryClient.invalidateQueries({ predicate: q => typeof q.queryKey[0] === "string" && (q.queryKey[0] as string).startsWith("/api/portfolio") });
       setEditingMemberId(null);
-      toast({ title: t("spvDetail.investmentUpdated") });
+      toast({ title: t("vehicleDetail.investmentUpdated") });
     },
     onError: (error: Error) => {
-      toast({ title: t("spvDetail.investmentUpdateFailed"), description: error.message, variant: "destructive" });
+      toast({ title: t("vehicleDetail.investmentUpdateFailed"), description: error.message, variant: "destructive" });
     },
   });
 
   const removeMutation = useMutation({
     mutationFn: async (memberId: number) => {
-      const res = await apiRequest("DELETE", `/api/spvs/${spvId}/members/${memberId}`);
+      const res = await apiRequest("DELETE", `/api/vehicles/${vehicleId}/members/${memberId}`);
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/spvs", spvId, "members"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/spvs", spvId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/vehicles", vehicleId, "members"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/vehicles", vehicleId] });
       queryClient.invalidateQueries({ predicate: q => typeof q.queryKey[0] === "string" && (q.queryKey[0] as string).startsWith("/api/portfolio") });
-      toast({ title: t("spvDetail.investmentRemoved") });
+      toast({ title: t("vehicleDetail.investmentRemoved") });
     },
     onError: (error: Error) => {
-      toast({ title: t("spvDetail.investmentRemoveFailed"), description: error.message, variant: "destructive" });
+      toast({ title: t("vehicleDetail.investmentRemoveFailed"), description: error.message, variant: "destructive" });
     },
   });
 
-  const startEdit = (m: SpvMemberInfo) => {
+  const startEdit = (m: VehicleMemberInfo) => {
     setEditingMemberId(m.id);
     setEditValues({
       date: m.date || "",
@@ -170,7 +170,7 @@ function SpvMembersTab({ spvId, orgId, canEdit, allocationMethod, currencySymbol
 
   const canSubmit = (investorType === "account" ? !!selectedAccountId : !!selectedEntityId) && !!newDate;
 
-  const ownershipPercentsMap = computeOwnershipPercents(spvMembers || [], allocationMethod);
+  const ownershipPercentsMap = computeOwnershipPercents(vehicleMembers || [], allocationMethod);
 
   if (membersLoading) return <Skeleton className="h-64 w-full" />;
 
@@ -178,9 +178,9 @@ function SpvMembersTab({ spvId, orgId, canEdit, allocationMethod, currencySymbol
     <Card>
       <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0">
         <div>
-          <h2 className="text-lg font-semibold">{t("spvDetail.spvInvestmentsTitle")}</h2>
+          <h2 className="text-lg font-semibold">{t("vehicleDetail.vehicleInvestmentsTitle")}</h2>
           <p className="text-sm text-muted-foreground mt-1">
-            {t("spvDetail.spvInvestmentsSubtitle")}
+            {t("vehicleDetail.vehicleInvestmentsSubtitle")}
           </p>
         </div>
       </CardHeader>
@@ -188,23 +188,23 @@ function SpvMembersTab({ spvId, orgId, canEdit, allocationMethod, currencySymbol
         {canEdit && (
         <div className="space-y-3 p-4 rounded-md border bg-muted/30">
           <div className="space-y-2">
-            <Label>{t("spvDetail.investorType")}</Label>
+            <Label>{t("vehicleDetail.investorType")}</Label>
             <Select value={investorType} onValueChange={v => { setInvestorType(v as "account" | "entity"); setSelectedAccountId(""); setSelectedEntityId(""); }}>
               <SelectTrigger data-testid="select-investor-type">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="account">{t("spvDetail.investorTypeAccount")}</SelectItem>
-                <SelectItem value="entity">{t("spvDetail.investorTypeEntity")}</SelectItem>
+                <SelectItem value="account">{t("vehicleDetail.investorTypeAccount")}</SelectItem>
+                <SelectItem value="entity">{t("vehicleDetail.investorTypeEntity")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
           <div className="space-y-2">
-            <Label>{t("spvDetail.investor")}</Label>
+            <Label>{t("vehicleDetail.investor")}</Label>
             {investorType === "account" ? (
               <Select value={selectedAccountId} onValueChange={setSelectedAccountId}>
-                <SelectTrigger data-testid="select-spv-account">
-                  <SelectValue placeholder={t("spvDetail.selectApprovedMember")} />
+                <SelectTrigger data-testid="select-vehicle-account">
+                  <SelectValue placeholder={t("vehicleDetail.selectApprovedMember")} />
                 </SelectTrigger>
                 <SelectContent>
                   {availableAccounts.length > 0 ? (
@@ -214,14 +214,14 @@ function SpvMembersTab({ spvId, orgId, canEdit, allocationMethod, currencySymbol
                       </SelectItem>
                     ))
                   ) : (
-                    <SelectItem value="none" disabled>{t("spvDetail.noAvailableAccounts")}</SelectItem>
+                    <SelectItem value="none" disabled>{t("vehicleDetail.noAvailableAccounts")}</SelectItem>
                   )}
                 </SelectContent>
               </Select>
             ) : (
               <Select value={selectedEntityId} onValueChange={setSelectedEntityId}>
-                <SelectTrigger data-testid="select-spv-entity">
-                  <SelectValue placeholder={t("spvDetail.selectEntityPlaceholder")} />
+                <SelectTrigger data-testid="select-vehicle-entity">
+                  <SelectValue placeholder={t("vehicleDetail.selectEntityPlaceholder")} />
                 </SelectTrigger>
                 <SelectContent>
                   {availableEntities.length > 0 ? (
@@ -231,7 +231,7 @@ function SpvMembersTab({ spvId, orgId, canEdit, allocationMethod, currencySymbol
                       </SelectItem>
                     ))
                   ) : (
-                    <SelectItem value="none" disabled>{t("spvDetail.noAvailableEntities")}</SelectItem>
+                    <SelectItem value="none" disabled>{t("vehicleDetail.noAvailableEntities")}</SelectItem>
                   )}
                 </SelectContent>
               </Select>
@@ -243,38 +243,38 @@ function SpvMembersTab({ spvId, orgId, canEdit, allocationMethod, currencySymbol
               <Input type="date" value={newDate} onChange={e => setNewDate(e.target.value)} data-testid="input-new-date" />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">{t("spvDetail.committed")}</Label>
+              <Label className="text-xs">{t("vehicleDetail.committed")}</Label>
               <Input type="number" step="0.01" placeholder="0.00" value={newCommitted} onChange={e => setNewCommitted(e.target.value)} data-testid="input-new-committed" />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">{t("spvDetail.managementFee")}</Label>
+              <Label className="text-xs">{t("vehicleDetail.managementFee")}</Label>
               <Input type="number" step="0.01" placeholder="0.00" value={newManagementFee} onChange={e => setNewManagementFee(e.target.value)} data-testid="input-new-management-fee" />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">{t("spvDetail.otherFee")}</Label>
+              <Label className="text-xs">{t("vehicleDetail.otherFee")}</Label>
               <Input type="number" step="0.01" placeholder="0.00" value={newOtherFee} onChange={e => setNewOtherFee(e.target.value)} data-testid="input-new-other-fee" />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">{t("spvDetail.carrySuccessFee")}</Label>
+              <Label className="text-xs">{t("vehicleDetail.carrySuccessFee")}</Label>
               <Input type="number" step="0.01" min="0" max="100" placeholder="0.00" value={newCarry} onChange={e => setNewCarry(e.target.value)} data-testid="input-new-carry" />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">{t("spvDetail.totalCalled")}</Label>
+              <Label className="text-xs">{t("vehicleDetail.totalCalled")}</Label>
               <Input type="number" step="0.01" placeholder="0.00" value={newTotalCalled} onChange={e => setNewTotalCalled(e.target.value)} data-testid="input-new-total-called" />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs">{t("spvDetail.distributed")}</Label>
+              <Label className="text-xs">{t("vehicleDetail.distributed")}</Label>
               <Input type="number" step="0.01" placeholder="0.00" value={newDistributed} onChange={e => setNewDistributed(e.target.value)} data-testid="input-new-distributed" />
             </div>
             {showOwnership && (
               <div className="space-y-1">
-                <Label className="text-xs">{t("spvDetail.ownershipPercent")}</Label>
+                <Label className="text-xs">{t("vehicleDetail.ownershipPercent")}</Label>
                 <Input type="number" step="0.0001" min="0" max="100" placeholder="0.00" value={newOwnershipPercent} onChange={e => setNewOwnershipPercent(e.target.value)} data-testid="input-new-ownership-percent" />
               </div>
             )}
           </div>
           <p className="text-xs text-muted-foreground">
-            {t("spvDetail.capitalHelper")}
+            {t("vehicleDetail.capitalHelper")}
           </p>
           <div className="flex justify-end">
             <Button
@@ -297,10 +297,10 @@ function SpvMembersTab({ spvId, orgId, canEdit, allocationMethod, currencySymbol
                 }
               }}
               disabled={!canSubmit || addMutation.isPending}
-              data-testid="button-add-spv-member"
+              data-testid="button-add-vehicle-member"
             >
               <UserPlus className="h-4 w-4 mr-2" />
-              {addMutation.isPending ? t("spvDetail.adding") : t("spvDetail.addInvestment")}
+              {addMutation.isPending ? t("vehicleDetail.adding") : t("vehicleDetail.addInvestment")}
             </Button>
           </div>
         </div>
@@ -308,9 +308,9 @@ function SpvMembersTab({ spvId, orgId, canEdit, allocationMethod, currencySymbol
 
         {canEdit && <Separator />}
 
-        {spvMembers && spvMembers.length > 0 ? (
+        {vehicleMembers && vehicleMembers.length > 0 ? (
           <div className="space-y-3">
-            {spvMembers.map(member => {
+            {vehicleMembers.map(member => {
               const isEditing = editingMemberId === member.id;
               const committed = parseFloat(member.committed || "0");
               const mgmtFee = parseFloat(member.managementFee || "0");
@@ -344,7 +344,7 @@ function SpvMembersTab({ spvId, orgId, canEdit, allocationMethod, currencySymbol
                 ? lp("entityDetail", { id: member.entity!.id })
                 : null;
               return (
-                <div key={member.id} className="p-3 rounded-md border" data-testid={`spv-member-${member.id}`}>
+                <div key={member.id} className="p-3 rounded-md border" data-testid={`vehicle-member-${member.id}`}>
                   <div className="flex items-center gap-3">
                     <div className={`h-10 w-10 rounded-full ${isEntity ? "bg-blue-500/10 text-blue-600" : "bg-primary/10 text-primary"} flex items-center justify-center text-sm font-semibold flex-shrink-0`}>
                       {initials}
@@ -358,12 +358,12 @@ function SpvMembersTab({ spvId, orgId, canEdit, allocationMethod, currencySymbol
                         <p className="text-sm font-medium truncate">{displayName}</p>
                       )}
                       <p className="text-xs text-muted-foreground truncate">
-                        {isEntity && <Badge variant="secondary" className="mr-2 text-[10px]">{t("spvDetail.entityBadge")}</Badge>}
+                        {isEntity && <Badge variant="secondary" className="mr-2 text-[10px]">{t("vehicleDetail.entityBadge")}</Badge>}
                         {subText}
                       </p>
                     </div>
                     {canEdit && !isEditing && (
-                      <Button variant="ghost" size="icon" onClick={() => startEdit(member)} data-testid={`button-edit-spv-member-${member.id}`}>
+                      <Button variant="ghost" size="icon" onClick={() => startEdit(member)} data-testid={`button-edit-vehicle-member-${member.id}`}>
                         <Pencil className="h-4 w-4" />
                       </Button>
                     )}
@@ -373,7 +373,7 @@ function SpvMembersTab({ spvId, orgId, canEdit, allocationMethod, currencySymbol
                         size="icon"
                         onClick={() => removeMutation.mutate(member.id)}
                         disabled={removeMutation.isPending}
-                        data-testid={`button-remove-spv-member-${member.id}`}
+                        data-testid={`button-remove-vehicle-member-${member.id}`}
                       >
                         <Trash2 className="h-4 w-4 text-destructive" />
                       </Button>
@@ -387,32 +387,32 @@ function SpvMembersTab({ spvId, orgId, canEdit, allocationMethod, currencySymbol
                           <Input type="date" value={editValues.date} onChange={e => setEditValues(v => ({ ...v, date: e.target.value }))} data-testid={`input-edit-date-${member.id}`} />
                         </div>
                         <div className="space-y-1">
-                          <Label className="text-xs">{t("spvDetail.committed")}</Label>
+                          <Label className="text-xs">{t("vehicleDetail.committed")}</Label>
                           <Input type="number" step="0.01" value={editValues.committed} onChange={e => setEditValues(v => ({ ...v, committed: e.target.value }))} data-testid={`input-edit-committed-${member.id}`} />
                         </div>
                         <div className="space-y-1">
-                          <Label className="text-xs">{t("spvDetail.managementFee")}</Label>
+                          <Label className="text-xs">{t("vehicleDetail.managementFee")}</Label>
                           <Input type="number" step="0.01" value={editValues.managementFee} onChange={e => setEditValues(v => ({ ...v, managementFee: e.target.value }))} data-testid={`input-edit-management-fee-${member.id}`} />
                         </div>
                         <div className="space-y-1">
-                          <Label className="text-xs">{t("spvDetail.otherFee")}</Label>
+                          <Label className="text-xs">{t("vehicleDetail.otherFee")}</Label>
                           <Input type="number" step="0.01" value={editValues.otherFee} onChange={e => setEditValues(v => ({ ...v, otherFee: e.target.value }))} data-testid={`input-edit-other-fee-${member.id}`} />
                         </div>
                         <div className="space-y-1">
-                          <Label className="text-xs">{t("spvDetail.carryPercentSuccessFee")}</Label>
+                          <Label className="text-xs">{t("vehicleDetail.carryPercentSuccessFee")}</Label>
                           <Input type="number" step="0.01" min="0" max="100" value={editValues.carry} onChange={e => setEditValues(v => ({ ...v, carry: e.target.value }))} data-testid={`input-edit-carry-${member.id}`} />
                         </div>
                         <div className="space-y-1">
-                          <Label className="text-xs">{t("spvDetail.totalCalled")}</Label>
+                          <Label className="text-xs">{t("vehicleDetail.totalCalled")}</Label>
                           <Input type="number" step="0.01" value={editValues.totalCalled} onChange={e => setEditValues(v => ({ ...v, totalCalled: e.target.value }))} data-testid={`input-edit-total-called-${member.id}`} />
                         </div>
                         <div className="space-y-1">
-                          <Label className="text-xs">{t("spvDetail.distributed")}</Label>
+                          <Label className="text-xs">{t("vehicleDetail.distributed")}</Label>
                           <Input type="number" step="0.01" value={editValues.distributed} onChange={e => setEditValues(v => ({ ...v, distributed: e.target.value }))} data-testid={`input-edit-distributed-${member.id}`} />
                         </div>
                         {showOwnership && (
                           <div className="space-y-1">
-                            <Label className="text-xs">{t("spvDetail.ownershipPercent")}</Label>
+                            <Label className="text-xs">{t("vehicleDetail.ownershipPercent")}</Label>
                             <Input type="number" step="0.0001" min="0" max="100" value={editValues.ownershipPercent} onChange={e => setEditValues(v => ({ ...v, ownershipPercent: e.target.value }))} data-testid={`input-edit-ownership-${member.id}`} />
                           </div>
                         )}
@@ -443,49 +443,49 @@ function SpvMembersTab({ spvId, orgId, canEdit, allocationMethod, currencySymbol
                         <p className="font-medium" data-testid={`text-date-${member.id}`}>{member.date || "—"}</p>
                       </div>
                       <div>
-                        <p className="text-muted-foreground">{t("spvDetail.committed")}</p>
+                        <p className="text-muted-foreground">{t("vehicleDetail.committed")}</p>
                         <p className="font-medium" data-testid={`text-committed-${member.id}`}>{formatCurrency(member.committed, currencySymbol, locale)}</p>
                       </div>
                       <div>
-                        <p className="text-muted-foreground">{t("spvDetail.managementFee")}</p>
+                        <p className="text-muted-foreground">{t("vehicleDetail.managementFee")}</p>
                         <p className="font-medium" data-testid={`text-management-fee-${member.id}`}>{formatCurrency(member.managementFee, currencySymbol, locale)}</p>
                       </div>
                       <div>
-                        <p className="text-muted-foreground">{t("spvDetail.otherFee")}</p>
+                        <p className="text-muted-foreground">{t("vehicleDetail.otherFee")}</p>
                         <p className="font-medium" data-testid={`text-other-fee-${member.id}`}>{formatCurrency(member.otherFee, currencySymbol, locale)}</p>
                       </div>
                       <div>
-                        <p className="text-muted-foreground">{t("spvDetail.carryPercent")}</p>
+                        <p className="text-muted-foreground">{t("vehicleDetail.carryPercent")}</p>
                         <p className="font-medium" data-testid={`text-carry-${member.id}`}>{parseFloat(member.carry || "0").toFixed(2)}%</p>
                       </div>
                       <div>
-                        <p className="text-muted-foreground">{t("spvDetail.capital")}</p>
+                        <p className="text-muted-foreground">{t("vehicleDetail.capital")}</p>
                         <p className="font-medium" data-testid={`text-capital-${member.id}`}>{formatCurrency(capital, currencySymbol, locale)}</p>
                       </div>
                       <div>
-                        <p className="text-muted-foreground">{t("spvDetail.totalCalled")}</p>
+                        <p className="text-muted-foreground">{t("vehicleDetail.totalCalled")}</p>
                         <p className="font-medium" data-testid={`text-total-called-${member.id}`}>{formatCurrency(member.totalCalled, currencySymbol, locale)}</p>
                       </div>
                       <div>
-                        <p className="text-muted-foreground">{t("spvDetail.commitmentRemaining")}</p>
+                        <p className="text-muted-foreground">{t("vehicleDetail.commitmentRemaining")}</p>
                         <p className="font-medium" data-testid={`text-commitment-remaining-${member.id}`}>{formatCurrency(commitmentRemaining, currencySymbol, locale)}</p>
                       </div>
                       <div>
-                        <p className="text-muted-foreground">{t("spvDetail.distributed")}</p>
+                        <p className="text-muted-foreground">{t("vehicleDetail.distributed")}</p>
                         <p className="font-medium" data-testid={`text-distributed-${member.id}`}>{formatCurrency(member.distributed, currencySymbol, locale)}</p>
                       </div>
                       <div>
-                        <p className="text-muted-foreground">{t("spvDetail.currentValue")}</p>
+                        <p className="text-muted-foreground">{t("vehicleDetail.currentValue")}</p>
                         <p className="font-medium" data-testid={`text-current-${member.id}`}>{formatCurrency(member.currentValue, currencySymbol, locale)}</p>
                       </div>
                       <div>
-                        <p className="text-muted-foreground">{t("spvDetail.ownership")}</p>
+                        <p className="text-muted-foreground">{t("vehicleDetail.ownership")}</p>
                         <p className="font-medium" data-testid={`text-ownership-${member.id}`}>
                           {ownership != null ? `${ownership.toFixed(2)}%` : "—"}
                         </p>
                       </div>
                       <div>
-                        <p className="text-muted-foreground">{t("spvDetail.roi")}</p>
+                        <p className="text-muted-foreground">{t("vehicleDetail.roi")}</p>
                         <p className={`font-medium ${roi >= 0 ? "text-emerald-600" : "text-red-600"}`}>{roi.toFixed(2)}%</p>
                       </div>
                     </div>
@@ -498,7 +498,7 @@ function SpvMembersTab({ spvId, orgId, canEdit, allocationMethod, currencySymbol
           <div className="text-center py-8">
             <Users className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
             <p className="text-sm text-muted-foreground">
-              {t("spvDetail.noInvestmentsYet")}
+              {t("vehicleDetail.noInvestmentsYet")}
             </p>
           </div>
         )}
@@ -507,20 +507,20 @@ function SpvMembersTab({ spvId, orgId, canEdit, allocationMethod, currencySymbol
   );
 }
 
-function SpvAssetsTab({ spvId, canEdit, spvCash, currencyCode, currencySymbol }: { spvId: string; canEdit: boolean; spvCash: string; currencyCode: string; currencySymbol: string }) {
+function VehicleAssetsTab({ vehicleId, canEdit, vehicleCash, currencyCode, currencySymbol }: { vehicleId: string; canEdit: boolean; vehicleCash: string; currencyCode: string; currencySymbol: string }) {
   const { toast } = useToast();
   const { t } = useTranslation();
   const locale = useLocale();
   const instrumentLabel = (it: string) => {
     const map: Record<string, string> = {
-      "Equity": t("spvDetail.instrumentEquity"),
-      "Convertible Note": t("spvDetail.instrumentConvertibleNote"),
-      "SAFE": t("spvDetail.instrumentSafe"),
-      "Preferred Stock": t("spvDetail.instrumentPreferredStock"),
-      "Common Stock": t("spvDetail.instrumentCommonStock"),
-      "Warrant": t("spvDetail.instrumentWarrant"),
-      "Debt": t("spvDetail.instrumentDebt"),
-      "Other": t("spvDetail.instrumentOther"),
+      "Equity": t("vehicleDetail.instrumentEquity"),
+      "Convertible Note": t("vehicleDetail.instrumentConvertibleNote"),
+      "SAFE": t("vehicleDetail.instrumentSafe"),
+      "Preferred Stock": t("vehicleDetail.instrumentPreferredStock"),
+      "Common Stock": t("vehicleDetail.instrumentCommonStock"),
+      "Warrant": t("vehicleDetail.instrumentWarrant"),
+      "Debt": t("vehicleDetail.instrumentDebt"),
+      "Other": t("vehicleDetail.instrumentOther"),
     };
     return map[it] || it;
   };
@@ -535,51 +535,51 @@ function SpvAssetsTab({ spvId, canEdit, spvCash, currencyCode, currencySymbol }:
   const [valValue, setValValue] = useState("");
   const [valNote, setValNote] = useState("");
 
-  const { data: assets, isLoading } = useQuery<SpvAssetInfo[]>({
-    queryKey: ["/api/spvs", spvId, "assets"],
+  const { data: assets, isLoading } = useQuery<VehicleAssetInfo[]>({
+    queryKey: ["/api/vehicles", vehicleId, "assets"],
   });
 
   const createMutation = useMutation({
     mutationFn: async (payload: any) => {
-      const res = await apiRequest("POST", `/api/spvs/${spvId}/assets`, payload);
+      const res = await apiRequest("POST", `/api/vehicles/${vehicleId}/assets`, payload);
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/spvs", spvId, "assets"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/spvs", spvId] });
-      queryClient.invalidateQueries({ queryKey: ["/api/spvs", spvId, "members"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/vehicles", vehicleId, "assets"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/vehicles", vehicleId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/vehicles", vehicleId, "members"] });
       queryClient.invalidateQueries({ predicate: q => typeof q.queryKey[0] === "string" && (q.queryKey[0] as string).startsWith("/api/portfolio") });
       setCompanyName(""); setInstrumentType("Equity"); setPurchaseDate(""); setCost(""); setNotes(""); setIsDefault(false);
-      toast({ title: t("spvDetail.assetAdded") });
+      toast({ title: t("vehicleDetail.assetAdded") });
     },
-    onError: (e: Error) => toast({ title: t("spvDetail.assetAddFailed"), description: e.message, variant: "destructive" }),
+    onError: (e: Error) => toast({ title: t("vehicleDetail.assetAddFailed"), description: e.message, variant: "destructive" }),
   });
 
   const setDefaultMutation = useMutation({
     mutationFn: async (assetId: number) => {
-      const res = await apiRequest("PATCH", `/api/spvs/${spvId}/assets/${assetId}`, { isDefault: true });
+      const res = await apiRequest("PATCH", `/api/vehicles/${vehicleId}/assets/${assetId}`, { isDefault: true });
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/spvs", spvId, "assets"] });
-      toast({ title: t("spvDetail.defaultAssetUpdated") });
+      queryClient.invalidateQueries({ queryKey: ["/api/vehicles", vehicleId, "assets"] });
+      toast({ title: t("vehicleDetail.defaultAssetUpdated") });
     },
-    onError: (e: Error) => toast({ title: t("spvDetail.setDefaultFailed"), description: e.message, variant: "destructive" }),
+    onError: (e: Error) => toast({ title: t("vehicleDetail.setDefaultFailed"), description: e.message, variant: "destructive" }),
   });
 
   const deleteAssetMutation = useMutation({
     mutationFn: async (assetId: number) => {
-      const res = await apiRequest("DELETE", `/api/spvs/${spvId}/assets/${assetId}`);
+      const res = await apiRequest("DELETE", `/api/vehicles/${vehicleId}/assets/${assetId}`);
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/spvs", spvId, "assets"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/spvs", spvId] });
-      queryClient.invalidateQueries({ queryKey: ["/api/spvs", spvId, "members"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/vehicles", vehicleId, "assets"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/vehicles", vehicleId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/vehicles", vehicleId, "members"] });
       queryClient.invalidateQueries({ predicate: q => typeof q.queryKey[0] === "string" && (q.queryKey[0] as string).startsWith("/api/portfolio") });
-      toast({ title: t("spvDetail.assetRemoved") });
+      toast({ title: t("vehicleDetail.assetRemoved") });
     },
-    onError: (e: Error) => toast({ title: t("spvDetail.assetRemoveFailed"), description: e.message, variant: "destructive" }),
+    onError: (e: Error) => toast({ title: t("vehicleDetail.assetRemoveFailed"), description: e.message, variant: "destructive" }),
   });
 
   if (isLoading) return <Skeleton className="h-64 w-full" />;
@@ -587,9 +587,9 @@ function SpvAssetsTab({ spvId, canEdit, spvCash, currencyCode, currencySymbol }:
   return (
     <Card>
       <CardHeader>
-        <h2 className="text-lg font-semibold">{t("spvDetail.financialInstruments")}</h2>
+        <h2 className="text-lg font-semibold">{t("vehicleDetail.financialInstruments")}</h2>
         <p className="text-sm text-muted-foreground mt-1">
-          {t("spvDetail.financialInstrumentsHelp")}
+          {t("vehicleDetail.financialInstrumentsHelp")}
         </p>
       </CardHeader>
       <CardContent className="space-y-6">
@@ -597,11 +597,11 @@ function SpvAssetsTab({ spvId, canEdit, spvCash, currencyCode, currencySymbol }:
           <div className="space-y-3 p-4 rounded-md border bg-muted/30">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div className="space-y-1">
-                <Label className="text-xs">{t("spvDetail.companyIssuerName")}</Label>
-                <Input value={companyName} onChange={e => setCompanyName(e.target.value)} placeholder={t("spvDetail.companyIssuerPlaceholder")} data-testid="input-asset-company" />
+                <Label className="text-xs">{t("vehicleDetail.companyIssuerName")}</Label>
+                <Input value={companyName} onChange={e => setCompanyName(e.target.value)} placeholder={t("vehicleDetail.companyIssuerPlaceholder")} data-testid="input-asset-company" />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">{t("spvDetail.instrumentType")}</Label>
+                <Label className="text-xs">{t("vehicleDetail.instrumentType")}</Label>
                 <Select value={instrumentType} onValueChange={setInstrumentType}>
                   <SelectTrigger data-testid="select-asset-instrument"><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -612,17 +612,17 @@ function SpvAssetsTab({ spvId, canEdit, spvCash, currencyCode, currencySymbol }:
                 </Select>
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">{t("spvDetail.purchaseDate")}</Label>
+                <Label className="text-xs">{t("vehicleDetail.purchaseDate")}</Label>
                 <Input type="date" value={purchaseDate} onChange={e => setPurchaseDate(e.target.value)} data-testid="input-asset-date" />
               </div>
               <div className="space-y-1">
-                <Label className="text-xs">{t("spvDetail.costIn", { currency: currencyCode })}</Label>
+                <Label className="text-xs">{t("vehicleDetail.costIn", { currency: currencyCode })}</Label>
                 <Input type="number" step="0.01" placeholder="0.00" value={cost} onChange={e => setCost(e.target.value)} data-testid="input-asset-cost" />
               </div>
             </div>
             <div className="space-y-1">
               <Label className="text-xs">{t("common.notes")}</Label>
-              <Textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder={t("spvDetail.notesPlaceholder")} data-testid="input-asset-notes" />
+              <Textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder={t("vehicleDetail.notesPlaceholder")} data-testid="input-asset-notes" />
             </div>
             <div className="flex items-center gap-2">
               <input
@@ -633,10 +633,10 @@ function SpvAssetsTab({ spvId, canEdit, spvCash, currencyCode, currencySymbol }:
                 data-testid="checkbox-asset-default"
               />
               <Label htmlFor="asset-is-default" className="text-xs cursor-pointer">
-                {t("spvDetail.setAsDefaultLabel")}
+                {t("vehicleDetail.setAsDefaultLabel")}
               </Label>
             </div>
-            <p className="text-xs text-muted-foreground">{t("spvDetail.spvCashAvailable", { cash: formatCurrency(spvCash, currencySymbol, locale) })}</p>
+            <p className="text-xs text-muted-foreground">{t("vehicleDetail.vehicleCashAvailable", { cash: formatCurrency(vehicleCash, currencySymbol, locale) })}</p>
             <div className="flex justify-end">
               <Button
                 onClick={() => createMutation.mutate({
@@ -651,7 +651,7 @@ function SpvAssetsTab({ spvId, canEdit, spvCash, currencyCode, currencySymbol }:
                 data-testid="button-add-asset"
               >
                 <Plus className="h-4 w-4 mr-2" />
-                {createMutation.isPending ? t("spvDetail.adding") : t("spvDetail.addAsset")}
+                {createMutation.isPending ? t("vehicleDetail.adding") : t("vehicleDetail.addAsset")}
               </Button>
             </div>
           </div>
@@ -682,8 +682,8 @@ function SpvAssetsTab({ spvId, canEdit, spvCash, currencyCode, currencySymbol }:
                       </p>
                       <p className="text-xs text-muted-foreground">
                         <Badge variant="secondary" className="mr-2 text-[10px]">{instrumentLabel(a.instrumentType)}</Badge>
-                        {a.purchaseDate && <>{t("spvDetail.purchasedOn", { date: a.purchaseDate })} </>}
-                        {t("spvDetail.costLabel", { cost: formatCurrency(a.cost, currencySymbol, locale) })} · {t("spvDetail.currentLabel", { value: formatCurrency(a.currentValue, currencySymbol, locale) })}
+                        {a.purchaseDate && <>{t("vehicleDetail.purchasedOn", { date: a.purchaseDate })} </>}
+                        {t("vehicleDetail.costLabel", { cost: formatCurrency(a.cost, currencySymbol, locale) })} · {t("vehicleDetail.currentLabel", { value: formatCurrency(a.currentValue, currencySymbol, locale) })}
                         {c > 0 && (
                           <span className={change >= 0 ? "ml-2 text-emerald-600" : "ml-2 text-red-600"}>
                             {change >= 0 ? "+" : ""}{change.toFixed(2)}%
@@ -693,11 +693,11 @@ function SpvAssetsTab({ spvId, canEdit, spvCash, currencyCode, currencySymbol }:
                     </div>
                     <Button variant="ghost" size="sm" onClick={() => { setExpandedAssetId(isOpen ? null : a.id); setValDate(""); setValValue(""); setValNote(""); }} data-testid={`button-toggle-valuations-${a.id}`}>
                       <TrendingUp className="h-4 w-4 mr-1" />
-                      {isOpen ? t("spvDetail.hide") : t("spvDetail.valuations")}
+                      {isOpen ? t("vehicleDetail.hide") : t("vehicleDetail.valuations")}
                     </Button>
                     {canEdit && !a.isDefault && (
                       <Button variant="ghost" size="sm" onClick={() => setDefaultMutation.mutate(a.id)} disabled={setDefaultMutation.isPending} data-testid={`button-set-default-${a.id}`}>
-                        {t("spvDetail.setDefaultBtn")}
+                        {t("vehicleDetail.setDefaultBtn")}
                       </Button>
                     )}
                     {canEdit && (
@@ -706,7 +706,7 @@ function SpvAssetsTab({ spvId, canEdit, spvCash, currencyCode, currencySymbol }:
                       </Button>
                     )}
                   </div>
-                  {isOpen && <AssetValuations spvId={spvId} assetId={a.id} canEdit={canEdit} currencyCode={currencyCode} currencySymbol={currencySymbol} valDate={valDate} setValDate={setValDate} valValue={valValue} setValValue={setValValue} valNote={valNote} setValNote={setValNote} />}
+                  {isOpen && <AssetValuations vehicleId={vehicleId} assetId={a.id} canEdit={canEdit} currencyCode={currencyCode} currencySymbol={currencySymbol} valDate={valDate} setValDate={setValDate} valValue={valValue} setValValue={setValValue} valNote={valNote} setValNote={setValNote} />}
                   {a.notes && <p className="text-xs text-muted-foreground mt-2 whitespace-pre-wrap">{a.notes}</p>}
                 </div>
               );
@@ -715,7 +715,7 @@ function SpvAssetsTab({ spvId, canEdit, spvCash, currencyCode, currencySymbol }:
         ) : (
           <div className="text-center py-8">
             <Briefcase className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-            <p className="text-sm text-muted-foreground">{t("spvDetail.noAssets")} {canEdit && t("spvDetail.noAssetsAddFirst")}</p>
+            <p className="text-sm text-muted-foreground">{t("vehicleDetail.noAssets")} {canEdit && t("vehicleDetail.noAssetsAddFirst")}</p>
           </div>
         )}
       </CardContent>
@@ -723,8 +723,8 @@ function SpvAssetsTab({ spvId, canEdit, spvCash, currencyCode, currencySymbol }:
   );
 }
 
-function AssetValuations({ spvId, assetId, canEdit, currencyCode, currencySymbol, valDate, setValDate, valValue, setValValue, valNote, setValNote }: {
-  spvId: string; assetId: number; canEdit: boolean; currencyCode: string; currencySymbol: string;
+function AssetValuations({ vehicleId, assetId, canEdit, currencyCode, currencySymbol, valDate, setValDate, valValue, setValValue, valNote, setValNote }: {
+  vehicleId: string; assetId: number; canEdit: boolean; currencyCode: string; currencySymbol: string;
   valDate: string; setValDate: (s: string) => void;
   valValue: string; setValValue: (s: string) => void;
   valNote: string; setValNote: (s: string) => void;
@@ -732,37 +732,37 @@ function AssetValuations({ spvId, assetId, canEdit, currencyCode, currencySymbol
   const { toast } = useToast();
   const { t } = useTranslation();
   const locale = useLocale();
-  const { data: vals, isLoading } = useQuery<SpvAssetValuationInfo[]>({
-    queryKey: ["/api/spvs", spvId, "assets", assetId, "valuations"],
+  const { data: vals, isLoading } = useQuery<VehicleAssetValuationInfo[]>({
+    queryKey: ["/api/vehicles", vehicleId, "assets", assetId, "valuations"],
   });
 
   const addMutation = useMutation({
     mutationFn: async (payload: { date: string; value: string; note?: string }) => {
-      const res = await apiRequest("POST", `/api/spvs/${spvId}/assets/${assetId}/valuations`, payload);
+      const res = await apiRequest("POST", `/api/vehicles/${vehicleId}/assets/${assetId}/valuations`, payload);
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/spvs", spvId, "assets", assetId, "valuations"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/spvs", spvId, "assets"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/spvs", spvId] });
-      queryClient.invalidateQueries({ queryKey: ["/api/spvs", spvId, "members"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/vehicles", vehicleId, "assets", assetId, "valuations"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/vehicles", vehicleId, "assets"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/vehicles", vehicleId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/vehicles", vehicleId, "members"] });
       queryClient.invalidateQueries({ predicate: q => typeof q.queryKey[0] === "string" && (q.queryKey[0] as string).startsWith("/api/portfolio") });
       setValDate(""); setValValue(""); setValNote("");
-      toast({ title: t("spvDetail.valuationAdded") });
+      toast({ title: t("vehicleDetail.valuationAdded") });
     },
-    onError: (e: Error) => toast({ title: t("spvDetail.valuationAddFailed"), description: e.message, variant: "destructive" }),
+    onError: (e: Error) => toast({ title: t("vehicleDetail.valuationAddFailed"), description: e.message, variant: "destructive" }),
   });
 
   const removeMutation = useMutation({
     mutationFn: async (valuationId: number) => {
-      const res = await apiRequest("DELETE", `/api/spvs/${spvId}/assets/${assetId}/valuations/${valuationId}`);
+      const res = await apiRequest("DELETE", `/api/vehicles/${vehicleId}/assets/${assetId}/valuations/${valuationId}`);
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/spvs", spvId, "assets", assetId, "valuations"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/spvs", spvId, "assets"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/spvs", spvId] });
-      queryClient.invalidateQueries({ queryKey: ["/api/spvs", spvId, "members"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/vehicles", vehicleId, "assets", assetId, "valuations"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/vehicles", vehicleId, "assets"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/vehicles", vehicleId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/vehicles", vehicleId, "members"] });
       queryClient.invalidateQueries({ predicate: q => typeof q.queryKey[0] === "string" && (q.queryKey[0] as string).startsWith("/api/portfolio") });
     },
   });
@@ -776,12 +776,12 @@ function AssetValuations({ spvId, assetId, canEdit, currencyCode, currencySymbol
             <Input type="date" value={valDate} onChange={e => setValDate(e.target.value)} data-testid={`input-valuation-date-${assetId}`} />
           </div>
           <div className="space-y-1">
-            <Label className="text-xs">{t("spvDetail.valueIn", { currency: currencyCode })}</Label>
+            <Label className="text-xs">{t("vehicleDetail.valueIn", { currency: currencyCode })}</Label>
             <Input type="number" step="0.01" placeholder="0.00" value={valValue} onChange={e => setValValue(e.target.value)} data-testid={`input-valuation-value-${assetId}`} />
           </div>
           <div className="space-y-1 md:col-span-1">
-            <Label className="text-xs">{t("spvDetail.note")}</Label>
-            <Input value={valNote} onChange={e => setValNote(e.target.value)} placeholder={t("spvDetail.optional")} data-testid={`input-valuation-note-${assetId}`} />
+            <Label className="text-xs">{t("vehicleDetail.note")}</Label>
+            <Input value={valNote} onChange={e => setValNote(e.target.value)} placeholder={t("vehicleDetail.optional")} data-testid={`input-valuation-note-${assetId}`} />
           </div>
           <Button
             size="sm"
@@ -789,7 +789,7 @@ function AssetValuations({ spvId, assetId, canEdit, currencyCode, currencySymbol
             disabled={!valDate || !valValue || addMutation.isPending}
             data-testid={`button-add-valuation-${assetId}`}
           >
-            <Plus className="h-4 w-4 mr-1" /> {addMutation.isPending ? t("spvDetail.adding") : t("common.add")}
+            <Plus className="h-4 w-4 mr-1" /> {addMutation.isPending ? t("vehicleDetail.adding") : t("common.add")}
           </Button>
         </div>
       )}
@@ -811,18 +811,18 @@ function AssetValuations({ spvId, assetId, canEdit, currencyCode, currencySymbol
           ))}
         </div>
       ) : (
-        <p className="text-xs text-muted-foreground">{t("spvDetail.noValuations")}</p>
+        <p className="text-xs text-muted-foreground">{t("vehicleDetail.noValuations")}</p>
       )}
     </div>
   );
 }
 
-export default function SpvDetail() {
+export default function VehicleDetail() {
   const locale = useLocale();
   const lp = useLocalePath();
   const { t } = useTranslation();
-  const [, params] = useRoute(ROUTE_PATTERNS.spvDetail[locale]);
-  const spvId = params?.id;
+  const [, params] = useRoute(ROUTE_PATTERNS.vehicleDetail[locale]);
+  const vehicleId = params?.id;
   const { toast } = useToast();
   const { canManageOrg } = useOrgPermissions();
   const [location, navigate] = useLocation();
@@ -830,20 +830,20 @@ export default function SpvDetail() {
   const activeTab = new URLSearchParams(search).get("tab") ?? "configuration";
   const [editing, setEditing] = useState(false);
 
-  const { data: spv, isLoading } = useQuery<SpvInfo>({
-    queryKey: ["/api/spvs", spvId],
-    enabled: !!spvId,
+  const { data: vehicle, isLoading } = useQuery<VehicleInfo>({
+    queryKey: ["/api/vehicles", vehicleId],
+    enabled: !!vehicleId,
   });
 
   const { data: currencies } = useQuery<CurrencyInfo[]>({
     queryKey: ["/api/currencies"],
   });
-  const currencyCode = spv?.currency || "USD";
+  const currencyCode = vehicle?.currency || "USD";
   const currencyInfo = currencies?.find(c => c.code === currencyCode);
   // Fall back to the code itself (e.g. "EUR ") rather than a misleading "$".
   const currencySymbol = currencyInfo?.symbol ?? (currencyCode === "USD" ? "$" : `${currencyCode} `);
 
-  const orgId = spv?.organizationId;
+  const orgId = vehicle?.organizationId;
 
   const { data: org } = useQuery<{ organizers: OrganizerAccount[] }>({
     queryKey: ["/api/organizations", String(orgId)],
@@ -855,58 +855,58 @@ export default function SpvDetail() {
   const [formData, setFormData] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    if (spv) {
+    if (vehicle) {
       setFormData({
-        legalName: spv.legalName || "",
-        displayName: spv.displayName || "",
-        entityType: spv.entityType || "LLC",
-        stateOfIncorporation: spv.stateOfIncorporation || "",
-        ein: spv.ein || "",
-        dateEstablished: spv.dateEstablished || "",
-        dateEnded: spv.dateEnded || "",
-        allocationMethod: spv.allocationMethod || "By Commitment",
-        autoDeploy: !!spv.autoDeploy,
-        managementFeePercent: spv.managementFeePercent || "0",
-        carriedInterestPercent: spv.carriedInterestPercent || "0",
-        preferredReturnPercent: spv.preferredReturnPercent || "0",
-        country: spv.country || "",
-        streetAddress: spv.streetAddress || "",
-        streetAddress2: spv.streetAddress2 || "",
-        city: spv.city || "",
-        stateProvince: spv.stateProvince || "",
-        zipPostalCode: spv.zipPostalCode || "",
-        county: spv.county || "",
-        managerId: spv.managerId ? String(spv.managerId) : "",
-        signatoryId: spv.signatoryId ? String(spv.signatoryId) : "",
-        bankName: spv.bankName || "",
-        bankAddress: spv.bankAddress || "",
-        bankRoutingNumber: spv.bankRoutingNumber || "",
-        bankSwiftCode: spv.bankSwiftCode || "",
-        bankAccountNumber: spv.bankAccountNumber || "",
-        bankAccountName: spv.bankAccountName || "",
-        forFurtherCreditTo: spv.forFurtherCreditTo || "",
-        wiringInstructions: spv.wiringInstructions || "",
-        investmentCompanyName: spv.investmentCompanyName || "",
-        investmentType: spv.investmentType || "",
-        totalBeingRaised: spv.totalBeingRaised || "0",
-        minimumInvestment: spv.minimumInvestment || "0",
-        expectedClosingDate: spv.expectedClosingDate || "",
+        legalName: vehicle.legalName || "",
+        displayName: vehicle.displayName || "",
+        entityType: vehicle.entityType || "LLC",
+        stateOfIncorporation: vehicle.stateOfIncorporation || "",
+        ein: vehicle.ein || "",
+        dateEstablished: vehicle.dateEstablished || "",
+        dateEnded: vehicle.dateEnded || "",
+        allocationMethod: vehicle.allocationMethod || "By Commitment",
+        autoDeploy: !!vehicle.autoDeploy,
+        managementFeePercent: vehicle.managementFeePercent || "0",
+        carriedInterestPercent: vehicle.carriedInterestPercent || "0",
+        preferredReturnPercent: vehicle.preferredReturnPercent || "0",
+        country: vehicle.country || "",
+        streetAddress: vehicle.streetAddress || "",
+        streetAddress2: vehicle.streetAddress2 || "",
+        city: vehicle.city || "",
+        stateProvince: vehicle.stateProvince || "",
+        zipPostalCode: vehicle.zipPostalCode || "",
+        county: vehicle.county || "",
+        managerId: vehicle.managerId ? String(vehicle.managerId) : "",
+        signatoryId: vehicle.signatoryId ? String(vehicle.signatoryId) : "",
+        bankName: vehicle.bankName || "",
+        bankAddress: vehicle.bankAddress || "",
+        bankRoutingNumber: vehicle.bankRoutingNumber || "",
+        bankSwiftCode: vehicle.bankSwiftCode || "",
+        bankAccountNumber: vehicle.bankAccountNumber || "",
+        bankAccountName: vehicle.bankAccountName || "",
+        forFurtherCreditTo: vehicle.forFurtherCreditTo || "",
+        wiringInstructions: vehicle.wiringInstructions || "",
+        investmentCompanyName: vehicle.investmentCompanyName || "",
+        investmentType: vehicle.investmentType || "",
+        totalBeingRaised: vehicle.totalBeingRaised || "0",
+        minimumInvestment: vehicle.minimumInvestment || "0",
+        expectedClosingDate: vehicle.expectedClosingDate || "",
       });
     }
-  }, [spv]);
+  }, [vehicle]);
 
   const updateMutation = useMutation({
     mutationFn: async (data: Record<string, unknown>) => {
-      const res = await apiRequest("PATCH", `/api/spvs/${spvId}`, data);
+      const res = await apiRequest("PATCH", `/api/vehicles/${vehicleId}`, data);
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/spvs", spvId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/vehicles", vehicleId] });
       setEditing(false);
-      toast({ title: t("spvDetail.spvUpdated") });
+      toast({ title: t("vehicleDetail.vehicleUpdated") });
     },
     onError: (error: Error) => {
-      toast({ title: t("spvDetail.spvUpdateFailed"), description: error.message, variant: "destructive" });
+      toast({ title: t("vehicleDetail.vehicleUpdateFailed"), description: error.message, variant: "destructive" });
     },
   });
 
@@ -923,42 +923,42 @@ export default function SpvDetail() {
   };
 
   const handleCancel = () => {
-    if (spv) {
+    if (vehicle) {
       setFormData({
-        legalName: spv.legalName || "",
-        displayName: spv.displayName || "",
-        entityType: spv.entityType || "LLC",
-        stateOfIncorporation: spv.stateOfIncorporation || "",
-        ein: spv.ein || "",
-        dateEstablished: spv.dateEstablished || "",
-        dateEnded: spv.dateEnded || "",
-        allocationMethod: spv.allocationMethod || "By Commitment",
-        autoDeploy: !!spv.autoDeploy,
-        managementFeePercent: spv.managementFeePercent || "0",
-        carriedInterestPercent: spv.carriedInterestPercent || "0",
-        preferredReturnPercent: spv.preferredReturnPercent || "0",
-        country: spv.country || "",
-        streetAddress: spv.streetAddress || "",
-        streetAddress2: spv.streetAddress2 || "",
-        city: spv.city || "",
-        stateProvince: spv.stateProvince || "",
-        zipPostalCode: spv.zipPostalCode || "",
-        county: spv.county || "",
-        managerId: spv.managerId ? String(spv.managerId) : "",
-        signatoryId: spv.signatoryId ? String(spv.signatoryId) : "",
-        bankName: spv.bankName || "",
-        bankAddress: spv.bankAddress || "",
-        bankRoutingNumber: spv.bankRoutingNumber || "",
-        bankSwiftCode: spv.bankSwiftCode || "",
-        bankAccountNumber: spv.bankAccountNumber || "",
-        bankAccountName: spv.bankAccountName || "",
-        forFurtherCreditTo: spv.forFurtherCreditTo || "",
-        wiringInstructions: spv.wiringInstructions || "",
-        investmentCompanyName: spv.investmentCompanyName || "",
-        investmentType: spv.investmentType || "",
-        totalBeingRaised: spv.totalBeingRaised || "0",
-        minimumInvestment: spv.minimumInvestment || "0",
-        expectedClosingDate: spv.expectedClosingDate || "",
+        legalName: vehicle.legalName || "",
+        displayName: vehicle.displayName || "",
+        entityType: vehicle.entityType || "LLC",
+        stateOfIncorporation: vehicle.stateOfIncorporation || "",
+        ein: vehicle.ein || "",
+        dateEstablished: vehicle.dateEstablished || "",
+        dateEnded: vehicle.dateEnded || "",
+        allocationMethod: vehicle.allocationMethod || "By Commitment",
+        autoDeploy: !!vehicle.autoDeploy,
+        managementFeePercent: vehicle.managementFeePercent || "0",
+        carriedInterestPercent: vehicle.carriedInterestPercent || "0",
+        preferredReturnPercent: vehicle.preferredReturnPercent || "0",
+        country: vehicle.country || "",
+        streetAddress: vehicle.streetAddress || "",
+        streetAddress2: vehicle.streetAddress2 || "",
+        city: vehicle.city || "",
+        stateProvince: vehicle.stateProvince || "",
+        zipPostalCode: vehicle.zipPostalCode || "",
+        county: vehicle.county || "",
+        managerId: vehicle.managerId ? String(vehicle.managerId) : "",
+        signatoryId: vehicle.signatoryId ? String(vehicle.signatoryId) : "",
+        bankName: vehicle.bankName || "",
+        bankAddress: vehicle.bankAddress || "",
+        bankRoutingNumber: vehicle.bankRoutingNumber || "",
+        bankSwiftCode: vehicle.bankSwiftCode || "",
+        bankAccountNumber: vehicle.bankAccountNumber || "",
+        bankAccountName: vehicle.bankAccountName || "",
+        forFurtherCreditTo: vehicle.forFurtherCreditTo || "",
+        wiringInstructions: vehicle.wiringInstructions || "",
+        investmentCompanyName: vehicle.investmentCompanyName || "",
+        investmentType: vehicle.investmentType || "",
+        totalBeingRaised: vehicle.totalBeingRaised || "0",
+        minimumInvestment: vehicle.minimumInvestment || "0",
+        expectedClosingDate: vehicle.expectedClosingDate || "",
       });
     }
     setEditing(false);
@@ -978,33 +978,33 @@ export default function SpvDetail() {
     );
   }
 
-  if (!spv) {
+  if (!vehicle) {
     return (
       <div className="p-6">
-        <p className="text-muted-foreground">{t("spvDetail.notFound")}</p>
+        <p className="text-muted-foreground">{t("vehicleDetail.notFound")}</p>
       </div>
     );
   }
 
   const allocationHelpKey = (m: string) => {
-    if (m === "By Commitment") return t("createSpv.allocationHelpByCommitment");
-    if (m === "By Capital Invested") return t("createSpv.allocationHelpByCapital");
-    if (m === "Custom") return t("createSpv.allocationHelpCustom");
+    if (m === "By Commitment") return t("createVehicle.allocationHelpByCommitment");
+    if (m === "By Capital Invested") return t("createVehicle.allocationHelpByCapital");
+    if (m === "Custom") return t("createVehicle.allocationHelpCustom");
     return "";
   };
   const allocationLabel = (m: string) => {
-    if (m === "By Commitment") return t("createSpv.allocationByCommitment");
-    if (m === "By Capital Invested") return t("createSpv.allocationByCapital");
-    if (m === "Custom") return t("createSpv.allocationCustom");
+    if (m === "By Commitment") return t("createVehicle.allocationByCommitment");
+    if (m === "By Capital Invested") return t("createVehicle.allocationByCapital");
+    if (m === "Custom") return t("createVehicle.allocationCustom");
     return m;
   };
 
   return (
     <div className="p-6 space-y-6">
-      <Link href={lp("organizationDetail", { id: spv.organizationId })}>
+      <Link href={lp("organizationDetail", { id: vehicle.organizationId })}>
         <Button variant="ghost" className="gap-2 -ml-2" data-testid="button-back">
           <ArrowLeft className="h-4 w-4" />
-          {t("spvDetail.backToOrg")}
+          {t("vehicleDetail.backToOrg")}
         </Button>
       </Link>
 
@@ -1013,13 +1013,13 @@ export default function SpvDetail() {
           <FileText className="h-8 w-8" />
         </div>
         <div className="flex-1 min-w-0">
-          <h1 className="text-2xl font-semibold" data-testid="text-spv-name">{spv.displayName}</h1>
-          <p className="text-muted-foreground mt-0.5" data-testid="text-spv-legal-name">{spv.legalName}</p>
+          <h1 className="text-2xl font-semibold" data-testid="text-vehicle-name">{vehicle.displayName}</h1>
+          <p className="text-muted-foreground mt-0.5" data-testid="text-vehicle-legal-name">{vehicle.legalName}</p>
           <div className="flex gap-2 mt-1 flex-wrap">
-            <Badge variant="secondary">{spv.entityType || "LLC"}</Badge>
-            <Badge variant="outline">{t("spvDetail.memberCount", { count: spv.memberCount })}</Badge>
-            {spv.manager && (
-              <Badge variant="outline">{t("spvDetail.managerLabel", { name: `${spv.manager.firstName} ${spv.manager.lastName}` })}</Badge>
+            <Badge variant="secondary">{vehicle.entityType || "LLC"}</Badge>
+            <Badge variant="outline">{t("vehicleDetail.memberCount", { count: vehicle.memberCount })}</Badge>
+            {vehicle.manager && (
+              <Badge variant="outline">{t("vehicleDetail.managerLabel", { name: `${vehicle.manager.firstName} ${vehicle.manager.lastName}` })}</Badge>
             )}
           </div>
         </div>
@@ -1030,8 +1030,8 @@ export default function SpvDetail() {
           <CardContent className="p-4 flex items-center gap-3">
             <Wallet className="h-5 w-5 text-muted-foreground" />
             <div>
-              <p className="text-xs text-muted-foreground">{t("spvDetail.cash")}</p>
-              <p className="text-lg font-semibold" data-testid="text-spv-cash">{formatCurrency(spv.cash, currencySymbol, locale)}</p>
+              <p className="text-xs text-muted-foreground">{t("vehicleDetail.cash")}</p>
+              <p className="text-lg font-semibold" data-testid="text-vehicle-cash">{formatCurrency(vehicle.cash, currencySymbol, locale)}</p>
             </div>
           </CardContent>
         </Card>
@@ -1039,8 +1039,8 @@ export default function SpvDetail() {
           <CardContent className="p-4 flex items-center gap-3">
             <Briefcase className="h-5 w-5 text-muted-foreground" />
             <div>
-              <p className="text-xs text-muted-foreground">{t("spvDetail.assetValue")}</p>
-              <p className="text-lg font-semibold" data-testid="text-spv-asset-value">{formatCurrency(spv.assetValue, currencySymbol, locale)}</p>
+              <p className="text-xs text-muted-foreground">{t("vehicleDetail.assetValue")}</p>
+              <p className="text-lg font-semibold" data-testid="text-vehicle-asset-value">{formatCurrency(vehicle.assetValue, currencySymbol, locale)}</p>
             </div>
           </CardContent>
         </Card>
@@ -1048,8 +1048,8 @@ export default function SpvDetail() {
           <CardContent className="p-4 flex items-center gap-3">
             <TrendingUp className="h-5 w-5 text-muted-foreground" />
             <div>
-              <p className="text-xs text-muted-foreground">{t("spvDetail.currentValue")}</p>
-              <p className="text-lg font-semibold" data-testid="text-spv-current-value">{formatCurrency(spv.currentValue, currencySymbol, locale)}</p>
+              <p className="text-xs text-muted-foreground">{t("vehicleDetail.currentValue")}</p>
+              <p className="text-lg font-semibold" data-testid="text-vehicle-current-value">{formatCurrency(vehicle.currentValue, currencySymbol, locale)}</p>
             </div>
           </CardContent>
         </Card>
@@ -1057,13 +1057,13 @@ export default function SpvDetail() {
 
       <Tabs value={activeTab} onValueChange={(t) => navigate(`${location}?tab=${t}`, { replace: true })}>
         <TabsList>
-          <TabsTrigger value="configuration" data-testid="tab-configuration">{t("spvDetail.configuration")}</TabsTrigger>
-          <TabsTrigger value="assets" data-testid="tab-spv-assets">{t("spvDetail.assets")}</TabsTrigger>
-          <TabsTrigger value="members" data-testid="tab-spv-members">{t("spvDetail.members")}</TabsTrigger>
+          <TabsTrigger value="configuration" data-testid="tab-configuration">{t("vehicleDetail.configuration")}</TabsTrigger>
+          <TabsTrigger value="assets" data-testid="tab-vehicle-assets">{t("vehicleDetail.assets")}</TabsTrigger>
+          <TabsTrigger value="members" data-testid="tab-vehicle-members">{t("vehicleDetail.members")}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="configuration" className="mt-6 space-y-6">
-          {canManageOrg(spv.organizationId) && (
+          {canManageOrg(vehicle.organizationId) && (
             <div className="flex justify-end">
               {!editing ? (
                 <Button variant="outline" size="sm" onClick={() => setEditing(true)} data-testid="button-edit">
@@ -1087,22 +1087,22 @@ export default function SpvDetail() {
 
           <Card>
             <CardHeader>
-              <h2 className="text-lg font-semibold">{t("createSpv.generalStructure")}</h2>
+              <h2 className="text-lg font-semibold">{t("createVehicle.generalStructure")}</h2>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>{t("createSpv.legalName")}</Label>
+                  <Label>{t("createVehicle.legalName")}</Label>
                   <Input value={formData.legalName || ""} onChange={e => updateField("legalName", e.target.value)} disabled={!editing} data-testid="input-legal-name" />
                 </div>
                 <div className="space-y-2">
-                  <Label>{t("createSpv.displayName")}</Label>
+                  <Label>{t("createVehicle.displayName")}</Label>
                   <Input value={formData.displayName || ""} onChange={e => updateField("displayName", e.target.value)} disabled={!editing} data-testid="input-display-name" />
                 </div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>{t("createSpv.entityType")}</Label>
+                  <Label>{t("createVehicle.entityType")}</Label>
                   <Select value={formData.entityType || "LLC"} onValueChange={v => updateField("entityType", v)} disabled={!editing}>
                     <SelectTrigger data-testid="select-entity-type">
                       <SelectValue />
@@ -1113,27 +1113,27 @@ export default function SpvDetail() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>{t("createSpv.stateOfIncorporation")}</Label>
+                  <Label>{t("createVehicle.stateOfIncorporation")}</Label>
                   <Input value={formData.stateOfIncorporation || ""} onChange={e => updateField("stateOfIncorporation", e.target.value)} disabled={!editing} data-testid="input-state-incorporation" />
                 </div>
               </div>
               <div className="space-y-2">
-                <Label>{t("createSpv.ein")}</Label>
+                <Label>{t("createVehicle.ein")}</Label>
                 <Input value={formData.ein || ""} onChange={e => updateField("ein", e.target.value)} disabled={!editing} data-testid="input-ein" />
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>{t("createSpv.dateEstablished")}</Label>
+                  <Label>{t("createVehicle.dateEstablished")}</Label>
                   <Input type="date" value={formData.dateEstablished || ""} onChange={e => updateField("dateEstablished", e.target.value)} disabled={!editing} data-testid="input-date-established" />
                 </div>
                 <div className="space-y-2">
-                  <Label>{t("createSpv.dateEnded")}</Label>
+                  <Label>{t("createVehicle.dateEnded")}</Label>
                   <Input type="date" value={formData.dateEnded || ""} onChange={e => updateField("dateEnded", e.target.value)} disabled={!editing} data-testid="input-date-ended" />
                 </div>
               </div>
               <Separator />
               <div className="space-y-2">
-                <Label>{t("createSpv.allocationMethod")}</Label>
+                <Label>{t("createVehicle.allocationMethod")}</Label>
                 <Select value={formData.allocationMethod || "By Commitment"} onValueChange={v => updateField("allocationMethod", v)} disabled={!editing}>
                   <SelectTrigger data-testid="select-allocation">
                     <SelectValue />
@@ -1157,34 +1157,34 @@ export default function SpvDetail() {
                   data-testid="checkbox-auto-deploy"
                 />
                 <div className="space-y-1">
-                  <Label htmlFor="autoDeploy" className="cursor-pointer">{t("spvDetail.autoDeploy")}</Label>
+                  <Label htmlFor="autoDeploy" className="cursor-pointer">{t("vehicleDetail.autoDeploy")}</Label>
                   <p className="text-xs text-muted-foreground">
-                    {t("spvDetail.autoDeployHelp")}
+                    {t("vehicleDetail.autoDeployHelp")}
                   </p>
                 </div>
               </div>
               <div className="space-y-2">
                 <Label className="flex items-center gap-1.5">
-                  {t("createSpv.currency")}
+                  {t("createVehicle.currency")}
                   <Lock className="h-3 w-3 text-muted-foreground" />
                 </Label>
                 <div className="flex h-10 items-center rounded-md border border-input bg-muted px-3 text-sm" data-testid="text-currency">
-                  {spv?.currency || "USD"}
+                  {vehicle?.currency || "USD"}
                   {currencyInfo ? ` (${currencyInfo.symbol}) – ${currencyInfo.name}` : ""}
                 </div>
-                <p className="text-xs text-muted-foreground">{t("spvDetail.currencyLockedHelp")}</p>
+                <p className="text-xs text-muted-foreground">{t("vehicleDetail.currencyLockedHelp")}</p>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-2">
-                  <Label>{t("createSpv.managementFeePercent")}</Label>
+                  <Label>{t("createVehicle.managementFeePercent")}</Label>
                   <Input type="number" step="0.01" value={formData.managementFeePercent || "0"} onChange={e => updateField("managementFeePercent", e.target.value)} disabled={!editing} data-testid="input-mgmt-fee" />
                 </div>
                 <div className="space-y-2">
-                  <Label>{t("createSpv.carriedInterestPercent")}</Label>
+                  <Label>{t("createVehicle.carriedInterestPercent")}</Label>
                   <Input type="number" step="0.01" value={formData.carriedInterestPercent || "0"} onChange={e => updateField("carriedInterestPercent", e.target.value)} disabled={!editing} data-testid="input-carry" />
                 </div>
                 <div className="space-y-2">
-                  <Label>{t("createSpv.preferredReturnPercent")}</Label>
+                  <Label>{t("createVehicle.preferredReturnPercent")}</Label>
                   <Input type="number" step="0.01" value={formData.preferredReturnPercent || "0"} onChange={e => updateField("preferredReturnPercent", e.target.value)} disabled={!editing} data-testid="input-pref-return" />
                 </div>
               </div>
@@ -1193,7 +1193,7 @@ export default function SpvDetail() {
 
           <Card>
             <CardHeader>
-              <h2 className="text-lg font-semibold">{t("spvDetail.address")}</h2>
+              <h2 className="text-lg font-semibold">{t("vehicleDetail.address")}</h2>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
@@ -1201,11 +1201,11 @@ export default function SpvDetail() {
                 <Input value={formData.country || ""} onChange={e => updateField("country", e.target.value)} disabled={!editing} data-testid="input-country" />
               </div>
               <div className="space-y-2">
-                <Label>{t("createSpv.street")}</Label>
+                <Label>{t("createVehicle.street")}</Label>
                 <Input value={formData.streetAddress || ""} onChange={e => updateField("streetAddress", e.target.value)} disabled={!editing} data-testid="input-street" />
               </div>
               <div className="space-y-2">
-                <Label>{t("createSpv.streetAddress2")}</Label>
+                <Label>{t("createVehicle.streetAddress2")}</Label>
                 <Input value={formData.streetAddress2 || ""} onChange={e => updateField("streetAddress2", e.target.value)} disabled={!editing} data-testid="input-street2" />
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1220,11 +1220,11 @@ export default function SpvDetail() {
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>{t("createSpv.zipPostalCode")}</Label>
+                  <Label>{t("createVehicle.zipPostalCode")}</Label>
                   <Input value={formData.zipPostalCode || ""} onChange={e => updateField("zipPostalCode", e.target.value)} disabled={!editing} data-testid="input-zip" />
                 </div>
                 <div className="space-y-2">
-                  <Label>{t("createSpv.county")}</Label>
+                  <Label>{t("createVehicle.county")}</Label>
                   <Input value={formData.county || ""} onChange={e => updateField("county", e.target.value)} disabled={!editing} data-testid="input-county" />
                 </div>
               </div>
@@ -1233,17 +1233,17 @@ export default function SpvDetail() {
 
           <Card>
             <CardHeader>
-              <h2 className="text-lg font-semibold">{t("createSpv.administration")}</h2>
+              <h2 className="text-lg font-semibold">{t("createVehicle.administration")}</h2>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label>{t("createSpv.spvManagerLabel")}</Label>
+                <Label>{t("createVehicle.vehicleManagerLabel")}</Label>
                 <Select value={formData.managerId || "none"} onValueChange={v => updateField("managerId", v)} disabled={!editing}>
                   <SelectTrigger data-testid="select-manager">
-                    <SelectValue placeholder={t("createSpv.selectManager")} />
+                    <SelectValue placeholder={t("createVehicle.selectManager")} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">{t("createSpv.notAssigned")}</SelectItem>
+                    <SelectItem value="none">{t("createVehicle.notAssigned")}</SelectItem>
                     {organizers.map((o: OrganizerAccount) => (
                       <SelectItem key={o.accountId} value={String(o.accountId)}>
                         {o.account.firstName} {o.account.lastName} ({o.account.email})
@@ -1253,13 +1253,13 @@ export default function SpvDetail() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>{t("createSpv.signatoryLabel")}</Label>
+                <Label>{t("createVehicle.signatoryLabel")}</Label>
                 <Select value={formData.signatoryId || "none"} onValueChange={v => updateField("signatoryId", v)} disabled={!editing}>
                   <SelectTrigger data-testid="select-signatory">
-                    <SelectValue placeholder={t("createSpv.selectSignatory")} />
+                    <SelectValue placeholder={t("createVehicle.selectSignatory")} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">{t("createSpv.notAssigned")}</SelectItem>
+                    <SelectItem value="none">{t("createVehicle.notAssigned")}</SelectItem>
                     {organizers.map((o: OrganizerAccount) => (
                       <SelectItem key={o.accountId} value={String(o.accountId)}>
                         {o.account.firstName} {o.account.lastName} ({o.account.email})
@@ -1273,41 +1273,41 @@ export default function SpvDetail() {
 
           <Card>
             <CardHeader>
-              <h2 className="text-lg font-semibold">{t("createSpv.bankDetails")}</h2>
+              <h2 className="text-lg font-semibold">{t("createVehicle.bankDetails")}</h2>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label>{t("createSpv.bankName")}</Label>
+                <Label>{t("createVehicle.bankName")}</Label>
                 <Input value={formData.bankName || ""} onChange={e => updateField("bankName", e.target.value)} disabled={!editing} data-testid="input-bank-name" />
               </div>
               <div className="space-y-2">
-                <Label>{t("createSpv.bankAddress")}</Label>
+                <Label>{t("createVehicle.bankAddress")}</Label>
                 <Textarea value={formData.bankAddress || ""} onChange={e => updateField("bankAddress", e.target.value)} disabled={!editing} data-testid="input-bank-address" />
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>{t("createSpv.bankRoutingNumber")}</Label>
+                  <Label>{t("createVehicle.bankRoutingNumber")}</Label>
                   <Input value={formData.bankRoutingNumber || ""} onChange={e => updateField("bankRoutingNumber", e.target.value)} disabled={!editing} data-testid="input-routing" />
                 </div>
                 <div className="space-y-2">
-                  <Label>{t("createSpv.bankSwiftCode")}</Label>
+                  <Label>{t("createVehicle.bankSwiftCode")}</Label>
                   <Input value={formData.bankSwiftCode || ""} onChange={e => updateField("bankSwiftCode", e.target.value)} disabled={!editing} data-testid="input-swift" />
                 </div>
               </div>
               <div className="space-y-2">
-                <Label>{t("createSpv.bankAccountNumber")}</Label>
+                <Label>{t("createVehicle.bankAccountNumber")}</Label>
                 <Input value={formData.bankAccountNumber || ""} onChange={e => updateField("bankAccountNumber", e.target.value)} disabled={!editing} data-testid="input-account-number" />
               </div>
               <div className="space-y-2">
-                <Label>{t("createSpv.bankAccountName")}</Label>
+                <Label>{t("createVehicle.bankAccountName")}</Label>
                 <Input value={formData.bankAccountName || ""} onChange={e => updateField("bankAccountName", e.target.value)} disabled={!editing} data-testid="input-account-name" />
               </div>
               <div className="space-y-2">
-                <Label>{t("createSpv.forFurtherCreditTo")}</Label>
+                <Label>{t("createVehicle.forFurtherCreditTo")}</Label>
                 <Input value={formData.forFurtherCreditTo || ""} onChange={e => updateField("forFurtherCreditTo", e.target.value)} disabled={!editing} data-testid="input-ffc" />
               </div>
               <div className="space-y-2">
-                <Label>{t("createSpv.wiringInstructions")}</Label>
+                <Label>{t("createVehicle.wiringInstructions")}</Label>
                 <Textarea value={formData.wiringInstructions || ""} onChange={e => updateField("wiringInstructions", e.target.value)} disabled={!editing} data-testid="input-wiring" />
               </div>
             </CardContent>
@@ -1315,29 +1315,29 @@ export default function SpvDetail() {
 
           <Card>
             <CardHeader>
-              <h2 className="text-lg font-semibold">{t("createSpv.investmentDetails")}</h2>
+              <h2 className="text-lg font-semibold">{t("createVehicle.investmentDetails")}</h2>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
-                <Label>{t("createSpv.companyName")}</Label>
+                <Label>{t("createVehicle.companyName")}</Label>
                 <Input value={formData.investmentCompanyName || ""} onChange={e => updateField("investmentCompanyName", e.target.value)} disabled={!editing} data-testid="input-company-name" />
               </div>
               <div className="space-y-2">
-                <Label>{t("createSpv.typeOfInvestment")}</Label>
+                <Label>{t("createVehicle.typeOfInvestment")}</Label>
                 <Input value={formData.investmentType || ""} onChange={e => updateField("investmentType", e.target.value)} disabled={!editing} data-testid="input-investment-type" />
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label>{t("createSpv.totalBeingRaised")}</Label>
+                  <Label>{t("createVehicle.totalBeingRaised")}</Label>
                   <Input type="number" step="0.01" value={formData.totalBeingRaised || "0"} onChange={e => updateField("totalBeingRaised", e.target.value)} disabled={!editing} data-testid="input-total-raised" />
                 </div>
                 <div className="space-y-2">
-                  <Label>{t("createSpv.minimumInvestment")}</Label>
+                  <Label>{t("createVehicle.minimumInvestment")}</Label>
                   <Input type="number" step="0.01" value={formData.minimumInvestment || "0"} onChange={e => updateField("minimumInvestment", e.target.value)} disabled={!editing} data-testid="input-min-investment" />
                 </div>
               </div>
               <div className="space-y-2">
-                <Label>{t("createSpv.expectedClosingDate")}</Label>
+                <Label>{t("createVehicle.expectedClosingDate")}</Label>
                 <Input type="date" value={formData.expectedClosingDate || ""} onChange={e => updateField("expectedClosingDate", e.target.value)} disabled={!editing} data-testid="input-closing-date" />
               </div>
             </CardContent>
@@ -1345,11 +1345,11 @@ export default function SpvDetail() {
         </TabsContent>
 
         <TabsContent value="assets" className="mt-6">
-          <SpvAssetsTab spvId={spvId!} canEdit={canManageOrg(spv.organizationId)} spvCash={spv.cash} currencyCode={currencyCode} currencySymbol={currencySymbol} />
+          <VehicleAssetsTab vehicleId={vehicleId!} canEdit={canManageOrg(vehicle.organizationId)} vehicleCash={vehicle.cash} currencyCode={currencyCode} currencySymbol={currencySymbol} />
         </TabsContent>
 
         <TabsContent value="members" className="mt-6">
-          <SpvMembersTab spvId={spvId!} orgId={spv.organizationId} canEdit={canManageOrg(spv.organizationId)} allocationMethod={spv.allocationMethod || "By Commitment"} currencySymbol={currencySymbol} />
+          <VehicleMembersTab vehicleId={vehicleId!} orgId={vehicle.organizationId} canEdit={canManageOrg(vehicle.organizationId)} allocationMethod={vehicle.allocationMethod || "By Commitment"} currencySymbol={currencySymbol} />
         </TabsContent>
       </Tabs>
     </div>

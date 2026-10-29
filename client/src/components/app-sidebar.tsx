@@ -40,7 +40,7 @@ interface NavItem {
 const mainNav: NavItem[] = [
   { routeKey: "dashboard",     labelKey: "nav.dashboard",     icon: LayoutDashboard, testId: "link-dashboard" },
   { routeKey: "organizations", labelKey: "nav.organizations", icon: Building2,       testId: "link-organizations" },
-  { routeKey: "spvs",          labelKey: "nav.spvs",          icon: FileText,        testId: "link-spvs" },
+  { routeKey: "vehicles",          labelKey: "nav.vehicles",          icon: FileText,        testId: "link-vehicles" },
   { routeKey: "documents",     labelKey: "nav.documents",     icon: Files,           testId: "link-documents" },
   { routeKey: "accounts",      labelKey: "nav.accounts",      icon: Users,           testId: "link-accounts" },
   { routeKey: "entities",      labelKey: "nav.entities",      icon: Building,        testId: "link-entities" },

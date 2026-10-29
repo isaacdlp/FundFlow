@@ -4,7 +4,7 @@ info:
   version: "1.0.0"
   description: |
     Multi-tenant VC/PE fund management platform. Covers accounts, organizations,
-    SPVs, entities, members, invites, portfolio data, and authentication.
+    Vehicles, entities, members, invites, portfolio data, and authentication.
 
     ## Authentication
     Two methods are accepted on every `/api/*` endpoint:
@@ -21,9 +21,9 @@ info:
 
     ## Permissions model
     - **admin** role: full access. Can create/delete organizations, delete any
-      account/SPV/entity, and manage API tokens.
+      account/Vehicle/entity, and manage API tokens.
     - **non-admin**: scoped to data they participate in (org member/organizer,
-      SPV member, entity manager/owner).
+      Vehicle member, entity manager/owner).
     - Permission checks happen identically for cookie- and token-authenticated
       requests.
 
@@ -49,8 +49,8 @@ tags:
     description: Membership requests and approvals
   - name: Organization Invites
     description: Single-use invite tokens
-  - name: SPVs
-    description: Special Purpose Vehicles (investment funds) and their investors
+  - name: Vehicles
+    description: Investment vehicles (SPVs, funds, etc.) and their investors
   - name: Entities
     description: Legal entities (LLCs, Corps, Trusts) with owners and managers
   - name: Introductions
@@ -103,7 +103,7 @@ tags:
     description: Platform-wide settings (admin-only)
   - name: Currencies
     description: |
-      The platform's currency catalog and daily FX rates. SPVs are
+      The platform's currency catalog and daily FX rates. Vehicles are
       denominated in one of the *active* currencies (USD and EUR by
       default); the dashboard uses the rates here to consolidate
       multi-currency investments into a single selected display currency.
@@ -557,7 +557,10 @@ paths:
     post:
       tags: [Promoters]
       summary: Make an account a promoter (admin-only)
-      description: Optionally creates its incentives in the same call (each type at most once).
+      description: |
+        Optionally creates its incentives in the same call (each type at most
+        once). New promoters are always inactive (an `active` field is
+        ignored); they become active once their promoter agreement is signed.
       requestBody:
         required: true
         content:
@@ -567,7 +570,6 @@ paths:
               required: [accountId]
               properties:
                 accountId: { type: integer }
-                active: { type: boolean, default: true }
                 contractDate: { type: string, format: date, nullable: true, description: When the contract was signed }
                 notes: { type: string, maxLength: 2000 }
                 incentives: { type: array, items: { $ref: '#/components/schemas/PromoterIncentiveCreate' } }
@@ -591,6 +593,9 @@ paths:
     patch:
       tags: [Promoters]
       summary: Update a promoter's status, contract date and notes (admin-only)
+      description: |
+        A promoter can be deactivated at any time, but only (re)activated when
+        it has a signed promoter agreement (`hasSignedContract`).
       requestBody:
         required: true
         content:
@@ -606,6 +611,7 @@ paths:
         '400': { $ref: '#/components/responses/BadRequest' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: Activating a promoter without a signed promoter agreement, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
     delete:
       tags: [Promoters]
       summary: Remove a promoter and its incentives (admin-only)
@@ -764,8 +770,10 @@ paths:
         Updates `status` and `statusCheckedAt`, follows the signed copy's uid,
         sets `signedAt` the first time the contract is seen signed, and marks
         it `DELETED` if Concord no longer has it. When a promoter agreement
-        is first seen signed and the promoter has no `contractDate`, it's
-        set to today.
+        is first seen signed (by all parties), the promoter becomes active
+        and, if it has no `contractDate`, that is set to today. Later checks
+        of the same signed contract don't reactivate a promoter an admin has
+        deactivated.
       responses:
         '200': { description: Updated contract, content: { application/json: { schema: { $ref: '#/components/schemas/Contract' } } } }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -1033,71 +1041,71 @@ paths:
         '409': { description: Email already registered (sign in instead) }
         '410': { description: Invite already used }
 
-  # ──── SPVs ────────────────────────────────────────────────────────────────
-  /api/spvs:
+  # ──── Vehicles ────────────────────────────────────────────────────────────────
+  /api/vehicles:
     get:
-      tags: [SPVs]
-      summary: List all SPVs visible to the caller
+      tags: [Vehicles]
+      summary: List all Vehicles visible to the caller
       responses:
         '200':
-          description: SPVs (with org info)
-          content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Spv' } } } }
+          description: Vehicles (with org info)
+          content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Vehicle' } } } }
 
-  /api/organizations/{id}/spvs:
+  /api/organizations/{id}/vehicles:
     parameters:
       - { name: id, in: path, required: true, schema: { type: integer } }
     get:
-      tags: [SPVs]
-      summary: List SPVs for an organization
-      description: Admin sees all SPVs in the org. Non-admin members of the org see only the SPVs they invest in (directly or through entities they own).
+      tags: [Vehicles]
+      summary: List Vehicles for an organization
+      description: Admin sees all Vehicles in the org. Non-admin members of the org see only the Vehicles they invest in (directly or through entities they own).
       responses:
-        '200': { content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Spv' } } } }, description: SPVs }
+        '200': { content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Vehicle' } } } }, description: Vehicles }
     post:
-      tags: [SPVs]
-      summary: Create an SPV under an organization
+      tags: [Vehicles]
+      summary: Create a Vehicle under an organization
       description: Admin, or an organizer of this organization. Approved membership alone is not enough (403).
       requestBody:
         required: true
-        content: { application/json: { schema: { $ref: '#/components/schemas/SpvCreate' } } }
+        content: { application/json: { schema: { $ref: '#/components/schemas/VehicleCreate' } } }
       responses:
-        '201': { content: { application/json: { schema: { $ref: '#/components/schemas/Spv' } } }, description: Created }
+        '201': { content: { application/json: { schema: { $ref: '#/components/schemas/Vehicle' } } }, description: Created }
         '403': { $ref: '#/components/responses/Forbidden' }
 
-  /api/spvs/{id}:
+  /api/vehicles/{id}:
     parameters:
       - { name: id, in: path, required: true, schema: { type: integer } }
     get:
-      tags: [SPVs]
-      responses: { '200': { description: SPV, content: { application/json: { schema: { $ref: '#/components/schemas/Spv' } } } } }
-      summary: Get a single SPV
+      tags: [Vehicles]
+      responses: { '200': { description: Vehicle, content: { application/json: { schema: { $ref: '#/components/schemas/Vehicle' } } } } }
+      summary: Get a single Vehicle
     patch:
-      tags: [SPVs]
-      summary: Update an SPV
+      tags: [Vehicles]
+      summary: Update a Vehicle
       requestBody:
         required: true
-        content: { application/json: { schema: { $ref: '#/components/schemas/SpvCreate' } } }
-      responses: { '200': { description: Updated, content: { application/json: { schema: { $ref: '#/components/schemas/Spv' } } } } }
+        content: { application/json: { schema: { $ref: '#/components/schemas/VehicleCreate' } } }
+      responses: { '200': { description: Updated, content: { application/json: { schema: { $ref: '#/components/schemas/Vehicle' } } } } }
     delete:
-      tags: [SPVs]
-      summary: Delete an SPV (admin-only)
+      tags: [Vehicles]
+      summary: Delete a Vehicle (admin-only)
       responses:
         '200': { description: Deleted }
         '403': { $ref: '#/components/responses/Forbidden' }
 
-  /api/spvs/{id}/members:
+  /api/vehicles/{id}/members:
     parameters:
       - { name: id, in: path, required: true, schema: { type: integer } }
     get:
-      tags: [SPVs]
-      summary: List SPV members (investors), one row per tranche
-      description: Admins and organizers of the SPV's organization see every member row. Non-admin investors see only their own tranches (rows where the investor is their own account or an entity they own). Non-investor non-admins receive 403.
+      tags: [Vehicles]
+      summary: List Vehicle members (investors), one row per tranche
+      description: Admins and organizers of the Vehicle's organization see every member row. Non-admin investors see only their own tranches (rows where the investor is their own account or an entity they own). Non-investor non-admins receive 403.
       responses:
         '200':
           description: Each row has investorType + either an account or entity block. The same investor may appear in multiple rows (tranches), each with its own values. For non-admin investors, the response is filtered to only their own rows.
-          content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/SpvMember' } } } }
+          content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/VehicleMember' } } } }
         '403': { $ref: '#/components/responses/Forbidden' }
     post:
-      tags: [SPVs]
+      tags: [Vehicles]
       summary: Add an investor position / tranche (account OR entity, never both). Calling multiple times for the same investor creates additional tranches.
       requestBody:
         required: true
@@ -1115,36 +1123,36 @@ paths:
                 carry: { type: string, description: "Carry / Success Fee percentage (0-100) for this position. Stored per tranche; informational only — not subtracted from capital." }
                 totalCalled: { type: string, description: "Capital actually called from the investor so far." }
                 distributed: { type: string, description: "Distributions paid back to the investor." }
-                ownershipPercent: { type: string, nullable: true, description: "Explicit ownership % (0–100). Only meaningful when the SPV's allocationMethod is 'Custom'." }
+                ownershipPercent: { type: string, nullable: true, description: "Explicit ownership % (0–100). Only meaningful when the Vehicle's allocationMethod is 'Custom'." }
       responses:
         '201': { description: Added }
         '400': { $ref: '#/components/responses/BadRequest' }
 
-  /api/spvs/{id}/members/{memberId}:
+  /api/vehicles/{id}/members/{memberId}:
     parameters:
       - { name: id, in: path, required: true, schema: { type: integer } }
       - { name: memberId, in: path, required: true, schema: { type: integer } }
     patch:
-      tags: [SPVs]
+      tags: [Vehicles]
       summary: Update investment fields for a specific tranche
       responses: { '200': { description: Updated } }
     delete:
-      tags: [SPVs]
-      summary: Remove a specific tranche from an SPV
+      tags: [Vehicles]
+      summary: Remove a specific tranche from a Vehicle
       responses: { '200': { description: Removed } }
 
   # ──── Entities ────────────────────────────────────────────────────────────
-  /api/spvs/{id}/assets:
+  /api/vehicles/{id}/assets:
     parameters:
       - { name: id, in: path, required: true, schema: { type: integer } }
     get:
-      tags: [SPVs]
-      summary: List the SPV's assets (financial instruments). Read access mirrors SPV read access.
+      tags: [Vehicles]
+      summary: List the Vehicle's assets (financial instruments). Read access mirrors Vehicle read access.
       responses:
-        '200': { description: Assets, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/SpvAsset' } } } } }
+        '200': { description: Assets, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/VehicleAsset' } } } } }
     post:
-      tags: [SPVs]
-      summary: Add an asset to the SPV. Requires admin or organization organizer. Cost may exceed current `spv.cash` (cash will simply go negative).
+      tags: [Vehicles]
+      summary: Add an asset to the Vehicle. Requires admin or organization organizer. Cost may exceed current `vehicle.cash` (cash will simply go negative).
       requestBody:
         required: true
         content:
@@ -1156,38 +1164,38 @@ paths:
                 companyName: { type: string }
                 instrumentType: { type: string, example: "Equity" }
                 purchaseDate: { type: string, format: date, nullable: true }
-                cost: { type: string, description: "Initial cost. May exceed current SPV cash (cash will go negative)." }
+                cost: { type: string, description: "Initial cost. May exceed current Vehicle cash (cash will go negative)." }
                 notes: { type: string }
-                isDefault: { type: boolean, description: "Mark this asset as the SPV's default. Auto-clears the flag on any other asset in the same SPV." }
+                isDefault: { type: boolean, description: "Mark this asset as the Vehicle's default. Auto-clears the flag on any other asset in the same Vehicle." }
       responses:
-        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/SpvAsset' } } } }
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/VehicleAsset' } } } }
         '400': { $ref: '#/components/responses/BadRequest' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
-  /api/spvs/{id}/assets/{assetId}:
+  /api/vehicles/{id}/assets/{assetId}:
     parameters:
       - { name: id, in: path, required: true, schema: { type: integer } }
       - { name: assetId, in: path, required: true, schema: { type: integer } }
     patch:
-      tags: [SPVs]
+      tags: [Vehicles]
       summary: Update an asset's fields. Admin or organizer only.
-      responses: { '200': { description: Updated, content: { application/json: { schema: { $ref: '#/components/schemas/SpvAsset' } } } } }
+      responses: { '200': { description: Updated, content: { application/json: { schema: { $ref: '#/components/schemas/VehicleAsset' } } } } }
     delete:
-      tags: [SPVs]
+      tags: [Vehicles]
       summary: Delete an asset (cascades valuations). Admin or organizer only.
       responses: { '200': { description: Deleted } }
 
-  /api/spvs/{id}/assets/{assetId}/valuations:
+  /api/vehicles/{id}/assets/{assetId}/valuations:
     parameters:
       - { name: id, in: path, required: true, schema: { type: integer } }
       - { name: assetId, in: path, required: true, schema: { type: integer } }
     get:
-      tags: [SPVs]
+      tags: [Vehicles]
       summary: List the asset's valuation history (newest first).
       responses:
-        '200': { description: Valuations, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/SpvAssetValuation' } } } } }
+        '200': { description: Valuations, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/VehicleAssetValuation' } } } } }
     post:
-      tags: [SPVs]
+      tags: [Vehicles]
       summary: Add a new valuation (mark) for the asset. Admin or organizer only.
       requestBody:
         required: true
@@ -1201,15 +1209,15 @@ paths:
                 value: { type: string }
                 note: { type: string }
       responses:
-        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/SpvAssetValuation' } } } }
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/VehicleAssetValuation' } } } }
 
-  /api/spvs/{id}/assets/{assetId}/valuations/{valuationId}:
+  /api/vehicles/{id}/assets/{assetId}/valuations/{valuationId}:
     parameters:
       - { name: id, in: path, required: true, schema: { type: integer } }
       - { name: assetId, in: path, required: true, schema: { type: integer } }
       - { name: valuationId, in: path, required: true, schema: { type: integer } }
     delete:
-      tags: [SPVs]
+      tags: [Vehicles]
       summary: Delete a valuation. Admin or organizer only.
       responses: { '200': { description: Deleted } }
 
@@ -1352,7 +1360,7 @@ paths:
         `ownerType=account`) or `entityId` (when `ownerType=entity`).
 
         `folderPath` is a virtual path made of `/`-separated segments
-        (e.g. `"SPVs/RS Kushki"`). Segments are sanitized server-side
+        (e.g. `"Vehicles/RS Kushki"`). Segments are sanitized server-side
         (illegal chars become `_`, `..` is stripped).
 
         On disk the file is written under
@@ -1375,7 +1383,7 @@ paths:
                   description: Display name. Defaults to the uploaded file's original name.
                 folderPath:
                   type: string
-                  example: "SPVs/RS Kushki"
+                  example: "Vehicles/RS Kushki"
                   description: Virtual folder path; `/`-separated. Empty = root.
                 ownerType:
                   type: string
@@ -1536,7 +1544,7 @@ paths:
       summary: List the currency catalog
       description: |
         Returns every known currency (active and inactive). `active`
-        currencies are the ones selectable as an SPV's currency on creation
+        currencies are the ones selectable as a Vehicle's currency on creation
         and offered in the dashboard's "view in" dropdown.
       responses:
         '200':
@@ -1794,7 +1802,7 @@ components:
         usedByAccountId: { type: integer, nullable: true }
         createdAt: { type: string, format: date-time }
 
-    Spv:
+    Vehicle:
       type: object
       properties:
         id: { type: integer }
@@ -1803,7 +1811,7 @@ components:
         legalName: { type: string }
         displayName: { type: string }
         entityType: { type: string }
-        currency: { type: string, example: "USD", description: "ISO 4217 code. Set once at creation (see SpvCreate) and immutable afterward — every investment into the SPV is denominated in it. PATCH /api/spvs/:id silently ignores this field." }
+        currency: { type: string, example: "USD", description: "ISO 4217 code. Set once at creation (see VehicleCreate) and immutable afterward — every investment into the Vehicle is denominated in it. PATCH /api/vehicles/:id silently ignores this field." }
         allocationMethod: { type: string }
         managementFeePercent: { type: string }
         carriedInterestPercent: { type: string }
@@ -1813,28 +1821,28 @@ components:
         cash: { type: string, description: "DERIVED. = sum(member.totalCalled) − sum(asset.cost). Returned, never stored." }
         assetValue: { type: string, description: "DERIVED. = sum(asset.currentValue) where asset.currentValue is its latest valuation (or cost if none)." }
         currentValue: { type: string, description: "DERIVED. = cash + assetValue." }
-        autoDeploy: { type: boolean, description: "When true, every new investment added to the SPV is auto-called for its NET capital (totalCalled = committed − managementFee − otherFee) and that net amount is added to the default asset's cost (at original cost, not current value). Fees stay on the member as fees and are not deployed. Requires a default asset; otherwise POST /members returns 400." }
+        autoDeploy: { type: boolean, description: "When true, every new investment added to the Vehicle is auto-called for its NET capital (totalCalled = committed − managementFee − otherFee) and that net amount is added to the default asset's cost (at original cost, not current value). Fees stay on the member as fees and are not deployed. Requires a default asset; otherwise POST /members returns 400." }
         members:
           type: array
-          items: { $ref: '#/components/schemas/SpvMember' }
+          items: { $ref: '#/components/schemas/VehicleMember' }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
 
-    SpvAsset:
+    VehicleAsset:
       type: object
-      description: A financial instrument owned by an SPV.
+      description: A financial instrument owned by a Vehicle.
       properties:
         id: { type: integer }
-        spvId: { type: integer }
+        vehicleId: { type: integer }
         companyName: { type: string }
         instrumentType: { type: string, example: "Equity", description: "Equity, Convertible Note, SAFE, Preferred Stock, Common Stock, Warrant, Debt, Other." }
         purchaseDate: { type: string, format: date, nullable: true }
-        cost: { type: string, description: "Initial cost paid from SPV cash." }
+        cost: { type: string, description: "Initial cost paid from Vehicle cash." }
         notes: { type: string }
-        isDefault: { type: boolean, description: "At most one asset per SPV can be the default. The default asset receives AutoDeploy capital." }
-        currentValue: { type: string, description: "DERIVED. = latest SpvAssetValuation.value (by date), or cost when no valuations exist." }
+        isDefault: { type: boolean, description: "At most one asset per Vehicle can be the default. The default asset receives AutoDeploy capital." }
+        currentValue: { type: string, description: "DERIVED. = latest VehicleAssetValuation.value (by date), or cost when no valuations exist." }
 
-    SpvAssetValuation:
+    VehicleAssetValuation:
       type: object
       properties:
         id: { type: integer }
@@ -1843,7 +1851,7 @@ components:
         value: { type: string }
         note: { type: string }
 
-    SpvCreate:
+    VehicleCreate:
       type: object
       required: [legalName, displayName, entityType]
       properties:
@@ -1856,8 +1864,8 @@ components:
           enum: ["By Commitment", "By Capital Invested", "Custom"]
           example: "By Commitment"
           description: |
-            How ownership % in the SPV is calculated:
-            - **By Commitment**: each investor's share = their `committed` divided by the SPV's total `committed`.
+            How ownership % in the Vehicle is calculated:
+            - **By Commitment**: each investor's share = their `committed` divided by the Vehicle's total `committed`.
             - **By Capital Invested**: each investor's share = `capital` (= `committed` − `managementFee` − `otherFee`) divided by the total of `capital` across all members.
             - **Custom**: ownership is set explicitly per investor via `ownershipPercent`.
         managementFeePercent: { type: string }
@@ -1866,12 +1874,12 @@ components:
         totalBeingRaised: { type: string }
         minimumInvestment: { type: string }
 
-    SpvMember:
+    VehicleMember:
       type: object
-      description: One investor in an SPV — exactly one of account/entity is non-null.
+      description: One investor in a Vehicle — exactly one of account/entity is non-null.
       properties:
         id: { type: integer }
-        spvId: { type: integer }
+        vehicleId: { type: integer }
         investorType: { type: string, enum: [account, entity] }
         date: { type: string, format: date, nullable: true }
         committed: { type: string, description: "Total commitment (gross)." }
@@ -1880,12 +1888,12 @@ components:
         carry: { type: string, description: "Carry / Success Fee percentage (0-100) for this tranche. Informational only; not subtracted from capital." }
         totalCalled: { type: string, description: "Capital called from the investor so far." }
         distributed: { type: string, description: "Distributions paid back to the investor." }
-        ownershipPercent: { type: string, nullable: true, description: "Explicit ownership % (0–100) used only when the SPV's allocationMethod is 'Custom'." }
-        currentValue: { type: string, description: "DERIVED. = ownership share × spv.currentValue. Returned on responses; cannot be set." }
+        ownershipPercent: { type: string, nullable: true, description: "Explicit ownership % (0–100) used only when the Vehicle's allocationMethod is 'Custom'." }
+        currentValue: { type: string, description: "DERIVED. = ownership share × vehicle.currentValue. Returned on responses; cannot be set." }
         # Derived (NOT stored, computed server-side):
         #   capital              = committed − (managementFee + otherFee)
         #   commitmentRemaining  = capital − totalCalled
-        #   currentValue         = ownership% × spv.currentValue
+        #   currentValue         = ownership% × vehicle.currentValue
         account: { $ref: '#/components/schemas/Account', nullable: true }
         entity: { $ref: '#/components/schemas/Entity', nullable: true }
 
@@ -1968,6 +1976,7 @@ components:
         account: { $ref: '#/components/schemas/AccountSummary' }
         incentives: { type: array, items: { $ref: '#/components/schemas/PromoterIncentive' } }
         introductionCount: { type: integer, description: Accounts and entities credited to the promoter, inherited entity credit included }
+        hasSignedContract: { type: boolean, description: Whether a promoter agreement is signed; the promoter can only be active then }
 
     Contract:
       type: object
@@ -2022,7 +2031,7 @@ components:
         folderPath:
           type: string
           description: Sanitized virtual folder path (slash-separated).
-          example: "SPVs/RS Kushki"
+          example: "Vehicles/RS Kushki"
         ownerType: { type: string, enum: [account, entity] }
         accountId: { type: integer, nullable: true }
         entityId: { type: integer, nullable: true }
@@ -2083,7 +2092,7 @@ components:
         code: { type: string, example: "EUR", description: "ISO 4217 code." }
         name: { type: string, example: "Euro" }
         symbol: { type: string, example: "€" }
-        active: { type: boolean, description: "Whether this currency is selectable for new SPVs and in the dashboard's currency dropdown. USD is always active." }
+        active: { type: boolean, description: "Whether this currency is selectable for new Vehicles and in the dashboard's currency dropdown. USD is always active." }
 
     ExchangeRates:
       type: object

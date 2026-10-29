@@ -1,12 +1,12 @@
 /**
  * Development data snapshot.
  *
- *   npm run dev-data:export   pull an org + selected SPVs from a FundFlow instance
+ *   npm run dev-data:export   pull an org + selected Vehicles from a FundFlow instance
  *   npm run dev-data:seed     load that snapshot into the local DATABASE_URL
  *
  * Export reads FUNDFLOW_URL (default https://portal.rapidscale.vc) and
  * FUNDFLOW_TOKEN (an admin's `ff_…` API token), plus optional DEV_DATA_ORG
- * (org slug) and DEV_DATA_SPVS (comma-separated SPV name fragments).
+ * (org slug) and DEV_DATA_VEHICLES (comma-separated Vehicle name fragments).
  * Seeded accounts get DEV_SEED_PASSWORD (default "password123").
  * The snapshot lives in dev-data/, which is gitignored: it holds real people.
  */
@@ -14,7 +14,7 @@ import fs from "fs";
 import path from "path";
 import { eq } from "drizzle-orm";
 import {
-  exportDevData, importDevData, DEFAULT_DEV_ORG_SLUG, DEFAULT_DEV_SPVS,
+  exportDevData, importDevData, DEFAULT_DEV_ORG_SLUG, DEFAULT_DEV_VEHICLES,
   type DevDataset, type DevDataSink,
 } from "../server/dev-data";
 
@@ -34,15 +34,15 @@ async function runExport() {
   const data = await exportDevData(get, {
     source: baseUrl,
     orgSlug: process.env.DEV_DATA_ORG ?? DEFAULT_DEV_ORG_SLUG,
-    spvPatterns: process.env.DEV_DATA_SPVS?.split(",").map(s => s.trim()).filter(Boolean) ?? DEFAULT_DEV_SPVS,
+    vehiclePatterns: process.env.DEV_DATA_VEHICLES?.split(",").map(s => s.trim()).filter(Boolean) ?? DEFAULT_DEV_VEHICLES,
   });
 
   fs.mkdirSync(path.dirname(DATA_FILE), { recursive: true });
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
   console.log(`Exported "${data.organization.name}" to ${DATA_FILE}:`);
   console.log(`  ${data.accounts.length} accounts, ${data.entities.length} entities`);
-  for (const spv of data.spvs) {
-    console.log(`  SPV ${spv.fields.displayName}: ${spv.members.length} positions, ${spv.assets.length} assets`);
+  for (const vehicle of data.vehicles) {
+    console.log(`  Vehicle ${vehicle.fields.displayName}: ${vehicle.members.length} positions, ${vehicle.assets.length} assets`);
   }
 }
 
@@ -101,19 +101,19 @@ async function runSeed() {
       async addEntityOwner(entityId, owner) {
         await tx.insert(schema.entityOwners).values({ entityId, ...owner });
       },
-      async insertSpv(fields) {
-        const [row] = await tx.insert(schema.spvs).values(fields as any).returning({ id: schema.spvs.id });
+      async insertVehicle(fields) {
+        const [row] = await tx.insert(schema.vehicles).values(fields as any).returning({ id: schema.vehicles.id });
         return row.id;
       },
-      async insertSpvMember(spvId, member) {
-        await tx.insert(schema.spvMembers).values({ spvId, ...member });
+      async insertVehicleMember(vehicleId, member) {
+        await tx.insert(schema.vehicleMembers).values({ vehicleId, ...member });
       },
-      async insertSpvAsset(spvId, asset) {
-        const [row] = await tx.insert(schema.spvAssets).values({ spvId, ...asset }).returning({ id: schema.spvAssets.id });
+      async insertVehicleAsset(vehicleId, asset) {
+        const [row] = await tx.insert(schema.vehicleAssets).values({ vehicleId, ...asset }).returning({ id: schema.vehicleAssets.id });
         return row.id;
       },
       async insertValuation(assetId, valuation) {
-        await tx.insert(schema.spvAssetValuations).values({ assetId, ...valuation });
+        await tx.insert(schema.vehicleAssetValuations).values({ assetId, ...valuation });
       },
     };
     return importDevData(data, sink);
@@ -121,7 +121,7 @@ async function runSeed() {
 
   console.log(`Seeded "${data.organization.name}" from ${data.source} (exported ${data.exportedAt}):`);
   console.log(`  ${result.accountsCreated} accounts created, ${result.accountsReused} already existed`);
-  console.log(`  ${result.entities} entities, ${result.spvs} SPVs, ${result.spvMembers} SPV positions`);
+  console.log(`  ${result.entities} entities, ${result.vehicles} Vehicles, ${result.vehicleMembers} Vehicle positions`);
 }
 
 const command = process.argv[2];
