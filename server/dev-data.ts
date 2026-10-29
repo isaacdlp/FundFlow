@@ -15,6 +15,7 @@ export interface DevAccount {
   lastName: string;
   phone: string | null;
   birthdate: string | null;
+  nationality: string | null;
   streetAddress1: string | null;
   streetAddress2: string | null;
   country: string | null;
@@ -209,6 +210,7 @@ export async function exportDevData(
       lastName: a.lastName,
       phone: a.phone,
       birthdate: a.birthdate,
+      nationality: a.nationality ?? null,
       streetAddress1: a.streetAddress1,
       streetAddress2: a.streetAddress2,
       country: a.country,

@@ -17,6 +17,8 @@ export const accounts = pgTable("accounts", {
   lastName: varchar("last_name", { length: 100 }).notNull(),
   phone: varchar("phone", { length: 50 }).default(""),
   birthdate: date("birthdate"),
+  // Country of citizenship (a name from the client's country list), e.g. for contracts.
+  nationality: varchar("nationality", { length: 100 }).default(""),
   taxId: varchar("tax_id", { length: 50 }).default(""),
   streetAddress1: varchar("street_address_1", { length: 255 }).default(""),
   streetAddress2: varchar("street_address_2", { length: 255 }).default(""),
@@ -173,6 +175,78 @@ export const entityManagers = pgTable("entity_managers", {
 }, (table) => [
   uniqueIndex("entity_manager_unique").on(table.entityId, table.accountId),
 ]);
+
+// Who introduced whom. Exactly one of introducedAccountId / introducedEntityId
+// is set. Rows with `viaAccountId` are inherited entity introductions: the
+// introducer introduced that managing account, so its entities count too.
+// They are kept in sync by the server and can't be edited directly.
+export const introductions = pgTable("introductions", {
+  id: serial("id").primaryKey(),
+  introducerAccountId: integer("introducer_account_id").notNull().references(() => accounts.id, { onDelete: "cascade" }),
+  introducedAccountId: integer("introduced_account_id").references(() => accounts.id, { onDelete: "cascade" }),
+  introducedEntityId: integer("introduced_entity_id").references(() => entities.id, { onDelete: "cascade" }),
+  viaAccountId: integer("via_account_id").references(() => accounts.id, { onDelete: "cascade" }),
+  date: date("date"),
+  notes: text("notes").default(""),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("introductions_account_unique").on(table.introducerAccountId, table.introducedAccountId),
+  uniqueIndex("introductions_entity_unique").on(table.introducerAccountId, table.introducedEntityId),
+  check("introductions_one_target", sql`(${table.introducedAccountId} IS NULL) <> (${table.introducedEntityId} IS NULL)`),
+]);
+
+// Vetted introducers under contract who earn commissions on what the
+// accounts/entities they introduced pay us. One row per account.
+export const promoters = pgTable("promoters", {
+  id: serial("id").primaryKey(),
+  accountId: integer("account_id").notNull().unique().references(() => accounts.id, { onDelete: "cascade" }),
+  active: boolean("active").default(true).notNull(),
+  contractDate: date("contract_date"),
+  notes: text("notes").default(""),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const INCENTIVE_TYPES = ["management_fee", "success_fee"] as const;
+export type IncentiveType = typeof INCENTIVE_TYPES[number];
+
+// What a promoter earns: `percent` of the fee of `type` that their
+// introductions pay us. At most one incentive per type and promoter.
+export const promoterIncentives = pgTable("promoter_incentives", {
+  id: serial("id").primaryKey(),
+  promoterId: integer("promoter_id").notNull().references(() => promoters.id, { onDelete: "cascade" }),
+  type: varchar("type", { length: 50 }).notNull(),
+  percent: numeric("percent", { precision: 5, scale: 2 }).notNull(),
+  notes: text("notes").default(""),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("promoter_incentive_type_unique").on(table.promoterId, table.type),
+  check("promoter_incentive_percent_range", sql`${table.percent} > 0 AND ${table.percent} <= 100`),
+]);
+
+// What a contract is for. Each kind links to its subject through its own
+// nullable column (promoterId for now; investments, tax forms… later).
+export const CONTRACT_KINDS = ["promoter_agreement"] as const;
+export type ContractKind = typeof CONTRACT_KINDS[number];
+
+// Contracts sent for e-signature through ConcordNow. `status` caches Concord's
+// summary status (DRAFT, SIGNING, SIGNED, BROKEN…) as of `statusCheckedAt`.
+// Once signed, Concord may move the document to a new uid; `concordUid`
+// follows it.
+export const contracts = pgTable("contracts", {
+  id: serial("id").primaryKey(),
+  kind: varchar("kind", { length: 50 }).notNull(),
+  concordUid: varchar("concord_uid", { length: 64 }).notNull().unique(),
+  title: varchar("title", { length: 255 }).notNull(),
+  status: varchar("status", { length: 30 }).notNull().default("SIGNING"),
+  signers: text("signers").array().notNull().default(sql`'{}'::text[]`),
+  promoterId: integer("promoter_id").references(() => promoters.id, { onDelete: "cascade" }),
+  createdByAccountId: integer("created_by_account_id").references(() => accounts.id, { onDelete: "set null" }),
+  statusCheckedAt: timestamp("status_checked_at"),
+  signedAt: timestamp("signed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
 
 export const spvMembers = pgTable("spv_members", {
   id: serial("id").primaryKey(),
@@ -378,6 +452,10 @@ export type UpdateOrganization = z.infer<typeof updateOrganizationSchema>;
 export type Entity = typeof entities.$inferSelect;
 export type EntityOwner = typeof entityOwners.$inferSelect;
 export type EntityManager = typeof entityManagers.$inferSelect;
+export type Introduction = typeof introductions.$inferSelect;
+export type Promoter = typeof promoters.$inferSelect;
+export type PromoterIncentive = typeof promoterIncentives.$inferSelect;
+export type Contract = typeof contracts.$inferSelect;
 export type InsertSpv = z.infer<typeof insertSpvSchema>;
 export type UpdateSpv = z.infer<typeof updateSpvSchema>;
 export type InsertEntity = z.infer<typeof insertEntitySchema>;
@@ -407,3 +485,92 @@ export const createDocumentSchema = z.object({
 });
 
 export type CreateDocumentInput = z.infer<typeof createDocumentSchema>;
+
+const introductionDetails = {
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "date must be YYYY-MM-DD").nullable().optional(),
+  notes: z.string().max(2000).optional(),
+};
+
+export const createIntroductionSchema = z.object({
+  introducerAccountId: z.number().int().positive(),
+  introducedAccountId: z.number().int().positive().optional(),
+  introducedEntityId: z.number().int().positive().optional(),
+  ...introductionDetails,
+}).refine(d => (d.introducedAccountId === undefined) !== (d.introducedEntityId === undefined), {
+  message: "Exactly one of introducedAccountId or introducedEntityId is required",
+});
+
+export const updateIntroductionSchema = z.object(introductionDetails);
+
+export type CreateIntroductionInput = z.infer<typeof createIntroductionSchema>;
+export type UpdateIntroductionInput = z.infer<typeof updateIntroductionSchema>;
+
+const incentiveDetails = {
+  // Accepts 20 or "20"; stored as numeric(5,2).
+  percent: z.coerce.number()
+    .gt(0, "percent must be greater than 0")
+    .max(100, "percent must be at most 100")
+    .refine(n => Math.abs(n * 100 - Math.round(n * 100)) < 1e-9, "percent allows at most 2 decimals"),
+  notes: z.string().max(2000).optional(),
+};
+
+export const createIncentiveSchema = z.object({
+  type: z.enum(INCENTIVE_TYPES),
+  ...incentiveDetails,
+});
+
+export const updateIncentiveSchema = z.object(incentiveDetails).partial();
+
+const promoterDetails = {
+  active: z.boolean().optional(),
+  contractDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "contractDate must be YYYY-MM-DD").nullable().optional(),
+  notes: z.string().max(2000).optional(),
+};
+
+export const createPromoterSchema = z.object({
+  accountId: z.number().int().positive(),
+  ...promoterDetails,
+  incentives: z.array(createIncentiveSchema).optional()
+    .refine(list => !list || new Set(list.map(i => i.type)).size === list.length, {
+      message: "Each incentive type can only be given once",
+    }),
+});
+
+export const updatePromoterSchema = z.object(promoterDetails);
+
+export type CreateIncentiveInput = z.infer<typeof createIncentiveSchema>;
+export type UpdateIncentiveInput = z.infer<typeof updateIncentiveSchema>;
+export type CreatePromoterInput = z.infer<typeof createPromoterSchema>;
+export type UpdatePromoterInput = z.infer<typeof updatePromoterSchema>;
+
+// Sending a promoter agreement. `variables` fill the Concord template's
+// placeholders; `signers` fill its signature slots in order.
+export const createPromoterContractSchema = z.object({
+  title: z.string().trim().min(1).max(255),
+  signers: z.array(z.string().trim().email()).min(1).max(10)
+    .refine(list => new Set(list.map(e => e.toLowerCase())).size === list.length, {
+      message: "Each signer can only be given once",
+    }),
+  variables: z.record(z.string(), z.string().max(2000)).default({}),
+  /** Invitation email subject; defaults to the title. */
+  subject: z.string().trim().max(255).optional(),
+  message: z.string().max(5000).optional(),
+});
+
+export type CreatePromoterContractInput = z.infer<typeof createPromoterContractSchema>;
+
+// Concord settings edited from the Settings page (the API key stays in the env).
+// Every field is optional; an empty string clears it.
+const optionalUrl = z.string().trim().max(500).refine(v => v === "" || /^https?:\/\/\S+$/.test(v), {
+  message: "Must be an http(s) URL",
+});
+export const updateConcordSettingsSchema = z.object({
+  orgId: z.string().trim().max(100).optional(),
+  apiUrl: optionalUrl.optional(),
+  appUrl: optionalUrl.optional(),
+  signerEmail: z.union([z.literal(""), z.string().trim().email()]).optional(),
+  promoterTemplateId: z.string().trim().max(100).optional(),
+  promoterFolderId: z.string().trim().max(100).optional(),
+}).strict();
+
+export type UpdateConcordSettingsInput = z.infer<typeof updateConcordSettingsSchema>;

@@ -28,12 +28,15 @@ export type RouteKey =
   | "entities"
   | "entityNew"
   | "entityDetail"
+  | "promoters"
+  | "promoterDetail"
   | "documents"
   | "settings"
   | "settingsDocuments"
   | "settingsManagement"
   | "settingsApiTokens"
   | "settingsCurrencies"
+  | "settingsContracts"
   | "forgotPassword"
   | "resetPassword"
   | "orgLanding";
@@ -52,12 +55,15 @@ export const ROUTE_PATTERNS: Record<RouteKey, Record<Locale, string>> = {
   entities:            { en: "/entities",                        es: "/entidades",                       fr: "/entites" },
   entityNew:           { en: "/entities/new",                    es: "/entidades/nueva",                 fr: "/entites/nouvelle" },
   entityDetail:        { en: "/entities/:id",                    es: "/entidades/:id",                   fr: "/entites/:id" },
+  promoters:           { en: "/promoters",                       es: "/promotores",                      fr: "/promoteurs" },
+  promoterDetail:      { en: "/promoters/:id",                   es: "/promotores/:id",                  fr: "/promoteurs/:id" },
   documents:           { en: "/documents",                       es: "/documentos",                      fr: "/documents" },
   settings:            { en: "/settings",                        es: "/configuracion",                   fr: "/parametres" },
   settingsDocuments:   { en: "/settings/documents",              es: "/configuracion/documentos",        fr: "/parametres/documents" },
   settingsManagement:  { en: "/settings/management",             es: "/configuracion/administracion",    fr: "/parametres/administration" },
   settingsApiTokens:   { en: "/settings/api-tokens",             es: "/configuracion/api-tokens",        fr: "/parametres/api-tokens" },
   settingsCurrencies:  { en: "/settings/currencies",              es: "/configuracion/monedas",           fr: "/parametres/devises" },
+  settingsContracts:   { en: "/settings/contracts",              es: "/configuracion/contratos",         fr: "/parametres/contrats" },
   forgotPassword:      { en: "/forgot-password",                 es: "/olvide-contrasena",               fr: "/mot-de-passe-oublie" },
   resetPassword:       RESET_PASSWORD_PATHS,
   orgLanding:          { en: "/org/:slug",                       es: "/organizacion/:slug",              fr: "/organisation/:slug" },

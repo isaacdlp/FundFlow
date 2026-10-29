@@ -271,6 +271,7 @@ export interface AccountWithRoles {
   lastName: string;
   phone: string | null;
   birthdate: string | null;
+  nationality: string | null;
   taxId: string | null;
   streetAddress1: string | null;
   streetAddress2: string | null;
@@ -283,4 +284,104 @@ export interface AccountWithRoles {
   createdAt: string;
   updatedAt: string;
   roles: Role[];
+}
+
+export interface IntroductionInfo {
+  id: number;
+  introducerAccountId: number;
+  introducedAccountId: number | null;
+  introducedEntityId: number | null;
+  /** Set when the entity introduction is inherited through this managing account. */
+  viaAccountId: number | null;
+  date: string | null;
+  notes: string | null;
+  createdAt: string;
+  introducer: { id: number; email: string; firstName: string; lastName: string } | null;
+  introducedAccount: { id: number; email: string; firstName: string; lastName: string } | null;
+  introducedEntity: { id: number; name: string; entityType: string } | null;
+  via: { id: number; email: string; firstName: string; lastName: string } | null;
+}
+
+export interface AccountIntroductionsInfo {
+  introducedBy: IntroductionInfo[];
+  introduced: IntroductionInfo[];
+  unavailable: {
+    introducerAccountIds: number[];
+    introducedAccountIds: number[];
+    introducedEntityIds: number[];
+  };
+}
+
+export type IncentiveType = "management_fee" | "success_fee";
+
+export interface PromoterIncentiveInfo {
+  id: number;
+  promoterId: number;
+  type: IncentiveType;
+  /** Share of that fee, 0–100, as a numeric string (e.g. "20.00"). */
+  percent: string;
+  notes: string | null;
+  createdAt: string;
+}
+
+export interface PromoterInfo {
+  id: number;
+  accountId: number;
+  active: boolean;
+  contractDate: string | null;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+  account: { id: number; email: string; firstName: string; lastName: string };
+  incentives: PromoterIncentiveInfo[];
+  /** Accounts and entities credited to this promoter, inherited entity credit included. */
+  introductionCount: number;
+}
+
+export type ContractKind = "promoter_agreement";
+
+/** A contract sent for e-signature through ConcordNow. */
+export interface ContractInfo {
+  id: number;
+  kind: ContractKind;
+  concordUid: string;
+  title: string;
+  /** Concord summary status: DRAFT, SIGNING, SIGNED, BROKEN… */
+  status: string;
+  signers: string[];
+  promoterId: number | null;
+  createdByAccountId: number | null;
+  /** When the status was last read from Concord. */
+  statusCheckedAt: string | null;
+  signedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  /** Link to the document in Concord; null when Concord isn't configured. */
+  url: string | null;
+}
+
+/** Suggested contract to review (and edit) before sending it through Concord. */
+/** Concord settings as shown in the admin Settings page (`GET /api/settings/concord`). */
+export interface ConcordSettingsInfo {
+  orgId: string;
+  apiUrl: string;
+  appUrl: string;
+  signerEmail: string;
+  promoterTemplateId: string;
+  promoterFolderId: string;
+  /** Whether the CONCORD_API_KEY env var is set (the key itself is never returned). */
+  apiKeySet: boolean;
+  defaultApiUrl: string;
+  defaultAppUrl: string;
+}
+
+export interface ContractDraft {
+  /** Whether Concord and the promoter agreement template are configured. */
+  ready: boolean;
+  title: string;
+  signers: string[];
+  variables: Record<string, string>;
+  /** Invitation email subject, in the signer's language (the title stays in the contract's language). */
+  subject: string;
+  message: string;
 }

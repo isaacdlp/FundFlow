@@ -3,7 +3,7 @@ import { useRoute, Link, useLocation, useSearch } from "wouter";
 import { useTranslation } from "react-i18next";
 import { useLocalePath, useLocale } from "@/i18n/hooks";
 import { ROUTE_PATTERNS } from "@/i18n/routes";
-import type { EntityInfo, EntityOwnerInfo, EntityManagerInfo, AccountWithRoles } from "@shared/types";
+import type { EntityInfo, EntityOwnerInfo, EntityManagerInfo, AccountWithRoles, IntroductionInfo } from "@shared/types";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
 import {
@@ -282,6 +282,8 @@ function ManagersSection({ entityId, editing }: { entityId: string; editing: boo
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/entities", entityId, "managers"] });
       queryClient.invalidateQueries({ queryKey: ["/api/entities", entityId] });
+      // Managers pass their introducers on to the entity.
+      queryClient.invalidateQueries({ predicate: q => q.queryKey.includes("introductions") });
       toast({ title: t("entityDetail.managerAdded") });
     },
     onError: (error: Error) => {
@@ -297,6 +299,8 @@ function ManagersSection({ entityId, editing }: { entityId: string; editing: boo
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/entities", entityId, "managers"] });
       queryClient.invalidateQueries({ queryKey: ["/api/entities", entityId] });
+      // Managers pass their introducers on to the entity.
+      queryClient.invalidateQueries({ predicate: q => q.queryKey.includes("introductions") });
       toast({ title: t("entityDetail.managerRemoved") });
     },
     onError: (error: Error) => {
@@ -344,6 +348,44 @@ function ManagersSection({ entityId, editing }: { entityId: string; editing: boo
           </div>
         ) : (
           <p className="text-sm text-muted-foreground">{t("entityDetail.noManagersAssigned")}</p>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+/** Read-only: introductions are edited from the introducer's account page. */
+function IntroducersSection({ entityId }: { entityId: string }) {
+  const { t } = useTranslation();
+  const lp = useLocalePath();
+  const { data: intros } = useQuery<IntroductionInfo[]>({
+    queryKey: ["/api/entities", entityId, "introductions"],
+  });
+
+  return (
+    <Card>
+      <CardHeader>
+        <h2 className="text-lg font-semibold">{t("introductions.introducedByTitle")}</h2>
+        <p className="text-sm text-muted-foreground">{t("introductions.entityHint")}</p>
+      </CardHeader>
+      <CardContent>
+        {intros && intros.length > 0 ? (
+          <div className="flex flex-wrap gap-2">
+            {intros.map(i => (
+              <Link key={i.id} href={`${lp("accountDetail", { id: i.introducerAccountId })}?tab=introductions`}>
+                <div className="flex items-center gap-2 px-2 py-1 rounded-md border bg-muted text-sm cursor-pointer" data-testid={`introducer-chip-${i.introducerAccountId}`}>
+                  <span>{i.introducer ? `${i.introducer.firstName} ${i.introducer.lastName}` : "—"}</span>
+                  {i.via && (
+                    <span className="text-xs text-muted-foreground">
+                      {t("introductions.inheritedVia", { name: `${i.via.firstName} ${i.via.lastName}` })}
+                    </span>
+                  )}
+                </div>
+              </Link>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">{t("introductions.noIntroducers")}</p>
         )}
       </CardContent>
     </Card>
@@ -625,6 +667,8 @@ export default function EntityDetail() {
           </Card>
 
           <ManagersSection entityId={entityId!} editing={editing} />
+
+          {isAdmin && <IntroducersSection entityId={entityId!} />}
 
           <Card>
             <CardHeader>

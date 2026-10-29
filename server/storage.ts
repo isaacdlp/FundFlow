@@ -1,17 +1,21 @@
-import { eq, ilike, or, sql, and, lt, inArray } from "drizzle-orm";
+import { eq, ilike, or, sql, and, lt, inArray, desc } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import {
   accounts, roles, accountRoles, organizations, organizationOrganizers,
   organizationMembers, organizationInvites, spvs, spvMembers,
   spvAssets, spvAssetValuations,
-  entities, entityOwners, entityManagers, passwordResetTokens,
-  apiTokens, currencies, PASSWORD_RESET_TTL_MS,
+  entities, entityOwners, entityManagers, introductions, promoters, promoterIncentives, contracts, passwordResetTokens,
+  apiTokens, currencies, appSettings, PASSWORD_RESET_TTL_MS,
   type Account, type Role, type InsertAccount, type UpdateAccount,
   type Organization, type InsertOrganization, type UpdateOrganization,
   type OrganizationMember, type OrganizationInvite,
   type Spv, type SpvMember, type InsertSpv, type UpdateSpv,
   type SpvAsset, type SpvAssetValuation,
   type Entity, type EntityOwner, type EntityManager,
+  type Introduction, type CreateIntroductionInput, type UpdateIntroductionInput,
+  type Promoter, type PromoterIncentive, type CreatePromoterInput, type UpdatePromoterInput,
+  type CreateIncentiveInput, type UpdateIncentiveInput,
+  type Contract,
   type InsertEntity, type UpdateEntity,
   type PasswordResetToken,
   type ApiToken, type PublicApiToken,
@@ -19,6 +23,7 @@ import {
 import crypto from "crypto";
 import bcrypt from "bcrypt";
 import { resolveSeedAdminPassword } from "./seed";
+import { computeInheritedIntroducers, type IntroductionGraph } from "./introductions";
 
 type InvestmentFields = {
   committed?: string;
@@ -130,6 +135,31 @@ export interface EntityManagerWithAccount extends EntityManager {
   account: { id: number; email: string; firstName: string; lastName: string };
 }
 
+export interface IntroductionWithDetails extends Introduction {
+  introducer: { id: number; email: string; firstName: string; lastName: string } | null;
+  introducedAccount: { id: number; email: string; firstName: string; lastName: string } | null;
+  introducedEntity: { id: number; name: string; entityType: string } | null;
+  via: { id: number; email: string; firstName: string; lastName: string } | null;
+}
+
+export interface AccountIntroductions {
+  /** Introductions of this account (who introduced it). */
+  introducedBy: IntroductionWithDetails[];
+  /** Accounts and entities this account introduced, including inherited entity rows. */
+  introduced: IntroductionWithDetails[];
+}
+
+export interface PromoterWithDetails extends Promoter {
+  account: { id: number; email: string; firstName: string; lastName: string };
+  incentives: PromoterIncentive[];
+  /** Introductions made by the promoter's account, inherited entity credit included. */
+  introductionCount: number;
+}
+
+export type NewContract = Pick<Contract, "kind" | "concordUid" | "title" | "status" | "signers">
+  & Partial<Pick<Contract, "promoterId" | "createdByAccountId" | "statusCheckedAt">>;
+export type ContractUpdate = Partial<Pick<Contract, "concordUid" | "status" | "statusCheckedAt" | "signedAt">>;
+
 export interface IStorage {
   getRoles(): Promise<Role[]>;
   getAccounts(search?: string): Promise<AccountWithRoles[]>;
@@ -192,6 +222,39 @@ export interface IStorage {
   getEntityManagers(entityId: number): Promise<EntityManagerWithAccount[]>;
   addEntityManager(entityId: number, accountId: number): Promise<EntityManagerWithAccount>;
   removeEntityManager(entityId: number, accountId: number): Promise<boolean>;
+
+  getIntroductionGraph(): Promise<IntroductionGraph>;
+  getIntroduction(id: number): Promise<Introduction | undefined>;
+  getIntroductionsForAccount(accountId: number): Promise<AccountIntroductions>;
+  getIntroductionsForEntity(entityId: number): Promise<IntroductionWithDetails[]>;
+  /** Returns null if the same direct introduction already exists. */
+  createIntroduction(data: CreateIntroductionInput): Promise<IntroductionWithDetails | null>;
+  updateIntroduction(id: number, data: UpdateIntroductionInput): Promise<IntroductionWithDetails | undefined>;
+  deleteIntroduction(id: number): Promise<boolean>;
+
+  getPromoters(): Promise<PromoterWithDetails[]>;
+  getPromoter(id: number): Promise<PromoterWithDetails | undefined>;
+  getPromoterByAccountId(accountId: number): Promise<Promoter | undefined>;
+  /** Creates the promoter with its incentives; returns null if the account already is one. */
+  createPromoter(data: CreatePromoterInput): Promise<PromoterWithDetails | null>;
+  updatePromoter(id: number, data: UpdatePromoterInput): Promise<PromoterWithDetails | undefined>;
+  deletePromoter(id: number): Promise<boolean>;
+  getPromoterIncentive(id: number): Promise<PromoterIncentive | undefined>;
+  /** Returns null if the promoter already has an incentive of that type. */
+  createPromoterIncentive(promoterId: number, data: CreateIncentiveInput): Promise<PromoterIncentive | null>;
+  updatePromoterIncentive(id: number, data: UpdateIncentiveInput): Promise<PromoterIncentive | undefined>;
+  deletePromoterIncentive(id: number): Promise<boolean>;
+
+  getContract(id: number): Promise<Contract | undefined>;
+  getContractsForPromoter(promoterId: number): Promise<Contract[]>;
+  createContract(data: NewContract): Promise<Contract>;
+  updateContract(id: number, data: ContractUpdate): Promise<Contract | undefined>;
+  deleteContract(id: number): Promise<boolean>;
+
+  /** `app_settings` values for these keys; missing keys are left out. */
+  getAppSettings(keys: string[]): Promise<Record<string, string>>;
+  /** Upserts each key; an empty string clears the setting back to its default. */
+  setAppSettings(values: Record<string, string>): Promise<void>;
 
   getOrganizationIdsForAccount(accountId: number): Promise<number[]>;
   getOrganizationIdsAsOrganizer(accountId: number): Promise<number[]>;
@@ -362,7 +425,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteAccount(id: number): Promise<boolean> {
+    // Inherited introductions routed through this account cascade away; a
+    // co-manager may still pass the same credit on, so re-derive afterwards.
+    const managed = await this.getManagedEntityIds([id]);
     const result = await db.delete(accounts).where(eq(accounts.id, id)).returning();
+    await this.syncInheritedIntroductions(managed);
     return result.length > 0;
   }
 
@@ -1152,6 +1219,7 @@ export class DatabaseStorage implements IStorage {
       const acct = await getAccountSummary(accountId);
       return { ...existing[0], account: acct! };
     }
+    await this.syncInheritedIntroductions([entityId]);
     const acct = await getAccountSummary(accountId);
     return { ...mgr, account: acct! };
   }
@@ -1160,7 +1228,304 @@ export class DatabaseStorage implements IStorage {
     const result = await db.delete(entityManagers)
       .where(and(eq(entityManagers.entityId, entityId), eq(entityManagers.accountId, accountId)))
       .returning();
+    if (result.length > 0) await this.syncInheritedIntroductions([entityId]);
     return result.length > 0;
+  }
+
+  async getIntroductionGraph(): Promise<IntroductionGraph> {
+    const rows = await db.select().from(introductions);
+    const mgrs = await db.select({ entityId: entityManagers.entityId, accountId: entityManagers.accountId })
+      .from(entityManagers);
+    return {
+      accountEdges: rows
+        .filter(r => r.introducedAccountId !== null)
+        .map(r => ({ introducerAccountId: r.introducerAccountId, introducedAccountId: r.introducedAccountId! })),
+      entityEdges: rows
+        .filter(r => r.introducedEntityId !== null && r.viaAccountId === null)
+        .map(r => ({ introducerAccountId: r.introducerAccountId, introducedEntityId: r.introducedEntityId! })),
+      managers: mgrs,
+    };
+  }
+
+  async getIntroduction(id: number): Promise<Introduction | undefined> {
+    const [row] = await db.select().from(introductions).where(eq(introductions.id, id));
+    return row;
+  }
+
+  async getIntroductionsForAccount(accountId: number): Promise<AccountIntroductions> {
+    const introducedBy = await db.select().from(introductions)
+      .where(eq(introductions.introducedAccountId, accountId));
+    const introduced = await db.select().from(introductions)
+      .where(eq(introductions.introducerAccountId, accountId));
+    return {
+      introducedBy: await this.enrichIntroductions(introducedBy),
+      introduced: await this.enrichIntroductions(introduced),
+    };
+  }
+
+  async getIntroductionsForEntity(entityId: number): Promise<IntroductionWithDetails[]> {
+    const rows = await db.select().from(introductions).where(eq(introductions.introducedEntityId, entityId));
+    return this.enrichIntroductions(rows);
+  }
+
+  async createIntroduction(data: CreateIntroductionInput): Promise<IntroductionWithDetails | null> {
+    const details = { date: data.date ?? null, notes: data.notes ?? "" };
+    let row: Introduction | undefined;
+
+    if (data.introducedEntityId !== undefined) {
+      const [existing] = await db.select().from(introductions).where(and(
+        eq(introductions.introducerAccountId, data.introducerAccountId),
+        eq(introductions.introducedEntityId, data.introducedEntityId),
+      ));
+      if (existing && existing.viaAccountId === null) return null;
+      if (existing) {
+        // Promote an inherited row to a direct one.
+        [row] = await db.update(introductions).set({ viaAccountId: null, ...details })
+          .where(eq(introductions.id, existing.id)).returning();
+      } else {
+        [row] = await db.insert(introductions).values({
+          introducerAccountId: data.introducerAccountId,
+          introducedEntityId: data.introducedEntityId,
+          ...details,
+        }).onConflictDoNothing().returning();
+      }
+    } else {
+      [row] = await db.insert(introductions).values({
+        introducerAccountId: data.introducerAccountId,
+        introducedAccountId: data.introducedAccountId!,
+        ...details,
+      }).onConflictDoNothing().returning();
+      if (row) await this.syncInheritedIntroductions(await this.getManagedEntityIds([data.introducedAccountId!]));
+    }
+
+    if (!row) return null;
+    const [enriched] = await this.enrichIntroductions([row]);
+    return enriched;
+  }
+
+  async updateIntroduction(id: number, data: UpdateIntroductionInput): Promise<IntroductionWithDetails | undefined> {
+    const fields: Record<string, unknown> = {};
+    if (data.date !== undefined) fields.date = data.date;
+    if (data.notes !== undefined) fields.notes = data.notes;
+    let row = await this.getIntroduction(id);
+    if (!row) return undefined;
+    if (Object.keys(fields).length > 0) {
+      [row] = await db.update(introductions).set(fields).where(eq(introductions.id, id)).returning();
+    }
+    const [enriched] = await this.enrichIntroductions([row]);
+    return enriched;
+  }
+
+  async deleteIntroduction(id: number): Promise<boolean> {
+    const [row] = await db.delete(introductions).where(eq(introductions.id, id)).returning();
+    if (!row) return false;
+    if (row.introducedAccountId !== null) {
+      await this.syncInheritedIntroductions(await this.getManagedEntityIds([row.introducedAccountId]));
+    } else if (row.introducedEntityId !== null) {
+      // A removed direct credit may still be due through a manager.
+      await this.syncInheritedIntroductions([row.introducedEntityId]);
+    }
+    return true;
+  }
+
+  private async getManagedEntityIds(accountIds: number[]): Promise<number[]> {
+    if (accountIds.length === 0) return [];
+    const rows = await db.select({ entityId: entityManagers.entityId }).from(entityManagers)
+      .where(inArray(entityManagers.accountId, accountIds));
+    return Array.from(new Set(rows.map(r => r.entityId)));
+  }
+
+  /**
+   * Brings the inherited (viaAccountId) introductions of the given entities in
+   * line with their current managers and those managers' introducers.
+   */
+  private async syncInheritedIntroductions(entityIds: number[]): Promise<void> {
+    if (entityIds.length === 0) return;
+    const graph = await this.getIntroductionGraph();
+    const existing = await db.select().from(introductions)
+      .where(inArray(introductions.introducedEntityId, entityIds));
+
+    for (const entityId of entityIds) {
+      const wanted = computeInheritedIntroducers(graph, entityId);
+      const inherited = existing.filter(r => r.introducedEntityId === entityId && r.viaAccountId !== null);
+
+      for (const row of inherited) {
+        const via = wanted.get(row.introducerAccountId);
+        if (via === undefined) {
+          await db.delete(introductions).where(eq(introductions.id, row.id));
+        } else if (via !== row.viaAccountId) {
+          await db.update(introductions).set({ viaAccountId: via }).where(eq(introductions.id, row.id));
+        }
+      }
+      const have = new Set(inherited.map(r => r.introducerAccountId));
+      for (const [introducerAccountId, viaAccountId] of Array.from(wanted)) {
+        if (have.has(introducerAccountId)) continue;
+        await db.insert(introductions)
+          .values({ introducerAccountId, introducedEntityId: entityId, viaAccountId })
+          .onConflictDoNothing();
+      }
+    }
+  }
+
+  private async enrichIntroductions(rows: Introduction[]): Promise<IntroductionWithDetails[]> {
+    if (rows.length === 0) return [];
+    const accountIds = Array.from(new Set(rows.flatMap(r => [r.introducerAccountId, r.introducedAccountId, r.viaAccountId])
+      .filter((v): v is number => v !== null)));
+    const entityIds = Array.from(new Set(rows.map(r => r.introducedEntityId).filter((v): v is number => v !== null)));
+    const accts = await db.select({ id: accounts.id, email: accounts.email, firstName: accounts.firstName, lastName: accounts.lastName })
+      .from(accounts).where(inArray(accounts.id, accountIds));
+    const ents = entityIds.length === 0 ? [] : await db.select({ id: entities.id, name: entities.name, entityType: entities.entityType })
+      .from(entities).where(inArray(entities.id, entityIds));
+    const acctMap = new Map(accts.map(a => [a.id, a]));
+    const entMap = new Map(ents.map(e => [e.id, e]));
+    return rows.map(r => ({
+      ...r,
+      introducer: acctMap.get(r.introducerAccountId) ?? null,
+      introducedAccount: r.introducedAccountId !== null ? acctMap.get(r.introducedAccountId) ?? null : null,
+      introducedEntity: r.introducedEntityId !== null ? entMap.get(r.introducedEntityId) ?? null : null,
+      via: r.viaAccountId !== null ? acctMap.get(r.viaAccountId) ?? null : null,
+    }));
+  }
+
+  async getPromoters(): Promise<PromoterWithDetails[]> {
+    const rows = await db.select().from(promoters).orderBy(promoters.id);
+    return this.enrichPromoters(rows);
+  }
+
+  async getPromoter(id: number): Promise<PromoterWithDetails | undefined> {
+    const [row] = await db.select().from(promoters).where(eq(promoters.id, id));
+    if (!row) return undefined;
+    const [enriched] = await this.enrichPromoters([row]);
+    return enriched;
+  }
+
+  async getPromoterByAccountId(accountId: number): Promise<Promoter | undefined> {
+    const [row] = await db.select().from(promoters).where(eq(promoters.accountId, accountId));
+    return row;
+  }
+
+  async createPromoter(data: CreatePromoterInput): Promise<PromoterWithDetails | null> {
+    const row = await db.transaction(async (tx) => {
+      const [created] = await tx.insert(promoters).values({
+        accountId: data.accountId,
+        active: data.active ?? true,
+        contractDate: data.contractDate ?? null,
+        notes: data.notes ?? "",
+      }).onConflictDoNothing().returning();
+      if (!created) return null;
+      if (data.incentives && data.incentives.length > 0) {
+        await tx.insert(promoterIncentives).values(data.incentives.map(i => ({
+          promoterId: created.id, type: i.type, percent: String(i.percent), notes: i.notes ?? "",
+        })));
+      }
+      return created;
+    });
+    if (!row) return null;
+    const [enriched] = await this.enrichPromoters([row]);
+    return enriched;
+  }
+
+  async updatePromoter(id: number, data: UpdatePromoterInput): Promise<PromoterWithDetails | undefined> {
+    const fields: Record<string, unknown> = {};
+    if (data.active !== undefined) fields.active = data.active;
+    if (data.contractDate !== undefined) fields.contractDate = data.contractDate;
+    if (data.notes !== undefined) fields.notes = data.notes;
+    if (Object.keys(fields).length > 0) {
+      await db.update(promoters).set({ ...fields, updatedAt: new Date() }).where(eq(promoters.id, id));
+    }
+    return this.getPromoter(id);
+  }
+
+  async deletePromoter(id: number): Promise<boolean> {
+    const result = await db.delete(promoters).where(eq(promoters.id, id)).returning();
+    return result.length > 0;
+  }
+
+  async getPromoterIncentive(id: number): Promise<PromoterIncentive | undefined> {
+    const [row] = await db.select().from(promoterIncentives).where(eq(promoterIncentives.id, id));
+    return row;
+  }
+
+  async createPromoterIncentive(promoterId: number, data: CreateIncentiveInput): Promise<PromoterIncentive | null> {
+    const [row] = await db.insert(promoterIncentives).values({
+      promoterId, type: data.type, percent: String(data.percent), notes: data.notes ?? "",
+    }).onConflictDoNothing().returning();
+    return row ?? null;
+  }
+
+  async updatePromoterIncentive(id: number, data: UpdateIncentiveInput): Promise<PromoterIncentive | undefined> {
+    const fields: Record<string, unknown> = {};
+    if (data.percent !== undefined) fields.percent = String(data.percent);
+    if (data.notes !== undefined) fields.notes = data.notes;
+    if (Object.keys(fields).length === 0) return this.getPromoterIncentive(id);
+    const [row] = await db.update(promoterIncentives).set(fields).where(eq(promoterIncentives.id, id)).returning();
+    return row;
+  }
+
+  async deletePromoterIncentive(id: number): Promise<boolean> {
+    const result = await db.delete(promoterIncentives).where(eq(promoterIncentives.id, id)).returning();
+    return result.length > 0;
+  }
+
+  async getContract(id: number): Promise<Contract | undefined> {
+    const [row] = await db.select().from(contracts).where(eq(contracts.id, id));
+    return row;
+  }
+
+  async getContractsForPromoter(promoterId: number): Promise<Contract[]> {
+    return db.select().from(contracts).where(eq(contracts.promoterId, promoterId)).orderBy(desc(contracts.createdAt));
+  }
+
+  async createContract(data: NewContract): Promise<Contract> {
+    const [row] = await db.insert(contracts).values(data).returning();
+    return row;
+  }
+
+  async updateContract(id: number, data: ContractUpdate): Promise<Contract | undefined> {
+    const [row] = await db.update(contracts).set({ ...data, updatedAt: new Date() }).where(eq(contracts.id, id)).returning();
+    return row;
+  }
+
+  async deleteContract(id: number): Promise<boolean> {
+    const result = await db.delete(contracts).where(eq(contracts.id, id)).returning();
+    return result.length > 0;
+  }
+
+  async getAppSettings(keys: string[]): Promise<Record<string, string>> {
+    if (keys.length === 0) return {};
+    const rows = await db.select().from(appSettings).where(inArray(appSettings.key, keys));
+    return Object.fromEntries(rows.map(r => [r.key, r.value]));
+  }
+
+  async setAppSettings(values: Record<string, string>): Promise<void> {
+    for (const [key, value] of Object.entries(values)) {
+      await db.insert(appSettings)
+        .values({ key, value })
+        .onConflictDoUpdate({ target: appSettings.key, set: { value, updatedAt: new Date() } });
+    }
+  }
+
+  private async enrichPromoters(rows: Promoter[]): Promise<PromoterWithDetails[]> {
+    if (rows.length === 0) return [];
+    const ids = rows.map(r => r.id);
+    const accountIds = rows.map(r => r.accountId);
+    const [accts, incentives, counts] = await Promise.all([
+      db.select({ id: accounts.id, email: accounts.email, firstName: accounts.firstName, lastName: accounts.lastName })
+        .from(accounts).where(inArray(accounts.id, accountIds)),
+      db.select().from(promoterIncentives).where(inArray(promoterIncentives.promoterId, ids))
+        .orderBy(promoterIncentives.id),
+      db.select({ accountId: introductions.introducerAccountId, count: sql<number>`count(*)::int` })
+        .from(introductions).where(inArray(introductions.introducerAccountId, accountIds))
+        .groupBy(introductions.introducerAccountId),
+    ]);
+    const acctMap = new Map(accts.map(a => [a.id, a]));
+    const countMap = new Map(counts.map(c => [c.accountId, c.count]));
+    return rows.map(r => ({
+      ...r,
+      account: acctMap.get(r.accountId)!,
+      incentives: incentives.filter(i => i.promoterId === r.id),
+      introductionCount: countMap.get(r.accountId) ?? 0,
+    }));
   }
 
   async createPasswordResetToken(accountId: number, ttlMs: number = PASSWORD_RESET_TTL_MS): Promise<string> {

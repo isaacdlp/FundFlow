@@ -10,6 +10,7 @@ import {
   Files,
   TrendingUp,
   ArrowLeftRight,
+  Handshake,
 } from "lucide-react";
 import {
   Sidebar,
@@ -46,7 +47,8 @@ const mainNav: NavItem[] = [
 ];
 
 const managementNav: NavItem[] = [
-  { routeKey: "settings", labelKey: "nav.settings", icon: Settings, testId: "link-settings" },
+  { routeKey: "promoters", labelKey: "nav.promoters", icon: Handshake, testId: "link-promoters", adminOnly: true },
+  { routeKey: "settings",   labelKey: "nav.settings",   icon: Settings,  testId: "link-settings" },
 ];
 
 export function AppSidebar() {

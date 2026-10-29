@@ -105,6 +105,38 @@ export function makeMockStorage(overrides: Partial<Record<string, any>> = {}) {
     addEntityManager: vi.fn(),
     removeEntityManager: vi.fn().mockResolvedValue(true),
 
+    // Introductions
+    getIntroductionGraph: vi.fn().mockResolvedValue({ accountEdges: [], entityEdges: [], managers: [] }),
+    getIntroduction: vi.fn().mockResolvedValue(undefined),
+    getIntroductionsForAccount: vi.fn().mockResolvedValue({ introducedBy: [], introduced: [] }),
+    getIntroductionsForEntity: vi.fn().mockResolvedValue([]),
+    createIntroduction: vi.fn(),
+    updateIntroduction: vi.fn(),
+    deleteIntroduction: vi.fn().mockResolvedValue(true),
+
+    // Promoters
+    getPromoters: vi.fn().mockResolvedValue([]),
+    getPromoter: vi.fn().mockResolvedValue(undefined),
+    getPromoterByAccountId: vi.fn().mockResolvedValue(undefined),
+    createPromoter: vi.fn(),
+    updatePromoter: vi.fn().mockResolvedValue(undefined),
+    deletePromoter: vi.fn().mockResolvedValue(false),
+    getPromoterIncentive: vi.fn().mockResolvedValue(undefined),
+    createPromoterIncentive: vi.fn(),
+    updatePromoterIncentive: vi.fn(),
+    deletePromoterIncentive: vi.fn().mockResolvedValue(true),
+
+    // Contracts
+    getContract: vi.fn().mockResolvedValue(undefined),
+    getContractsForPromoter: vi.fn().mockResolvedValue([]),
+    createContract: vi.fn(),
+    updateContract: vi.fn(),
+    deleteContract: vi.fn().mockResolvedValue(true),
+
+    // App settings
+    getAppSettings: vi.fn().mockResolvedValue({}),
+    setAppSettings: vi.fn().mockResolvedValue(undefined),
+
     // Portfolio
     getPortfolio: vi.fn().mockResolvedValue([]),
 

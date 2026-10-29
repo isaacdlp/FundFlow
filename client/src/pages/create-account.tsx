@@ -34,6 +34,7 @@ export default function CreateAccount() {
     password: "",
     phone: "",
     birthdate: "",
+    nationality: "",
     taxId: "",
     streetAddress1: "",
     streetAddress2: "",
@@ -217,15 +218,25 @@ export default function CreateAccount() {
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="taxId">{t("common.ssnTaxId")}</Label>
-                <Input
-                  id="taxId"
-                  value={formData.taxId}
-                  onChange={(e) => updateField("taxId", e.target.value)}
-                  data-testid="input-tax-id"
-                />
-                <p className="text-xs text-muted-foreground">{t("createAccount.taxIdHelper")}</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="nationality">{t("createAccount.nationality")}</Label>
+                  <CountrySelect
+                    value={formData.nationality}
+                    onValueChange={(val) => updateField("nationality", val)}
+                    data-testid="select-nationality"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="taxId">{t("common.ssnTaxId")}</Label>
+                  <Input
+                    id="taxId"
+                    value={formData.taxId}
+                    onChange={(e) => updateField("taxId", e.target.value)}
+                    data-testid="input-tax-id"
+                  />
+                  <p className="text-xs text-muted-foreground">{t("createAccount.taxIdHelper")}</p>
+                </div>
               </div>
             </CardContent>
           </Card>

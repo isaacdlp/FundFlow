@@ -19,7 +19,7 @@ npm config get script-shell     # Check
 ```bash
 npm install
 npm run db:push
-npm run dev.
+npm run dev
 ```
 
 * FundFlow runs in http://localhost:5000

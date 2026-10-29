@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { exportDevData, importDevData, spvMatches, type DevDataSink } from "../../server/dev-data";
 
 const account = (id: number, email: string, extra: Record<string, unknown> = {}) => ({
-  id, email, firstName: `First${id}`, lastName: `Last${id}`, phone: "", birthdate: null,
+  id, email, firstName: `First${id}`, lastName: `Last${id}`, phone: "", birthdate: null, nationality: "Spain",
   taxId: "123-45-6789", streetAddress1: "", streetAddress2: "", country: "", city: "",
   stateProvince: "", zipPostalCode: "", language: "es", profileComplete: true, roles: [], ...extra,
 });
@@ -64,6 +64,7 @@ describe("exportDevData", () => {
     expect(data.spvs.map(s => s.fields.displayName)).toEqual(["Kapital C", "Modelia"]);
     expect(data.accounts.map(a => a.ref)).toEqual([10, 11, 12, 13, 14]);
     expect(data.accounts.find(a => a.ref === 10)?.isAdmin).toBe(true);
+    expect(data.accounts.find(a => a.ref === 10)?.nationality).toBe("Spain");
     expect(data.entities.map(e => e.ref)).toEqual([70, 71]);
     expect(data.spvs[0].assets[0].valuations).toEqual([{ date: "2025-01-01", value: "7000.00", note: "Series B" }]);
   });

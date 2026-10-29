@@ -24,6 +24,10 @@ tests/
     entities.test.ts      # CRUD + manager/owner gating
     entity-owners.test.ts # owner add/remove + payload validation
     entity-managers.test.ts # manager add/remove
+    introductions.test.ts # loop rules + inherited entity credit (pure) and admin-only introductions API
+    promoters.test.ts    # incentive validation (type, 0 < percent ≤ 100, one per type) + admin-only promoters/incentives API
+    concord.test.ts       # Concord client against a fake fetch: create/status/delete call sequences, cleanup on failure, UNKNOWN_CONTRACT → SIGNED
+    contracts.test.ts     # promoter agreement drafts + admin-only contracts API (send, refresh, delete; 502/503 mapping; signed can't be deleted)
     password-reset.test.ts # forgot/reset + change-password
     api-tokens.test.ts    # generator/hash/parser primitives + admin-only token CRUD (non-admin → 403, bearer → 401) + bearer auth on protected routes
     documents.test.ts     # multipart upload, list visibility (admin vs non-admin), download/delete gating, /api/settings/documents-path admin gating, folderPath traversal sanitization
@@ -34,6 +38,9 @@ tests/
     permission-gating.test.tsx
     queryClient.test.ts   # apiRequest + getQueryFn (401 behavior, key joining)
     utils.test.ts         # cn() helper
+    search-picker.test.tsx # SearchPicker filtering (accents, multi-word), groups, result cap
+    promoters-page.test.tsx # admin gating + list rendering; promoter strings present in es/fr
+    contracts-card.test.tsx # contract list/status rendering, signed can't be deleted, not-configured state; contract strings present in es/fr
   e2e/                    # End-to-end browser tests (Playwright)
     auth.spec.ts          # login success/failure, forgot-password reachability
     permissions.spec.ts   # admin vs member visibility on /accounts, /organizations

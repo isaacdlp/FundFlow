@@ -4,7 +4,13 @@ import { readFileSync } from "fs";
 import path from "path";
 import yaml from "js-yaml";
 import { storage } from "./storage";
-import { insertAccountSchema, updateAccountSchema, insertOrganizationSchema, updateOrganizationSchema, insertSpvSchema, updateSpvSchema, insertEntitySchema, updateEntitySchema, createApiTokenSchema, ACCOUNT_SETUP_TTL_MS } from "@shared/schema";
+import { insertAccountSchema, updateAccountSchema, insertOrganizationSchema, updateOrganizationSchema, insertSpvSchema, updateSpvSchema, insertEntitySchema, updateEntitySchema, createApiTokenSchema, createIntroductionSchema, updateIntroductionSchema, createPromoterSchema, updatePromoterSchema, createIncentiveSchema, updateIncentiveSchema, createPromoterContractSchema, updateConcordSettingsSchema, ACCOUNT_SETUP_TTL_MS } from "@shared/schema";
+import { ConcordError, ConcordNotConfiguredError, getConcordClient } from "./concord";
+import {
+  buildPromoterContractDraft, concordConfigFrom, concordSettingsInfo, getConcordSettings, getContractTemplate,
+  getOurSigner, serializeContract, updateConcordSettings,
+} from "./contracts";
+import { findIntroductionConflict, unavailableIntroductions, type IntroductionProposal } from "./introductions";
 import { isLocale } from "@shared/i18n";
 import { ZodError } from "zod";
 import { fromZodError } from "zod-validation-error";
@@ -581,6 +587,328 @@ export async function registerRoutes(
     const deleted = await storage.deleteAccount(id);
     if (!deleted) return res.status(404).json({ message: "Account not found" });
     res.json({ message: "Account deleted" });
+  });
+
+  // ──── Introductions (admin-only) ──────────────────────────────────────────
+  app.get("/api/accounts/:id/introductions", requireAdmin as any, async (req: Request, res: Response) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    if (!(await storage.getAccount(id))) return res.status(404).json({ message: "Account not found" });
+    const [intros, graph] = await Promise.all([
+      storage.getIntroductionsForAccount(id),
+      storage.getIntroductionGraph(),
+    ]);
+    res.json({ ...intros, unavailable: unavailableIntroductions(graph, id) });
+  });
+
+  app.get("/api/entities/:id/introductions", requireAdmin as any, async (req: Request, res: Response) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    if (!(await storage.getEntity(id))) return res.status(404).json({ message: "Entity not found" });
+    res.json(await storage.getIntroductionsForEntity(id));
+  });
+
+  app.post("/api/introductions", requireAdmin as any, async (req: Request, res: Response) => {
+    let data;
+    try {
+      data = createIntroductionSchema.parse(req.body);
+    } catch (e) {
+      if (e instanceof ZodError) return res.status(400).json({ message: fromZodError(e).message });
+      throw e;
+    }
+    if (!(await storage.getAccount(data.introducerAccountId))) {
+      return res.status(404).json({ message: "Introducer account not found" });
+    }
+    if (data.introducedAccountId !== undefined && !(await storage.getAccount(data.introducedAccountId))) {
+      return res.status(404).json({ message: "Introduced account not found" });
+    }
+    if (data.introducedEntityId !== undefined && !(await storage.getEntity(data.introducedEntityId))) {
+      return res.status(404).json({ message: "Introduced entity not found" });
+    }
+    const conflict = findIntroductionConflict(await storage.getIntroductionGraph(), data as IntroductionProposal);
+    if (conflict) return res.status(400).json({ message: conflict });
+    const created = await storage.createIntroduction(data);
+    if (!created) return res.status(409).json({ message: "This introduction already exists" });
+    res.status(201).json(created);
+  });
+
+  app.patch("/api/introductions/:id", requireAdmin as any, async (req: Request, res: Response) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    let data;
+    try {
+      data = updateIntroductionSchema.parse(req.body);
+    } catch (e) {
+      if (e instanceof ZodError) return res.status(400).json({ message: fromZodError(e).message });
+      throw e;
+    }
+    const existing = await storage.getIntroduction(id);
+    if (!existing) return res.status(404).json({ message: "Introduction not found" });
+    if (existing.viaAccountId !== null) {
+      return res.status(400).json({ message: "Inherited introductions follow the managing account's introduction and can't be edited" });
+    }
+    res.json(await storage.updateIntroduction(id, data));
+  });
+
+  app.delete("/api/introductions/:id", requireAdmin as any, async (req: Request, res: Response) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    const existing = await storage.getIntroduction(id);
+    if (!existing) return res.status(404).json({ message: "Introduction not found" });
+    if (existing.viaAccountId !== null) {
+      return res.status(400).json({ message: "Inherited introductions follow the managing account's introduction; remove that introduction instead" });
+    }
+    await storage.deleteIntroduction(id);
+    res.json({ message: "Introduction removed" });
+  });
+
+  // ──── Promoters (admin-only) ─────────────────────────────────────────────
+  app.get("/api/promoters", requireAdmin as any, async (_req: Request, res: Response) => {
+    res.json(await storage.getPromoters());
+  });
+
+  app.post("/api/promoters", requireAdmin as any, async (req: Request, res: Response) => {
+    let data;
+    try {
+      data = createPromoterSchema.parse(req.body);
+    } catch (e) {
+      if (e instanceof ZodError) return res.status(400).json({ message: fromZodError(e).message });
+      throw e;
+    }
+    if (!(await storage.getAccount(data.accountId))) return res.status(404).json({ message: "Account not found" });
+    const created = await storage.createPromoter(data);
+    if (!created) return res.status(409).json({ message: "This account is already a promoter" });
+    res.status(201).json(created);
+  });
+
+  app.get("/api/promoters/:id", requireAdmin as any, async (req: Request, res: Response) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    const promoter = await storage.getPromoter(id);
+    if (!promoter) return res.status(404).json({ message: "Promoter not found" });
+    res.json(promoter);
+  });
+
+  app.patch("/api/promoters/:id", requireAdmin as any, async (req: Request, res: Response) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    let data;
+    try {
+      data = updatePromoterSchema.parse(req.body);
+    } catch (e) {
+      if (e instanceof ZodError) return res.status(400).json({ message: fromZodError(e).message });
+      throw e;
+    }
+    const updated = await storage.updatePromoter(id, data);
+    if (!updated) return res.status(404).json({ message: "Promoter not found" });
+    res.json(updated);
+  });
+
+  app.delete("/api/promoters/:id", requireAdmin as any, async (req: Request, res: Response) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    if (!(await storage.deletePromoter(id))) return res.status(404).json({ message: "Promoter not found" });
+    res.json({ message: "Promoter removed" });
+  });
+
+  app.post("/api/promoters/:id/incentives", requireAdmin as any, async (req: Request, res: Response) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    let data;
+    try {
+      data = createIncentiveSchema.parse(req.body);
+    } catch (e) {
+      if (e instanceof ZodError) return res.status(400).json({ message: fromZodError(e).message });
+      throw e;
+    }
+    if (!(await storage.getPromoter(id))) return res.status(404).json({ message: "Promoter not found" });
+    const created = await storage.createPromoterIncentive(id, data);
+    if (!created) return res.status(409).json({ message: "This promoter already has an incentive of that type" });
+    res.status(201).json(created);
+  });
+
+  /** Resolves :incentiveId only when it belongs to :id, so URLs can't cross promoters. */
+  const findIncentive = async (req: Request) => {
+    const promoterId = parseInt(req.params.id);
+    const incentiveId = parseInt(req.params.incentiveId);
+    if (isNaN(promoterId) || isNaN(incentiveId)) return undefined;
+    const incentive = await storage.getPromoterIncentive(incentiveId);
+    return incentive?.promoterId === promoterId ? incentive : undefined;
+  };
+
+  app.patch("/api/promoters/:id/incentives/:incentiveId", requireAdmin as any, async (req: Request, res: Response) => {
+    let data;
+    try {
+      data = updateIncentiveSchema.parse(req.body);
+    } catch (e) {
+      if (e instanceof ZodError) return res.status(400).json({ message: fromZodError(e).message });
+      throw e;
+    }
+    const incentive = await findIncentive(req);
+    if (!incentive) return res.status(404).json({ message: "Incentive not found" });
+    res.json(await storage.updatePromoterIncentive(incentive.id, data));
+  });
+
+  app.delete("/api/promoters/:id/incentives/:incentiveId", requireAdmin as any, async (req: Request, res: Response) => {
+    const incentive = await findIncentive(req);
+    if (!incentive) return res.status(404).json({ message: "Incentive not found" });
+    await storage.deletePromoterIncentive(incentive.id);
+    res.json({ message: "Incentive removed" });
+  });
+
+  // ──── Contracts (ConcordNow e-signature, admin-only) ──────────────────────
+  /** Maps Concord failures to 503 (not configured) / 502 (Concord refused); rethrows the rest. */
+  const concordFailure = (res: Response, e: unknown) => {
+    if (e instanceof ConcordNotConfiguredError) return res.status(503).json({ message: e.message });
+    if (e instanceof ConcordError) return res.status(502).json({ message: e.message });
+    throw e;
+  };
+
+  app.get("/api/settings/concord", requireAdmin as any, async (_req: Request, res: Response) => {
+    res.json(concordSettingsInfo(await getConcordSettings()));
+  });
+
+  app.patch("/api/settings/concord", requireAdmin as any, async (req: Request, res: Response) => {
+    let data;
+    try {
+      data = updateConcordSettingsSchema.parse(req.body);
+    } catch (e) {
+      if (e instanceof ZodError) return res.status(400).json({ message: fromZodError(e).message });
+      throw e;
+    }
+    res.json(concordSettingsInfo(await updateConcordSettings(data)));
+  });
+
+  app.get("/api/promoters/:id/contracts", requireAdmin as any, async (req: Request, res: Response) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    if (!(await storage.getPromoter(id))) return res.status(404).json({ message: "Promoter not found" });
+    const config = concordConfigFrom(await getConcordSettings());
+    res.json((await storage.getContractsForPromoter(id)).map(c => serializeContract(c, config)));
+  });
+
+  app.get("/api/promoters/:id/contracts/draft", requireAdmin as any, async (req: Request, res: Response) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    const promoter = await storage.getPromoter(id);
+    if (!promoter) return res.status(404).json({ message: "Promoter not found" });
+    const account = await storage.getAccount(promoter.accountId);
+    const me = await storage.getAccount(getAuthAccountId(req)!);
+    if (!account || !me) return res.status(404).json({ message: "Account not found" });
+    const settings = await getConcordSettings();
+    const ready = !!concordConfigFrom(settings) && !!getContractTemplate("promoter_agreement", settings).templateId;
+    res.json(buildPromoterContractDraft(account, promoter.incentives, getOurSigner(me.email, settings), ready));
+  });
+
+  app.post("/api/promoters/:id/contracts", requireAdmin as any, async (req: Request, res: Response) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    let data;
+    try {
+      data = createPromoterContractSchema.parse(req.body);
+    } catch (e) {
+      if (e instanceof ZodError) return res.status(400).json({ message: fromZodError(e).message });
+      throw e;
+    }
+    const promoter = await storage.getPromoter(id);
+    if (!promoter) return res.status(404).json({ message: "Promoter not found" });
+    const settings = await getConcordSettings();
+    const config = concordConfigFrom(settings);
+    const { templateId, folderId } = getContractTemplate("promoter_agreement", settings);
+    if (!templateId) {
+      return res.status(503).json({ message: "No Concord template for promoter agreements (set it in Settings)" });
+    }
+    const me = await storage.getAccount(getAuthAccountId(req)!);
+    const ourSigner = getOurSigner(me!.email, settings).toLowerCase();
+    let concordUid: string;
+    try {
+      concordUid = await getConcordClient(config).createFromTemplate({
+        templateId,
+        folderId: folderId ?? undefined,
+        title: data.title,
+        variables: data.variables,
+        signers: data.signers,
+        invite: {
+          // Our own signer works in Concord already; everyone else gets an email.
+          emails: data.signers.filter(email => email.toLowerCase() !== ourSigner),
+          subject: data.subject || data.title,
+          message: data.message ?? "",
+        },
+      });
+    } catch (e) {
+      return concordFailure(res, e);
+    }
+    const contract = await storage.createContract({
+      kind: "promoter_agreement",
+      concordUid,
+      title: data.title,
+      status: "SIGNING",
+      signers: data.signers,
+      promoterId: id,
+      createdByAccountId: me!.id,
+      statusCheckedAt: new Date(),
+    });
+    res.status(201).json(serializeContract(contract, config));
+  });
+
+  app.get("/api/contracts/:id", requireAdmin as any, async (req: Request, res: Response) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    const contract = await storage.getContract(id);
+    if (!contract) return res.status(404).json({ message: "Contract not found" });
+    res.json(serializeContract(contract, concordConfigFrom(await getConcordSettings())));
+  });
+
+  app.post("/api/contracts/:id/refresh", requireAdmin as any, async (req: Request, res: Response) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    const contract = await storage.getContract(id);
+    if (!contract) return res.status(404).json({ message: "Contract not found" });
+    const config = concordConfigFrom(await getConcordSettings());
+    let current;
+    try {
+      current = await getConcordClient(config).getStatus(contract.concordUid);
+    } catch (e) {
+      return concordFailure(res, e);
+    }
+    const now = new Date();
+    const status = current?.status ?? "DELETED";
+    const newlySigned = status === "SIGNED" && !contract.signedAt;
+    const updated = await storage.updateContract(id, {
+      status,
+      concordUid: current?.uid ?? contract.concordUid,
+      statusCheckedAt: now,
+      signedAt: newlySigned ? now : contract.signedAt,
+    });
+    // A signed promoter agreement dates the promoter's contract, unless an admin already set it.
+    if (newlySigned && contract.promoterId !== null) {
+      const promoter = await storage.getPromoter(contract.promoterId);
+      if (promoter && !promoter.contractDate) {
+        await storage.updatePromoter(promoter.id, { contractDate: now.toISOString().slice(0, 10) });
+      }
+    }
+    res.json(serializeContract(updated!, config));
+  });
+
+  app.delete("/api/contracts/:id", requireAdmin as any, async (req: Request, res: Response) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    const contract = await storage.getContract(id);
+    if (!contract) return res.status(404).json({ message: "Contract not found" });
+    try {
+      const client = getConcordClient(concordConfigFrom(await getConcordSettings()));
+      // Check live: the cached status may predate the last signature.
+      const current = await client.getStatus(contract.concordUid);
+      if (current?.status === "SIGNED") {
+        await storage.updateContract(id, { status: "SIGNED", concordUid: current.uid, statusCheckedAt: new Date(), signedAt: contract.signedAt ?? new Date() });
+        return res.status(409).json({ message: "Signed contracts can't be deleted" });
+      }
+      if (current) await client.deleteAgreement(current.uid);
+    } catch (e) {
+      return concordFailure(res, e);
+    }
+    await storage.deleteContract(id);
+    res.json({ message: "Contract deleted" });
   });
 
   app.get("/api/organizations", async (req, res) => {

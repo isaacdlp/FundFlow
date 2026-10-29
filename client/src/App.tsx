@@ -29,6 +29,8 @@ import ForgotPassword from "@/pages/forgot-password";
 import ResetPassword from "@/pages/reset-password";
 import Settings from "@/pages/settings";
 import Documents from "@/pages/documents";
+import Promoters from "@/pages/promoters";
+import PromoterDetail from "@/pages/promoter-detail";
 import { Button } from "@/components/ui/button";
 import { LogOut } from "lucide-react";
 import { LanguageSwitcher } from "@/components/language-switcher";
@@ -58,11 +60,14 @@ function AdminRouter({ locale }: { locale: Locale }) {
       <Route path={r.entityNew[locale]} component={CreateEntity} />
       <Route path={r.entityDetail[locale]} component={EntityDetail} />
       <Route path={r.entities[locale]} component={Entities} />
+      <Route path={r.promoterDetail[locale]} component={PromoterDetail} />
+      <Route path={r.promoters[locale]} component={Promoters} />
       <Route path={r.documents[locale]} component={Documents} />
       <Route path={r.settingsDocuments[locale]} component={Settings} />
       <Route path={r.settingsManagement[locale]} component={Settings} />
       <Route path={r.settingsApiTokens[locale]} component={Settings} />
       <Route path={r.settingsCurrencies[locale]} component={Settings} />
+      <Route path={r.settingsContracts[locale]} component={Settings} />
       <Route path={r.settings[locale]} component={Settings} />
       <Route path={r.dashboard[locale]} component={Dashboard} />
       <Route component={NotFound} />

@@ -53,6 +53,43 @@ tags:
     description: Special Purpose Vehicles (investment funds) and their investors
   - name: Entities
     description: Legal entities (LLCs, Corps, Trusts) with owners and managers
+  - name: Introductions
+    description: |
+      Who introduced whom (admin-only), to track network growth and referral
+      fees. An account can be introduced by several accounts and can
+      introduce accounts and entities. Account introductions may never form
+      a loop (if A introduced B and B introduced C, C can't introduce A or B),
+      and an account can't introduce an entity managed by itself or by
+      anyone upstream of it.
+
+      Entities inherit their managers' introducers: if X introduced M, every
+      entity M manages also counts as introduced by X. Those rows carry
+      `viaAccountId` and are kept in sync automatically when introductions
+      or entity managers change; they can't be edited or deleted directly.
+  - name: Promoters
+    description: |
+      Introducers that, after vetting and signing a contract, earn commissions
+      on what their introductions pay us (admin-only). One promoter per
+      account. Each promoter has up to one incentive of each type:
+
+      - `management_fee` — `percent` of the management fee paid to us by the
+        accounts and entities the promoter introduced.
+      - `success_fee` — `percent` of the success fee we earn from them.
+
+      `percent` is a share of that fee (0 < percent ≤ 100, two decimals),
+      returned as a numeric string (e.g. `"20.00"`).
+  - name: Contracts
+    description: |
+      Contracts sent for e-signature through ConcordNow (admin-only). Each
+      contract has a `kind` and links to its subject (for now, promoter
+      agreements via `promoterId`). FundFlow caches the Concord status; ask
+      for a fresh one with `POST /api/contracts/{id}/refresh`.
+
+      Needs the `CONCORD_API_KEY` env var and the Concord organization id;
+      each kind also needs its template. Everything but the key is set in
+      `PATCH /api/settings/concord` (Settings → Contracts).
+      Concord failures answer 502 with Concord's reason; missing
+      configuration answers 503.
   - name: Portfolio
     description: Investment positions held by accounts and entities
   - name: Documents
@@ -415,11 +452,326 @@ paths:
     delete:
       tags: [Accounts]
       summary: Delete an account (admin-only)
-      description: Cascades to account_roles and api_tokens.
+      description: Cascades to account_roles, api_tokens and introductions.
       responses:
         '200': { description: Deleted }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/accounts/{id}/introductions:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    get:
+      tags: [Introductions]
+      summary: An account's introductions (admin-only)
+      description: |
+        `introducedBy` lists who introduced this account; `introduced` lists
+        the accounts and entities it introduced, including inherited entity
+        rows. `unavailable` lists the choices that would break the loop rules
+        (duplicates are not included — filter those from the lists).
+      responses:
+        '200':
+          description: Introductions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  introducedBy: { type: array, items: { $ref: '#/components/schemas/Introduction' } }
+                  introduced: { type: array, items: { $ref: '#/components/schemas/Introduction' } }
+                  unavailable:
+                    type: object
+                    properties:
+                      introducerAccountIds: { type: array, items: { type: integer }, description: Accounts that can't be added as introducers of this account }
+                      introducedAccountIds: { type: array, items: { type: integer }, description: Accounts this account can't be credited with introducing }
+                      introducedEntityIds: { type: array, items: { type: integer }, description: Entities this account can't be credited with introducing }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/introductions:
+    post:
+      tags: [Introductions]
+      summary: Record an introduction (admin-only)
+      description: |
+        Exactly one of `introducedAccountId` / `introducedEntityId` is
+        required. Introducing an account also credits the introducer for
+        every entity that account manages. Directly crediting an entity that
+        was only inherited turns the inherited row into a direct one.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [introducerAccountId]
+              properties:
+                introducerAccountId: { type: integer }
+                introducedAccountId: { type: integer }
+                introducedEntityId: { type: integer }
+                date: { type: string, format: date, nullable: true }
+                notes: { type: string, maxLength: 2000 }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Introduction' } } } }
+        '400': { description: 'Validation error, self-introduction, or the introduction would create a loop', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: 'Introducer, introduced account or entity not found', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '409': { description: The introduction already exists, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+
+  /api/introductions/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    patch:
+      tags: [Introductions]
+      summary: Edit an introduction's date and notes (admin-only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                date: { type: string, format: date, nullable: true }
+                notes: { type: string, maxLength: 2000 }
+      responses:
+        '200': { description: Updated, content: { application/json: { schema: { $ref: '#/components/schemas/Introduction' } } } }
+        '400': { description: 'Validation error, or the introduction is inherited', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Introductions]
+      summary: Remove an introduction (admin-only)
+      description: Removing an account introduction also removes the entity credit inherited through it.
+      responses:
+        '200': { description: Removed }
+        '400': { description: The introduction is inherited — remove the managing account's introduction instead, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/promoters:
+    get:
+      tags: [Promoters]
+      summary: List promoters (admin-only)
+      responses:
+        '200': { description: Promoters, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Promoter' } } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Promoters]
+      summary: Make an account a promoter (admin-only)
+      description: Optionally creates its incentives in the same call (each type at most once).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [accountId]
+              properties:
+                accountId: { type: integer }
+                active: { type: boolean, default: true }
+                contractDate: { type: string, format: date, nullable: true, description: When the contract was signed }
+                notes: { type: string, maxLength: 2000 }
+                incentives: { type: array, items: { $ref: '#/components/schemas/PromoterIncentiveCreate' } }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Promoter' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Account not found, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '409': { description: The account is already a promoter, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+
+  /api/promoters/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    get:
+      tags: [Promoters]
+      summary: Get a promoter (admin-only)
+      responses:
+        '200': { description: Promoter, content: { application/json: { schema: { $ref: '#/components/schemas/Promoter' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Promoters]
+      summary: Update a promoter's status, contract date and notes (admin-only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                active: { type: boolean }
+                contractDate: { type: string, format: date, nullable: true }
+                notes: { type: string, maxLength: 2000 }
+      responses:
+        '200': { description: Updated, content: { application/json: { schema: { $ref: '#/components/schemas/Promoter' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Promoters]
+      summary: Remove a promoter and its incentives (admin-only)
+      description: The account and its introductions are kept.
+      responses:
+        '200': { description: Removed }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/promoters/{id}/incentives:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    post:
+      tags: [Promoters]
+      summary: Add an incentive to a promoter (admin-only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PromoterIncentiveCreate' }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/PromoterIncentive' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Promoter not found, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '409': { description: The promoter already has an incentive of that type, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+
+  /api/promoters/{id}/incentives/{incentiveId}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+      - { name: incentiveId, in: path, required: true, schema: { type: integer } }
+    patch:
+      tags: [Promoters]
+      summary: Change an incentive's percent or notes (admin-only)
+      description: The type can't be changed — remove the incentive and add one of the other type instead.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                percent: { oneOf: [{ type: number }, { type: string }], description: '0 < percent ≤ 100, at most 2 decimals' }
+                notes: { type: string, maxLength: 2000 }
+      responses:
+        '200': { description: Updated, content: { application/json: { schema: { $ref: '#/components/schemas/PromoterIncentive' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: No such incentive on this promoter, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+    delete:
+      tags: [Promoters]
+      summary: Remove an incentive (admin-only)
+      responses:
+        '200': { description: Removed }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: No such incentive on this promoter, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+
+  /api/promoters/{id}/contracts:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    get:
+      tags: [Contracts]
+      summary: List a promoter's contracts, newest first (admin-only)
+      responses:
+        '200': { description: Contracts, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Contract' } } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [Contracts]
+      summary: Send a promoter agreement for signature through Concord (admin-only)
+      description: |
+        Creates the agreement from the promoter agreement template set in
+        Concord settings (filed in the promoter agreement folder when set),
+        reserves the template's signature slots for `signers` in order,
+        starts the signature and emails every signer except our own signer
+        (the Concord settings' `signerEmail`, or the calling admin) an invitation with
+        `subject` (or `title` when empty) as subject and `message` as body. Start from
+        `GET /api/promoters/{id}/contracts/draft`. If any step after creation
+        fails, the half-made agreement is deleted in Concord.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, signers]
+              properties:
+                title: { type: string, minLength: 1, maxLength: 255 }
+                signers: { type: array, minItems: 1, maxItems: 10, items: { type: string, format: email }, description: 'One per template signature slot, in order; no duplicates' }
+                variables: { type: object, additionalProperties: { type: string, maxLength: 2000 }, description: Template placeholders → values }
+                subject: { type: string, maxLength: 255, description: Invitation email subject; defaults to `title` }
+                message: { type: string, maxLength: 5000 }
+      responses:
+        '201': { description: Sent, content: { application/json: { schema: { $ref: '#/components/schemas/Contract' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '502': { description: Concord refused a step (message says which), content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '503': { description: Concord credentials or the promoter template aren't configured, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+
+  /api/promoters/{id}/contracts/draft:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    get:
+      tags: [Contracts]
+      summary: Suggested promoter agreement to review before sending (admin-only)
+      description: |
+        Prefilled from the promoter's account and incentives. The title and
+        variables are always in English (the Concord template is English);
+        the invitation `subject` and `message` are in the promoter's language. Variables: `Beneficiary`, `Nationality` (the account's
+        `nationality`),
+        `Address Street`, `Address State`, `Address Country`, `Email`, and
+        `Detail of Fees` (every incentive, management fee first, joined with
+        `"; "`, in capitals, e.g. `"20% OF THE MANAGEMENT FEE; 10% OF THE SUCCESS FEE"`).
+        Signers: the promoter, then our own signer (the Managing Partner).
+      responses:
+        '200': { description: Draft, content: { application/json: { schema: { $ref: '#/components/schemas/ContractDraft' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/contracts/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    get:
+      tags: [Contracts]
+      summary: Get a contract (admin-only)
+      description: Returns the cached status; use `POST /api/contracts/{id}/refresh` to read it from Concord.
+      responses:
+        '200': { description: Contract, content: { application/json: { schema: { $ref: '#/components/schemas/Contract' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Contracts]
+      summary: Cancel and delete a contract in Concord (admin-only)
+      description: |
+        Checks the live status first: signed contracts can't be deleted (409,
+        and the cached status is updated). Otherwise pending signatures are
+        cancelled and the agreement is trashed and deleted in Concord, then
+        the record is removed. A contract Concord no longer has is just
+        removed.
+      responses:
+        '200': { description: Deleted }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: The contract is signed, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '502': { description: Concord refused a step; the record is kept, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '503': { description: Concord isn't configured, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+
+  /api/contracts/{id}/refresh:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    post:
+      tags: [Contracts]
+      summary: Read a contract's status from Concord (admin-only)
+      description: |
+        Updates `status` and `statusCheckedAt`, follows the signed copy's uid,
+        sets `signedAt` the first time the contract is seen signed, and marks
+        it `DELETED` if Concord no longer has it. When a promoter agreement
+        is first seen signed and the promoter has no `contractDate`, it's
+        set to today.
+      responses:
+        '200': { description: Updated contract, content: { application/json: { schema: { $ref: '#/components/schemas/Contract' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '502': { description: Concord refused the request, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '503': { description: Concord isn't configured, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
 
   /api/roles:
     get:
@@ -932,6 +1284,17 @@ paths:
       summary: Remove an owner
       responses: { '200': { description: Removed } }
 
+  /api/entities/{id}/introductions:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    get:
+      tags: [Introductions]
+      summary: Who introduced an entity, including inherited credit (admin-only)
+      responses:
+        '200': { description: Introductions, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Introduction' } } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   /api/entities/{id}/managers:
     parameters:
       - { name: id, in: path, required: true, schema: { type: integer } }
@@ -942,6 +1305,7 @@ paths:
     post:
       tags: [Entities]
       summary: Add an account as a manager
+      description: The entity inherits the new manager's introducers (see Introductions); removing a manager drops credit inherited only through them.
       requestBody:
         required: true
         content:
@@ -1117,6 +1481,53 @@ paths:
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
         '403': { $ref: '#/components/responses/Forbidden' }
+  /api/settings/concord:
+    get:
+      tags: [Settings]
+      summary: Get the Concord e-signature settings (admin-only)
+      description: |
+        Stored Concord settings (empty string = unset), whether the
+        `CONCORD_API_KEY` env var is set (the key itself is never returned),
+        and the default URLs used when the overrides are empty.
+      responses:
+        '200':
+          description: Concord settings
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ConcordSettings' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    patch:
+      tags: [Settings]
+      summary: Update the Concord e-signature settings (admin-only)
+      description: |
+        Only the fields sent are changed; values are trimmed and an empty
+        string clears a field (URLs fall back to the defaults). Unknown
+        fields — including an API key — are rejected: the key only comes from
+        the `CONCORD_API_KEY` env var.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                orgId: { type: string, maxLength: 100, description: Concord organization id (required for contracts) }
+                apiUrl: { type: string, description: REST base override; http(s) URL or empty }
+                appUrl: { type: string, description: Web-app link base override; http(s) URL or empty }
+                signerEmail: { type: string, description: "Our side's signer (a member of the Concord org); email or empty for the admin sending the contract" }
+                promoterTemplateId: { type: string, maxLength: 100, description: Concord template uid for promoter agreements }
+                promoterFolderId: { type: string, maxLength: 100, description: Optional Concord folder for promoter agreements }
+      responses:
+        '200':
+          description: Updated Concord settings
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ConcordSettings' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
 
   # ──── Currencies ──────────────────────────────────────────────────────────
   /api/currencies:
@@ -1272,6 +1683,7 @@ components:
         email: { type: string, format: email }
         firstName: { type: string }
         lastName: { type: string }
+        nationality: { type: string, description: Country of citizenship (country name; empty if unknown). Used for contracts }
         profileComplete: { type: boolean }
         roles:
           type: array
@@ -1290,6 +1702,7 @@ components:
             create their own password instead (requires `welcome_email` to be true).
         firstName: { type: string }
         lastName: { type: string }
+        nationality: { type: string, description: Country of citizenship (country name; empty if unknown). Used for contracts }
         roles:
           type: array
           items: { type: string }
@@ -1311,6 +1724,7 @@ components:
         email: { type: string, format: email }
         firstName: { type: string }
         lastName: { type: string }
+        nationality: { type: string, description: Country of citizenship (country name; empty if unknown). Used for contracts }
         roles:
           type: array
           items: { type: string }
@@ -1489,6 +1903,99 @@ components:
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
 
+    Introduction:
+      type: object
+      properties:
+        id: { type: integer }
+        introducerAccountId: { type: integer }
+        introducedAccountId: { type: integer, nullable: true }
+        introducedEntityId: { type: integer, nullable: true }
+        viaAccountId:
+          type: integer
+          nullable: true
+          description: Set on inherited entity introductions — the managing account the credit flows through.
+        date: { type: string, format: date, nullable: true }
+        notes: { type: string }
+        createdAt: { type: string, format: date-time }
+        introducer: { $ref: '#/components/schemas/AccountSummary' }
+        introducedAccount: { $ref: '#/components/schemas/AccountSummary' }
+        introducedEntity:
+          type: object
+          nullable: true
+          properties:
+            id: { type: integer }
+            name: { type: string }
+            entityType: { type: string }
+        via: { $ref: '#/components/schemas/AccountSummary' }
+
+    AccountSummary:
+      type: object
+      nullable: true
+      properties:
+        id: { type: integer }
+        email: { type: string }
+        firstName: { type: string }
+        lastName: { type: string }
+
+    PromoterIncentiveCreate:
+      type: object
+      required: [type, percent]
+      properties:
+        type: { type: string, enum: [management_fee, success_fee] }
+        percent: { oneOf: [{ type: number }, { type: string }], description: '0 < percent ≤ 100, at most 2 decimals' }
+        notes: { type: string, maxLength: 2000 }
+
+    PromoterIncentive:
+      type: object
+      properties:
+        id: { type: integer }
+        promoterId: { type: integer }
+        type: { type: string, enum: [management_fee, success_fee] }
+        percent: { type: string, example: '20.00' }
+        notes: { type: string }
+        createdAt: { type: string, format: date-time }
+
+    Promoter:
+      type: object
+      properties:
+        id: { type: integer }
+        accountId: { type: integer }
+        active: { type: boolean }
+        contractDate: { type: string, format: date, nullable: true }
+        notes: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        account: { $ref: '#/components/schemas/AccountSummary' }
+        incentives: { type: array, items: { $ref: '#/components/schemas/PromoterIncentive' } }
+        introductionCount: { type: integer, description: Accounts and entities credited to the promoter, inherited entity credit included }
+
+    Contract:
+      type: object
+      properties:
+        id: { type: integer }
+        kind: { type: string, enum: [promoter_agreement] }
+        concordUid: { type: string, description: Concord agreement uid (the signed copy's once signed) }
+        title: { type: string }
+        status: { type: string, description: 'Concord summary status as of statusCheckedAt: DRAFT, VALIDATION, NEGOTIATION, SIGNING, SIGNED, BROKEN (cancelled), or DELETED (gone from Concord)', example: SIGNING }
+        signers: { type: array, items: { type: string, format: email } }
+        promoterId: { type: integer, nullable: true }
+        createdByAccountId: { type: integer, nullable: true }
+        statusCheckedAt: { type: string, format: date-time, nullable: true }
+        signedAt: { type: string, format: date-time, nullable: true, description: When FundFlow first saw it signed }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        url: { type: string, nullable: true, description: Link to the document in Concord; null when Concord isn't configured }
+
+    ContractDraft:
+      type: object
+      properties:
+        ready: { type: boolean, description: Whether Concord and this kind's template are configured }
+        title: { type: string }
+        signers: { type: array, items: { type: string, format: email } }
+        variables: { type: object, additionalProperties: { type: string } }
+        subject: { type: string, description: "Invitation email subject, in the promoter's language" }
+        message: { type: string, description: "Invitation email body, in the promoter's language" }
+
     EntityCreate:
       type: object
       required: [name, entityType]
@@ -1543,6 +2050,19 @@ components:
             id: { type: integer }
             name: { type: string }
         createdAt: { type: string, format: date-time }
+
+    ConcordSettings:
+      type: object
+      properties:
+        orgId: { type: string }
+        apiUrl: { type: string, description: Empty = `defaultApiUrl` }
+        appUrl: { type: string, description: Empty = `defaultAppUrl` }
+        signerEmail: { type: string, description: Empty = the admin sending the contract }
+        promoterTemplateId: { type: string }
+        promoterFolderId: { type: string }
+        apiKeySet: { type: boolean, description: Whether the CONCORD_API_KEY env var is set }
+        defaultApiUrl: { type: string, example: "https://api.concordnow.com/api/rest/1" }
+        defaultAppUrl: { type: string, example: "https://secure.concordnow.com/#" }
 
     DocumentsPathSettings:
       type: object

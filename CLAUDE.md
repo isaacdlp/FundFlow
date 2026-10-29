@@ -36,6 +36,8 @@ server/
   storage.ts                   # DatabaseStorage class (IStorage interface)
   email.ts                     # Nodemailer — sendPasswordResetEmail
   documents.ts                 # Document upload/download/delete routes
+  concord.ts                   # ConcordNow e-signature client (create from template, status, delete)
+  contracts.ts                 # Per-kind contract templates (env), drafts, serialization
   vite.ts                      # Vite dev integration (DO NOT MODIFY)
 shared/
   schema.ts                    # Drizzle schema + Zod validation
@@ -54,6 +56,7 @@ docs/openapi.yaml              # API spec (source of truth for all endpoints)
 | `SMTP_USER` | SMTP username |
 | `SMTP_FROM` | Sender address |
 | `SMTP_PASSWORD` | SMTP password |
+| `CONCORD_API_KEY` | ConcordNow API key (sent as `X-API-KEY`). Contracts are disabled (503) without it. The only Concord env var — the rest of the Concord config lives in Settings → Contracts (see `app_settings`) |
 | `SEED_ADMIN_PASSWORD` | Password for the seed admin (`isaac@conexo.vc`), used only when the DB has no accounts. Required in production then; in dev, a random one is generated and logged if unset |
 
 ## Internationalization (i18n)
@@ -62,7 +65,7 @@ docs/openapi.yaml              # API spec (source of truth for all endpoints)
 - **Language cookie**: `fundflow:lang` — set by the language switcher UI (1-year expiry). Helpers in `client/src/i18n/config.ts`: `getLangCookie`, `setLangCookie`, `expireLangCookie`. i18next does **not** auto-cache; the cookie is managed manually.
 - **Account language**: stored as `accounts.language` (enum: `en`/`es`/`fr`, default `en`). When a user saves a new language on their own account, the cookie is expired and the UI navigates to the new locale immediately.
 - **Building links**: always use `useLocalePath()` or `useLocaleFullPath()` — never hardcode paths like `"/accounts"`.
-- **Route keys**: defined in `client/src/i18n/routes.ts` (`accounts`, `accountDetail`, `organizations`, `spvDetail`, `entities`, `documents`, `settings`, `forgotPassword`, `resetPassword`, `orgLanding`, …).
+- **Route keys**: defined in `client/src/i18n/routes.ts` (`accounts`, `accountDetail`, `organizations`, `spvDetail`, `entities`, `promoters`, `promoterDetail`, `documents`, `settings`, `forgotPassword`, `resetPassword`, `orgLanding`, …).
 - **Strings**: `react-i18next`, namespaced JSON catalogs. Server API errors stay in English.
 - **Adding a language**: add locale code to `LOCALES` in `routes.ts`, fill in path patterns, add `locales/<lang>.json`.
 
@@ -76,7 +79,7 @@ docs/openapi.yaml              # API spec (source of truth for all endpoints)
 - API spec served at `/docs` (Redoc), `/api/openapi.yaml`, `/api/openapi.json` (all public)
 
 ## Database Schema Overview
-- `accounts` — users with personal info; `passwordHash` never returned in API responses; `language` field stores preferred locale (`en`/`es`/`fr`, default `en`)
+- `accounts` — users with personal info; `passwordHash` never returned in API responses; `language` field stores preferred locale (`en`/`es`/`fr`, default `en`); `nationality` is a country name (from `CountrySelect`), used for contracts
 - `roles` / `account_roles` — role assignments (admin only; GP/LP removed)
 - `api_tokens` — personal API tokens (hash only stored, plaintext shown once)
 - `organizations` — fund organizations with auto-generated URL slugs
@@ -87,8 +90,12 @@ docs/openapi.yaml              # API spec (source of truth for all endpoints)
 - `spv_asset_valuations` — time-series marks; latest drives `currentValue`
 - `entities` — LLC/Corp/Trust/etc. records
 - `entity_owners` / `entity_managers` — entity access control
+- `introductions` — who introduced whom (for network tracking / referral fees). One row per introducer → target, target is an account *or* an entity; an account can have several introducers. Rows with `via_account_id` are inherited entity credit (X introduced manager M ⇒ X introduced M's entities), kept in sync by `syncInheritedIntroductions` in `server/storage.ts` whenever introductions, entity managers or accounts change — never written directly. Loop rules (no cycles A→B→C→A; can't introduce an entity managed by yourself or anyone upstream of you) live in `server/introductions.ts` (pure, unit-tested). Admin-only API; edited from the account page's Introductions tab
+- `promoters` — vetted introducers under contract who earn commissions on what their introductions pay us. One row per account (`active`, `contract_date`, `notes`). Admin-only API under `/api/promoters` and the Promoters section in the sidebar
+- `promoter_incentives` — a promoter's commission terms: `type` (`management_fee` = % of the management fee the introduced pay us, `success_fee` = % of the success fee we earn from them; `INCENTIVE_TYPES` in `shared/schema.ts`) and `percent` (0 < p ≤ 100). At most one per type and promoter. Only the terms are stored — commissions aren't computed yet
+- `contracts` — contracts sent for e-signature through ConcordNow. Generic: `kind` (`CONTRACT_KINDS` in `shared/schema.ts`; only `promoter_agreement` so far) plus one nullable FK per subject (`promoter_id` now; add a column per new use — investments, tax forms…). `status` caches Concord's summary status (`UNKNOWN_CONTRACT` → `SIGNED`, `DELETED` when gone from Concord) and is only refreshed on demand (`POST /api/contracts/:id/refresh`); `concord_uid` follows the signed copy. Signed contracts can't be deleted. Concord calls live in `server/concord.ts` (`getConcordClient(config)`); its config is `CONCORD_API_KEY` plus the `concord_*` keys in `app_settings` (org id, URL overrides, our signer, per-kind template/folder), read and written by `server/contracts.ts` and edited in Settings → Contracts (`GET/PATCH /api/settings/concord`); the client UI is the reusable `ContractsCard` component (list/check/delete + review-and-send from a `…/contracts/draft` endpoint). Admin-only API. Adding a kind: add it to `CONTRACT_KINDS`/`ContractKind`, its template/folder settings in `server/contracts.ts` (+ the settings schema, Settings form and catalogs), a draft + create route for its subject
 - `documents` — file metadata; files stored at `<storage_path>/{account|entity}/<id>/<folderPath>/`
-- `app_settings` — key/value config (e.g. `documents_storage_path`)
+- `app_settings` — key/value config (e.g. `documents_storage_path`, `concord_org_id`, `concord_promoter_template_id`)
 - `password_reset_tokens` — single-use; 1-hour expiry for "forgot password", 7 days for account-setup links (`PASSWORD_RESET_TTL_MS` / `ACCOUNT_SETUP_TTL_MS` in `shared/schema.ts`)
 
 ## Key Implementation Details
@@ -111,4 +118,5 @@ docs/openapi.yaml              # API spec (source of truth for all endpoints)
 ## Production Deployment (this server)
 - Runs as systemd service `fundflow` on port 3000
 - nginx reverse proxies `https://portal.rapidscale.vc` → port 3000, handles SSL (Let's Encrypt, auto-renews)
-- To deploy an update: `git pull && npm install && npm run test && npm run build && systemctl restart fundflow` — **do not deploy if `npm run test` fails**; fix the tests (or the code) first.
+- To deploy an update: `git pull && npm install && npm run test && npm run build && npm run db:push && systemctl restart fundflow` — **do not deploy if `npm run test` fails**; fix the tests (or the code) first.
+- `db:push` runs before the restart so the new code never starts against a missing table/column. Read its prompts: answer **create** (not rename) for genuinely new tables, and never accept a data-loss statement you didn't expect — abort and investigate instead. The connect-pg-simple `session` table is excluded via `tablesFilter` in `drizzle.config.ts`.

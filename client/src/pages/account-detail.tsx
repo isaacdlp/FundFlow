@@ -33,6 +33,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { CountrySelect } from "@/components/country-select";
+import { AccountIntroductions } from "@/components/account-introductions";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ArrowLeft, Pencil, Save, X, Loader2, Mail, KeyRound, Trash2, Eye } from "lucide-react";
 import { useState, useEffect } from "react";
@@ -51,7 +52,10 @@ export default function AccountDetail() {
   const ACCOUNT_TABS = [
     { value: "personal", label: t("accountDetail.personalInfo") },
     { value: "login", label: t("accountDetail.loginInfo") },
-    ...(isAdmin ? [{ value: "permissions", label: t("accountDetail.permissions") }] : []),
+    ...(isAdmin ? [
+      { value: "permissions", label: t("accountDetail.permissions") },
+      { value: "introductions", label: t("introductions.tab") },
+    ] : []),
   ];
   const [location, navigate] = useLocation();
   const search = useSearch();
@@ -80,6 +84,7 @@ export default function AccountDetail() {
         email: account.email || "",
         phone: account.phone || "",
         birthdate: account.birthdate || "",
+        nationality: account.nationality || "",
         taxId: account.taxId || "",
         streetAddress1: account.streetAddress1 || "",
         streetAddress2: account.streetAddress2 || "",
@@ -216,6 +221,7 @@ export default function AccountDetail() {
         email: account.email || "",
         phone: account.phone || "",
         birthdate: account.birthdate || "",
+        nationality: account.nationality || "",
         taxId: account.taxId || "",
         streetAddress1: account.streetAddress1 || "",
         streetAddress2: account.streetAddress2 || "",
@@ -468,16 +474,27 @@ export default function AccountDetail() {
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <Label htmlFor="taxId">{t("common.ssnTaxId")}</Label>
-                <Input
-                  id="taxId"
-                  value={(formData.taxId as string) || ""}
-                  onChange={(e) => updateField("taxId", e.target.value)}
-                  disabled={!editing}
-                  data-testid="input-tax-id"
-                />
-                <p className="text-xs text-muted-foreground">{t("createAccount.taxIdHelper")}</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="nationality">{t("createAccount.nationality")}</Label>
+                  <CountrySelect
+                    value={(formData.nationality as string) || ""}
+                    onValueChange={(val) => updateField("nationality", val)}
+                    disabled={!editing}
+                    data-testid="select-nationality"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="taxId">{t("common.ssnTaxId")}</Label>
+                  <Input
+                    id="taxId"
+                    value={(formData.taxId as string) || ""}
+                    onChange={(e) => updateField("taxId", e.target.value)}
+                    disabled={!editing}
+                    data-testid="input-tax-id"
+                  />
+                  <p className="text-xs text-muted-foreground">{t("createAccount.taxIdHelper")}</p>
+                </div>
               </div>
 
               <Separator />
@@ -508,15 +525,6 @@ export default function AccountDetail() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="country">{t("common.country")} *</Label>
-                  <CountrySelect
-                    value={(formData.country as string) || ""}
-                    onValueChange={(val) => updateField("country", val)}
-                    disabled={!editing}
-                    data-testid="select-country"
-                  />
-                </div>
-                <div className="space-y-2">
                   <Label htmlFor="city">{t("common.city")} *</Label>
                   <Input
                     id="city"
@@ -526,9 +534,6 @@ export default function AccountDetail() {
                     data-testid="input-city"
                   />
                 </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="stateProvince">{t("common.state")} *</Label>
                   <Input
@@ -539,6 +544,9 @@ export default function AccountDetail() {
                     data-testid="input-state"
                   />
                 </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="zipPostalCode">{t("createAccount.zipPostalCode")} *</Label>
                   <Input
@@ -547,6 +555,15 @@ export default function AccountDetail() {
                     onChange={(e) => updateField("zipPostalCode", e.target.value)}
                     disabled={!editing}
                     data-testid="input-zip"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="country">{t("common.country")} *</Label>
+                  <CountrySelect
+                    value={(formData.country as string) || ""}
+                    onValueChange={(val) => updateField("country", val)}
+                    disabled={!editing}
+                    data-testid="select-country"
                   />
                 </div>
               </div>
@@ -788,6 +805,12 @@ export default function AccountDetail() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        {isAdmin && (
+          <TabsContent value="introductions" className="mt-6">
+            <AccountIntroductions accountId={account.id} />
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );
