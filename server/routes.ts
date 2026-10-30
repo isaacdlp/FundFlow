@@ -585,6 +585,7 @@ export async function registerRoutes(
       const data = updateAccountSchema.parse(req.body);
       if (!isAdmin(me)) {
         delete data.roles;
+        delete data.code;
       }
       const account = await storage.updateAccount(id, data);
       if (!account) return res.status(404).json({ message: "Account not found" });
@@ -1410,6 +1411,9 @@ export async function registerRoutes(
 
     try {
       const data = updateVehicleSchema.parse(req.body);
+      if (!isAdmin(me)) {
+        delete data.code;
+      }
       const vehicle = await storage.updateVehicle(id, data);
       if (!vehicle) return res.status(404).json({ message: "Vehicle not found" });
       res.json(vehicle);

@@ -79,6 +79,7 @@ export interface OrganizationPublic {
 
 export interface VehicleInfo {
   id: number;
+  code: string | null;
   organizationId: number;
   legalName: string;
   displayName: string;
@@ -169,6 +170,7 @@ export interface VehicleAssetValuationInfo {
 
 export interface VehicleMemberInfo {
   id: number;
+  code: string | null;
   vehicleId: number;
   classId: number;
   className: string;
@@ -289,6 +291,7 @@ export interface EntityOwnerInfo {
 
 export interface AccountWithRoles {
   id: number;
+  code: string | null;
   email: string;
   firstName: string;
   middleName: string | null;

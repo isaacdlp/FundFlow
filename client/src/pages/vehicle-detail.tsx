@@ -28,6 +28,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useOrgPermissions } from "@/hooks/use-org-permissions";
 import { SearchPicker, type SearchPickerOption } from "@/components/search-picker";
 import { investorFeeDefaults, managementFeeAmount } from "@shared/fees";
+import { useAuth } from "@/hooks/use-auth";
 import { memberShares, showsClasses } from "@shared/vehicle-classes";
 import { VehicleClassesTab, ClassSelect } from "@/components/vehicle-classes";
 
@@ -387,6 +388,7 @@ function VehicleMembersTab({ vehicleId, orgId, canEdit, allocationMethod, curren
                         <p className="text-sm font-medium truncate">{displayName}</p>
                       )}
                       <p className="text-xs text-muted-foreground truncate">
+                        {member.code && <span className="mr-2 font-mono" data-testid={`text-member-code-${member.id}`}>{member.code}</span>}
                         {hasClasses && <Badge variant="outline" className="mr-2 text-[10px]" data-testid={`badge-member-class-${member.id}`}>{member.className}</Badge>}
                         {isEntity && <Badge variant="secondary" className="mr-2 text-[10px]">{t("vehicleDetail.entityBadge")}</Badge>}
                         {subText}
@@ -912,6 +914,7 @@ export default function VehicleDetail() {
   const vehicleId = params?.id;
   const { toast } = useToast();
   const { canManageOrg } = useOrgPermissions();
+  const { isAdmin } = useAuth();
   const [location, navigate] = useLocation();
   const search = useSearch();
   const activeTab = new URLSearchParams(search).get("tab") ?? "configuration";
@@ -949,6 +952,7 @@ export default function VehicleDetail() {
   useEffect(() => {
     if (vehicle) {
       setFormData({
+        code: vehicle.code || "",
         legalName: vehicle.legalName || "",
         displayName: vehicle.displayName || "",
         entityType: vehicle.entityType || "LLC",
@@ -1004,6 +1008,7 @@ export default function VehicleDetail() {
 
   const handleSave = () => {
     const payload: Record<string, unknown> = { ...formData };
+    if (!isAdmin || !payload.code) delete payload.code;
     if (payload.managerId === "" || payload.managerId === "none") payload.managerId = null;
     else payload.managerId = parseInt(payload.managerId as string);
     if (payload.signatoryId === "" || payload.signatoryId === "none") payload.signatoryId = null;
@@ -1017,6 +1022,7 @@ export default function VehicleDetail() {
   const handleCancel = () => {
     if (vehicle) {
       setFormData({
+        code: vehicle.code || "",
         legalName: vehicle.legalName || "",
         displayName: vehicle.displayName || "",
         entityType: vehicle.entityType || "LLC",
@@ -1188,6 +1194,21 @@ export default function VehicleDetail() {
               <h2 className="text-lg font-semibold">{t("createVehicle.generalStructure")}</h2>
             </CardHeader>
             <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>{t("vehicleDetail.code")}</Label>
+                  <Input
+                    value={formData.code || ""}
+                    onChange={e => updateField("code", e.target.value.toUpperCase())}
+                    disabled={!editing || !isAdmin}
+                    maxLength={4}
+                    placeholder={t("vehicleDetail.codeNotAssigned")}
+                    className="font-mono"
+                    data-testid="input-vehicle-code"
+                  />
+                  {editing && isAdmin && <p className="text-xs text-muted-foreground">{t("vehicleDetail.codeHelper")}</p>}
+                </div>
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>{t("createVehicle.legalName")}</Label>

@@ -5,7 +5,7 @@ import {
   organizationMembers, organizationInvites, vehicles, vehicleMembers,
   vehicleAssets, vehicleAssetValuations, vehicleClasses,
   entities, entityOwners, introductions, delegations, relationships, promoters, promoterIncentives, contracts, passwordResetTokens,
-  apiTokens, currencies, appSettings, PASSWORD_RESET_TTL_MS,
+  apiTokens, currencies, appSettings, PASSWORD_RESET_TTL_MS, generatePositionCode,
   type Account, type Role, type InsertAccount, type UpdateAccount,
   type Organization, type InsertOrganization, type UpdateOrganization,
   type OrganizationMember, type OrganizationInvite,
@@ -828,7 +828,15 @@ export class DatabaseStorage implements IStorage {
 
     if (Object.keys(updateFields).length > 0) {
       updateFields.updatedAt = new Date();
-      await db.update(vehicles).set(updateFields).where(eq(vehicles.id, id));
+      await db.transaction(async (tx) => {
+        await tx.update(vehicles).set(updateFields).where(eq(vehicles.id, id));
+        // Position codes start with the Vehicle's. Positions without a code stay null.
+        if (data.code && data.code !== existing.code) {
+          await tx.update(vehicleMembers)
+            .set({ code: sql`${data.code}::text || substr(${vehicleMembers.code}, 5)` })
+            .where(eq(vehicleMembers.vehicleId, id));
+        }
+      });
     }
 
     return this.getVehicle(id);
@@ -886,6 +894,7 @@ export class DatabaseStorage implements IStorage {
 
     const member = await db.transaction(async (tx) => {
       const [vehicleRow] = await tx.select().from(vehicles).where(eq(vehicles.id, vehicleId));
+      values.code = generatePositionCode(vehicleRow?.code ?? null);
       // AutoDeploy: auto-call the net capital (committed − management fee) and deploy it into
       // the default asset of the position's class
       if (vehicleRow?.autoDeploy) {

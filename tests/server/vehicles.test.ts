@@ -291,6 +291,33 @@ describe("/api/vehicles", () => {
       expect(res.status).toBe(404);
     });
 
+    it("an organizer trying to change the code has it silently stripped", async () => {
+      const agent = await loginAs(app, mockStorage, fixtures.organizerAccount);
+      mockStorage.getVehicle.mockResolvedValue(vehicleA);
+      mockStorage.getOrganization.mockResolvedValue({ ...orgA, organizers: [{ accountId: fixtures.organizerAccount.id }] });
+      mockStorage.updateVehicle.mockResolvedValue({ ...vehicleA, displayName: "Renamed" });
+      const res = await agent.patch(`/api/vehicles/${vehicleA.id}`).send({ displayName: "Renamed", code: "ZQP7" });
+      expect(res.status).toBe(200);
+      const [, data] = mockStorage.updateVehicle.mock.calls[0];
+      expect(data).toMatchObject({ displayName: "Renamed" });
+      expect(data).not.toHaveProperty("code");
+    });
+
+    it("admin can change the code, normalised to uppercase", async () => {
+      const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
+      mockStorage.updateVehicle.mockResolvedValue(vehicleA);
+      const res = await agent.patch(`/api/vehicles/${vehicleA.id}`).send({ code: "zqp7" });
+      expect(res.status).toBe(200);
+      expect(mockStorage.updateVehicle).toHaveBeenCalledWith(vehicleA.id, expect.objectContaining({ code: "ZQP7" }));
+    });
+
+    it.each(["ZQP", "ZQP77", "ZQ-7", ""])("rejects the malformed code %j", async (code) => {
+      const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
+      const res = await agent.patch(`/api/vehicles/${vehicleA.id}`).send({ code });
+      expect(res.status).toBe(400);
+      expect(mockStorage.updateVehicle).not.toHaveBeenCalled();
+    });
+
     it("silently ignores an attempt to change currency — it's fixed at creation", async () => {
       const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
       mockStorage.updateVehicle.mockResolvedValue({ ...vehicleA, displayName: "Renamed" });

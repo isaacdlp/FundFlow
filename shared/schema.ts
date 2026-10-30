@@ -9,8 +9,35 @@ export const roles = pgTable("roles", {
   description: text("description").default(""),
 });
 
+const CODE_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+
+function randomCode(length: number): string {
+  let code = "";
+  while (code.length < length) {
+    const byte = globalThis.crypto.getRandomValues(new Uint8Array(1))[0];
+    // 252 is the largest multiple of 36 that fits a byte: rejecting the rest avoids modulo bias.
+    if (byte < 252) code += CODE_ALPHABET[byte % 36];
+  }
+  return code;
+}
+
+// The user-facing "Account ID": 8 random characters from A-Z and 0-9.
+export const ACCOUNT_CODE_PATTERN = /^[A-Z0-9]{8}$/;
+export const generateAccountCode = () => randomCode(8);
+
+// The user-facing Vehicle "Code": 4 random characters from A-Z and 0-9.
+export const VEHICLE_CODE_PATTERN = /^[A-Z0-9]{4}$/;
+export const generateVehicleCode = () => randomCode(4);
+
+// A position's code: its Vehicle's code, a hyphen and 4 random characters (AJNN-RLH4).
+// Null when the Vehicle has no code yet.
+export const POSITION_CODE_PATTERN = /^[A-Z0-9]{4}-[A-Z0-9]{4}$/;
+export const generatePositionCode = (vehicleCode: string | null) => vehicleCode ? `${vehicleCode}-${randomCode(4)}` : null;
+
 export const accounts = pgTable("accounts", {
   id: serial("id").primaryKey(),
+  // Null for accounts that predate it. Not unique yet: existing users get theirs first.
+  code: varchar("code", { length: 8 }).$defaultFn(generateAccountCode),
   email: varchar("email", { length: 255 }).notNull().unique(),
   passwordHash: text("password_hash").notNull(),
   firstName: varchar("first_name", { length: 100 }).notNull(),
@@ -98,6 +125,8 @@ export const organizationInvites = pgTable("organization_invites", {
 
 export const vehicles = pgTable("vehicles", {
   id: serial("id").primaryKey(),
+  // Null for Vehicles that predate it. Not unique yet: existing Vehicles get theirs first.
+  code: varchar("code", { length: 4 }).$defaultFn(generateVehicleCode),
   organizationId: integer("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
   legalName: varchar("legal_name", { length: 500 }).notNull(),
   displayName: varchar("display_name", { length: 255 }).notNull(),
@@ -312,6 +341,9 @@ export const vehicleClasses = pgTable("vehicle_classes", {
 
 export const vehicleMembers = pgTable("vehicle_members", {
   id: serial("id").primaryKey(),
+  // Set by addVehicleMember, kept in step with the Vehicle's code by updateVehicle.
+  // Null on older positions. Not unique yet: existing positions get theirs first.
+  code: varchar("code", { length: 9 }),
   vehicleId: integer("vehicle_id").notNull().references(() => vehicles.id, { onDelete: "cascade" }),
   classId: integer("class_id").notNull().references(() => vehicleClasses.id),
   accountId: integer("account_id").references(() => accounts.id, { onDelete: "cascade" }),
@@ -437,6 +469,7 @@ const optionalDate = z.preprocess(
 
 export const insertAccountSchema = createInsertSchema(accounts).omit({
   id: true,
+  code: true,
   passwordHash: true,
   createdAt: true,
   updatedAt: true,
@@ -455,6 +488,7 @@ export const updateAccountSchema = createInsertSchema(accounts).omit({
   createdAt: true,
   updatedAt: true,
 }).partial().extend({
+  code: z.string().trim().toUpperCase().regex(ACCOUNT_CODE_PATTERN, "Account ID must be 8 letters or digits").optional(),
   roles: z.array(z.string()).optional(),
   language: z.enum(["en", "es", "fr"]).optional(),
   birthdate: optionalDate,
@@ -476,6 +510,7 @@ export const updateOrganizationSchema = createInsertSchema(organizations).omit({
 
 export const insertVehicleSchema = createInsertSchema(vehicles).omit({
   id: true,
+  code: true,
   createdAt: true,
   updatedAt: true,
 }).extend({
@@ -494,7 +529,9 @@ export const updateVehicleSchema = createInsertSchema(vehicles).omit({
   currency: true,
   createdAt: true,
   updatedAt: true,
-}).partial();
+}).partial().extend({
+  code: z.string().trim().toUpperCase().regex(VEHICLE_CODE_PATTERN, "Vehicle code must be 4 letters or digits").optional(),
+});
 
 export const insertVehicleClassSchema = z.object({
   name: z.string().trim().min(1, "Class name is required").max(100),

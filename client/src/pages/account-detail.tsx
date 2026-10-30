@@ -5,6 +5,7 @@ import { useLocalePath, useLocale } from "@/i18n/hooks";
 import { ROUTE_PATTERNS, LOCALES, translatePath, type Locale } from "@/i18n/routes";
 import { expireLangCookie } from "@/i18n/config";
 import type { AccountWithRoles } from "@shared/types";
+import { ACCOUNT_CODE_PATTERN } from "@shared/schema";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
   AlertDialog,
@@ -97,9 +98,13 @@ export default function AccountDetail() {
   });
 
   const [formData, setFormData] = useState<Record<string, string | string[]>>({});
+  const [code, setCode] = useState("");
 
   useEffect(() => {
-    if (account) setFormData(accountToForm(account));
+    if (account) {
+      setFormData(accountToForm(account));
+      setCode(account.code ?? "");
+    }
   }, [account]);
 
   const updateMutation = useMutation({
@@ -658,6 +663,44 @@ export default function AccountDetail() {
               <h2 className="text-lg font-semibold">{t("accountDetail.login")}</h2>
             </CardHeader>
             <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="code">{t("accountDetail.accountId")}</Label>
+                {isAdmin ? (
+                  <>
+                    <div className="flex gap-2">
+                      <Input
+                        id="code"
+                        value={code}
+                        onChange={(e) => setCode(e.target.value.toUpperCase())}
+                        maxLength={8}
+                        className="font-mono"
+                        data-testid="input-account-code"
+                      />
+                      <Button
+                        onClick={() => updateMutation.mutate({ code })}
+                        disabled={
+                          updateMutation.isPending ||
+                          code === (account.code ?? "") ||
+                          !ACCOUNT_CODE_PATTERN.test(code)
+                        }
+                        data-testid="button-save-account-code"
+                      >
+                        {updateMutation.isPending ? t("common.saving") : t("common.save")}
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">{t("accountDetail.accountIdHelper")}</p>
+                  </>
+                ) : (
+                  <Input
+                    id="code"
+                    value={account.code ?? ""}
+                    placeholder={t("accountDetail.accountIdNotAssigned")}
+                    disabled
+                    className="font-mono"
+                    data-testid="input-account-code"
+                  />
+                )}
+              </div>
               <div className="space-y-2">
                 <Label>{t("auth.emailAddress")}</Label>
                 <Input value={account.email} disabled data-testid="input-login-email" />

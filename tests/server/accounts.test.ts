@@ -65,6 +65,16 @@ describe("/api/accounts", () => {
       expect(res.body.passwordHash).toBeUndefined();
     });
 
+    it("ignores a client-supplied Account ID, which is always generated", async () => {
+      const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
+      mockStorage.createAccount.mockResolvedValue(fixtures.memberAccount);
+
+      const res = await agent.post("/api/accounts").send({ ...validBody, code: "ABCD1234" });
+
+      expect(res.status).toBe(201);
+      expect(mockStorage.createAccount.mock.calls[0][0]).not.toHaveProperty("code");
+    });
+
     it("stores a blank birthdate (empty form field) as null", async () => {
       const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
       mockStorage.createAccount.mockResolvedValue(fixtures.memberAccount);
@@ -345,6 +355,40 @@ describe("/api/accounts", () => {
       );
       const [, data] = mockStorage.updateAccount.mock.calls[0];
       expect(data).not.toHaveProperty("roles");
+    });
+
+    it("non-admin trying to change the Account ID has it silently stripped", async () => {
+      const agent = await loginAs(app, mockStorage, fixtures.memberAccount);
+      mockStorage.updateAccount.mockResolvedValue(fixtures.memberAccount);
+      const res = await agent
+        .patch(`/api/accounts/${fixtures.memberAccount.id}`)
+        .send({ code: "ABCD1234", firstName: "Still Applied" });
+      expect(res.status).toBe(200);
+      const [, data] = mockStorage.updateAccount.mock.calls[0];
+      expect(data).toMatchObject({ firstName: "Still Applied" });
+      expect(data).not.toHaveProperty("code");
+    });
+
+    it("admin can change the Account ID, normalised to uppercase", async () => {
+      const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
+      mockStorage.updateAccount.mockResolvedValue(fixtures.memberAccount);
+      const res = await agent
+        .patch(`/api/accounts/${fixtures.memberAccount.id}`)
+        .send({ code: "abcd1234" });
+      expect(res.status).toBe(200);
+      expect(mockStorage.updateAccount).toHaveBeenCalledWith(
+        fixtures.memberAccount.id,
+        expect.objectContaining({ code: "ABCD1234" }),
+      );
+    });
+
+    it.each(["ABC", "ABCD12345", "ABCD-123", ""])("rejects the malformed Account ID %j", async (code) => {
+      const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
+      const res = await agent
+        .patch(`/api/accounts/${fixtures.memberAccount.id}`)
+        .send({ code });
+      expect(res.status).toBe(400);
+      expect(mockStorage.updateAccount).not.toHaveBeenCalled();
     });
 
     it("admin setting a password reports welcomeEmail 'sent'", async () => {

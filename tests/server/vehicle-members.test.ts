@@ -138,6 +138,21 @@ describe("Vehicle members", () => {
       expect(mockStorage.addVehicleMember).toHaveBeenCalled();
     });
 
+    it("ignores a code in the body: it's generated", async () => {
+      const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
+      mockStorage.getVehicle.mockResolvedValue(vehicleA);
+      mockStorage.getAccount.mockImplementation(async (id: number) =>
+        id === fixtures.adminAccount.id ? fixtures.adminAccount : fixtures.memberAccount,
+      );
+      mockStorage.getMember.mockResolvedValue(fixtures.member({ status: "approved" }));
+      mockStorage.addVehicleMember.mockResolvedValue({ id: 1 });
+      const res = await agent
+        .post(`/api/vehicles/${vehicleA.id}/members`)
+        .send({ accountId: fixtures.memberAccount.id, committed: 5000, date: "2025-01-15", code: "AJNN-RLH4" });
+      expect(res.status).toBe(201);
+      expect(mockStorage.addVehicleMember.mock.calls[0][2]).not.toHaveProperty("code");
+    });
+
     it("admin can add an entity investor", async () => {
       const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
       mockStorage.getVehicle.mockResolvedValue(vehicleA);
@@ -236,6 +251,16 @@ describe("Vehicle members", () => {
         1,
         { totalCalled: "200.00" },
       );
+    });
+
+    it("ignores a code in the body: it's read-only", async () => {
+      const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
+      mockStorage.updateVehicleMemberById.mockResolvedValue({ id: 1, vehicleId: vehicleA.id, accountId: 2, entityId: null });
+      const res = await agent
+        .patch(`/api/vehicles/${vehicleA.id}/members/1`)
+        .send({ totalCalled: 200, code: "AJNN-RLH4" });
+      expect(res.status).toBe(200);
+      expect(mockStorage.updateVehicleMemberById).toHaveBeenCalledWith(vehicleA.id, 1, { totalCalled: "200.00" });
     });
 
     it("admin can update an entity-investor's values", async () => {

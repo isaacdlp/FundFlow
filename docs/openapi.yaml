@@ -1342,12 +1342,16 @@ paths:
     patch:
       tags: [Vehicles]
       summary: Update a Vehicle (admins and organizers of its organization)
-      description: Investing in a Vehicle only grants read access; investors get 403.
+      description: |
+        Investing in a Vehicle only grants read access; investors get 403.
+        Admins can also send `code` (4 letters or digits, trimmed and uppercased; anything
+        else is a 400). For organizers `code` is silently stripped (the rest of the update still applies).
       requestBody:
         required: true
         content: { application/json: { schema: { $ref: '#/components/schemas/VehicleCreate' } } }
       responses:
         '200': { description: Updated, content: { application/json: { schema: { $ref: '#/components/schemas/Vehicle' } } } }
+        '400': { description: Invalid data }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
     delete:
@@ -2046,6 +2050,7 @@ components:
       description: User account. `passwordHash` is NEVER included in API responses.
       properties:
         id: { type: integer }
+        code: { type: string, nullable: true, example: K7Q2M9XA, description: The user-facing Account ID. 8 random characters (A-Z and 0-9) generated when the account is created and ignored in the create body. Null for accounts that predate it. Not guaranteed unique yet }
         email: { type: string, format: email }
         firstName: { type: string }
         lastName: { type: string }
@@ -2101,6 +2106,13 @@ components:
     AccountUpdate:
       type: object
       properties:
+        code:
+          type: string
+          pattern: '^[A-Z0-9]{8}$'
+          description: |
+            Admin only: for non-admin callers this field is silently stripped
+            (the rest of the update still applies). Trimmed and uppercased before
+            validation; anything else that doesn't match the pattern is a 400.
         email: { type: string, format: email }
         firstName: { type: string }
         lastName: { type: string }
@@ -2187,6 +2199,7 @@ components:
       type: object
       properties:
         id: { type: integer }
+        code: { type: string, nullable: true, example: ZQP7, description: The Vehicle's user-facing code. 4 random characters (A-Z and 0-9) generated when the Vehicle is created and ignored in the create body. Null for Vehicles that predate it. Not guaranteed unique yet }
         organizationId: { type: integer }
         organizationName: { type: string }
         legalName: { type: string }
@@ -2286,6 +2299,7 @@ components:
       description: One investor in a Vehicle — exactly one of account/entity is non-null.
       properties:
         id: { type: integer }
+        code: { type: string, nullable: true, example: AJNN-RLH4, description: "Read-only. The Vehicle's code, a hyphen and 4 random characters (A-Z and 0-9), generated when the position is created; ignored in request bodies. Its prefix follows the Vehicle's code if an admin changes it. Null for older positions and for positions in a Vehicle with no code. Not guaranteed unique yet" }
         vehicleId: { type: integer }
         classId: { type: integer, description: "The share class of this position." }
         className: { type: string }

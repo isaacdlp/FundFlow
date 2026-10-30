@@ -110,7 +110,8 @@ async function runSeed() {
         return row.id;
       },
       async insertVehicleMember(vehicleId, member) {
-        await tx.insert(schema.vehicleMembers).values({ vehicleId, ...member });
+        const [vehicle] = await tx.select({ code: schema.vehicles.code }).from(schema.vehicles).where(eq(schema.vehicles.id, vehicleId));
+        await tx.insert(schema.vehicleMembers).values({ vehicleId, ...member, code: schema.generatePositionCode(vehicle?.code ?? null) });
       },
       async insertVehicleAsset(vehicleId, asset) {
         const [row] = await tx.insert(schema.vehicleAssets).values({ vehicleId, ...asset }).returning({ id: schema.vehicleAssets.id });
