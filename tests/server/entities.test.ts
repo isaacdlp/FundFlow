@@ -70,13 +70,44 @@ describe("/api/entities", () => {
       expect(res.status).toBe(400);
     });
 
-    it("any authenticated user can create an entity", async () => {
+    it("any authenticated user can create an entity they manage", async () => {
       const agent = await loginAs(app, mockStorage, fixtures.memberAccount);
       mockStorage.createEntity.mockResolvedValue(entityA);
       const res = await agent
         .post("/api/entities")
-        .send({ name: "Entity A", entityType: "LLC" });
+        .send({ name: "Entity A", entityType: "LLC", managerAccountIds: [fixtures.memberAccount.id] });
       expect(res.status).toBe(201);
+      expect(mockStorage.createEntity).toHaveBeenCalledWith(
+        expect.objectContaining({ name: "Entity A" }),
+        [fixtures.memberAccount.id],
+      );
+    });
+
+    it("rejects an entity without managers — it can't act by itself", async () => {
+      const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
+      for (const body of [{ name: "E", entityType: "LLC" }, { name: "E", entityType: "LLC", managerAccountIds: [] }]) {
+        const res = await agent.post("/api/entities").send(body);
+        expect(res.status).toBe(400);
+      }
+      expect(mockStorage.createEntity).not.toHaveBeenCalled();
+    });
+
+    it("a non-admin must be one of the managers", async () => {
+      const agent = await loginAs(app, mockStorage, fixtures.memberAccount);
+      const res = await agent
+        .post("/api/entities")
+        .send({ name: "E", entityType: "LLC", managerAccountIds: [fixtures.outsiderAccount.id] });
+      expect(res.status).toBe(400);
+      expect(mockStorage.createEntity).not.toHaveBeenCalled();
+    });
+
+    it("an admin may appoint any existing accounts", async () => {
+      const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
+      mockStorage.getAccount.mockImplementation(async (id: number) => (id === 1 ? fixtures.adminAccount : id === 4 ? fixtures.outsiderAccount : null));
+      mockStorage.createEntity.mockResolvedValue(entityA);
+      expect((await agent.post("/api/entities").send({ name: "E", entityType: "LLC", managerAccountIds: [4, 4] })).status).toBe(201);
+      expect(mockStorage.createEntity).toHaveBeenCalledWith(expect.anything(), [4]);
+      expect((await agent.post("/api/entities").send({ name: "E", entityType: "LLC", managerAccountIds: [99] })).status).toBe(404);
     });
   });
 

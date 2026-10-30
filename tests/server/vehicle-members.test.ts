@@ -163,6 +163,49 @@ describe("Vehicle members", () => {
         .send({ entityId: 9999, date: "2025-01-15" });
       expect(res.status).toBe(404);
     });
+    describe("default fees", () => {
+      async function addAs(body: Record<string, unknown>) {
+        const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
+        mockStorage.getVehicle.mockResolvedValue(vehicleA);
+        mockStorage.getAccount.mockImplementation(async (id: number) =>
+          id === fixtures.adminAccount.id ? fixtures.adminAccount : fixtures.memberAccount,
+        );
+        mockStorage.addVehicleMember.mockResolvedValue({ id: 1 });
+        return agent.post(`/api/vehicles/${vehicleA.id}/members`).send({ date: "2025-01-15", ...body });
+      }
+      const values = () => mockStorage.addVehicleMember.mock.calls[0][2];
+
+      it("applies the member's defaults to fees the investment doesn't state", async () => {
+        mockStorage.getMember.mockResolvedValue(fixtures.member({ managementFeePercent: "5.00", successFeePercent: "20.00" }));
+        expect((await addAs({ accountId: 2, committed: 100000 })).status).toBe(201);
+        expect(values()).toMatchObject({ committed: "100000.00", managementFee: "5000.00", carry: "20.00" });
+      });
+
+      it("keeps fees the investment states, even zero", async () => {
+        mockStorage.getMember.mockResolvedValue(fixtures.member({ managementFeePercent: "5.00", successFeePercent: "20.00" }));
+        await addAs({ accountId: 2, committed: 100000, managementFee: 0, carry: 15 });
+        expect(values()).toMatchObject({ managementFee: "0.00", carry: "15.00" });
+      });
+
+      it("leaves fees alone when the member has no defaults", async () => {
+        mockStorage.getMember.mockResolvedValue(fixtures.member({ managementFeePercent: null, successFeePercent: null }));
+        await addAs({ accountId: 2, committed: 100000 });
+        expect(values().managementFee).toBeUndefined();
+        expect(values().carry).toBeUndefined();
+      });
+
+      it("gives an entity the lowest of its managers' defaults in the organization", async () => {
+        mockStorage.getEntity.mockResolvedValue(fixtures.entity({
+          managers: [{ id: 1, accountId: 2, account: {} }, { id: 2, accountId: 3, account: {} }, { id: 3, accountId: 4, account: {} }],
+        }));
+        mockStorage.getMember.mockImplementation(async (_org: number, accountId: number) =>
+          accountId === 2 ? fixtures.member({ accountId: 2, managementFeePercent: "5.00", successFeePercent: "20.00" })
+          : accountId === 3 ? fixtures.member({ accountId: 3, managementFeePercent: "5.00", successFeePercent: "10.00" })
+          : undefined); // account 4 isn't a member
+        await addAs({ entityId: 200, committed: 2000 });
+        expect(values()).toMatchObject({ managementFee: "100.00", carry: "10.00" });
+      });
+    });
   });
 
   describe("PATCH /api/vehicles/:id/members/:memberId", () => {

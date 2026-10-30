@@ -145,3 +145,15 @@ export function translatePath(currentFullPath: string, targetLocale: Locale): st
   const newFull = fullPath(matched.key, targetLocale, matched.params);
   return search ? `${newFull}?${search}` : newFull;
 }
+
+/**
+ * Localize a bare (unprefixed) path like "/org/acme?invite=…". Bare links —
+ * e.g. copied invite links — use the English patterns, so "/org/acme" becomes
+ * "/es/organizacion/acme" rather than an unroutable "/es/org/acme".
+ */
+export function localizeBarePath(barePathWithSearch: string, targetLocale: Locale): string {
+  const asEnglish = barePathWithSearch === "/" || barePathWithSearch.startsWith("/?")
+    ? `/en${barePathWithSearch.slice(1)}`
+    : `/en${barePathWithSearch}`;
+  return translatePath(asEnglish, targetLocale);
+}

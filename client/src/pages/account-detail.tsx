@@ -34,12 +34,32 @@ import {
 } from "@/components/ui/select";
 import { CountrySelect } from "@/components/country-select";
 import { AccountIntroductions } from "@/components/account-introductions";
+import { AccountDelegations } from "@/components/account-delegations";
+import { AccountRelationships } from "@/components/account-relationships";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, Pencil, Save, X, Loader2, Mail, KeyRound, Trash2, Eye } from "lucide-react";
+import { ArrowLeft, Pencil, Save, X, Loader2, Mail, KeyRound, Trash2, Eye, Briefcase } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 
+const FORM_FIELDS = [
+  "firstName", "middleName", "lastName", "email", "phone", "birthdate", "nationality", "taxId",
+  "streetAddress1", "streetAddress2", "country", "city", "stateProvince", "zipPostalCode",
+  "mailingStreetAddress1", "mailingStreetAddress2", "mailingCountry", "mailingCity",
+  "mailingStateProvince", "mailingZipPostalCode",
+] as const;
+
+function accountToForm(account: AccountWithRoles): Record<string, string | string[]> {
+  return {
+    ...Object.fromEntries(FORM_FIELDS.map((f) => [f, account[f] || ""])),
+    language: account.language || "en",
+    roles: account.roles.map((r) => r.name),
+  };
+}
+
+// Tabs that were renamed ("Personal Information" → Overview, Introductions → Connections);
+// keep old ?tab= links working.
+const LEGACY_TABS: Record<string, string> = { personal: "overview", introductions: "connections" };
 
 export default function AccountDetail() {
   const locale = useLocale();
@@ -49,17 +69,20 @@ export default function AccountDetail() {
   const accountId = params?.id;
   const { toast } = useToast();
   const { user, isAdmin, isImpersonating, showAsMutation } = useAuth();
+  const isOwnAccount = user && accountId && String(user.id) === String(accountId);
   const ACCOUNT_TABS = [
-    { value: "personal", label: t("accountDetail.personalInfo") },
-    { value: "login", label: t("accountDetail.loginInfo") },
+    { value: "overview", label: t("accountDetail.overview") },
+    // A delegate viewing someone else's account has no business with its login.
+    ...(isAdmin || isOwnAccount ? [{ value: "login", label: t("accountDetail.login") }] : []),
     ...(isAdmin ? [
+      { value: "connections", label: t("introductions.tab") },
       { value: "permissions", label: t("accountDetail.permissions") },
-      { value: "introductions", label: t("introductions.tab") },
     ] : []),
   ];
   const [location, navigate] = useLocation();
   const search = useSearch();
-  const activeTab = new URLSearchParams(search).get("tab") ?? "personal";
+  const requestedTab = new URLSearchParams(search).get("tab") ?? "overview";
+  const activeTab = LEGACY_TABS[requestedTab] ?? requestedTab;
   const [editing, setEditing] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -67,7 +90,6 @@ export default function AccountDetail() {
   const [adminNewPassword, setAdminNewPassword] = useState("");
   const [adminConfirmPassword, setAdminConfirmPassword] = useState("");
   const [adminSendWelcome, setAdminSendWelcome] = useState(false);
-  const isOwnAccount = user && accountId && String(user.id) === String(accountId);
 
   const { data: account, isLoading } = useQuery<AccountWithRoles>({
     queryKey: ["/api/accounts", accountId],
@@ -77,25 +99,7 @@ export default function AccountDetail() {
   const [formData, setFormData] = useState<Record<string, string | string[]>>({});
 
   useEffect(() => {
-    if (account) {
-      setFormData({
-        firstName: account.firstName || "",
-        lastName: account.lastName || "",
-        email: account.email || "",
-        phone: account.phone || "",
-        birthdate: account.birthdate || "",
-        nationality: account.nationality || "",
-        taxId: account.taxId || "",
-        streetAddress1: account.streetAddress1 || "",
-        streetAddress2: account.streetAddress2 || "",
-        country: account.country || "",
-        city: account.city || "",
-        stateProvince: account.stateProvince || "",
-        zipPostalCode: account.zipPostalCode || "",
-        language: account.language || "en",
-        roles: account.roles.map((r) => r.name),
-      });
-    }
+    if (account) setFormData(accountToForm(account));
   }, [account]);
 
   const updateMutation = useMutation({
@@ -214,25 +218,7 @@ export default function AccountDetail() {
   };
 
   const handleCancel = () => {
-    if (account) {
-      setFormData({
-        firstName: account.firstName || "",
-        lastName: account.lastName || "",
-        email: account.email || "",
-        phone: account.phone || "",
-        birthdate: account.birthdate || "",
-        nationality: account.nationality || "",
-        taxId: account.taxId || "",
-        streetAddress1: account.streetAddress1 || "",
-        streetAddress2: account.streetAddress2 || "",
-        country: account.country || "",
-        city: account.city || "",
-        stateProvince: account.stateProvince || "",
-        zipPostalCode: account.zipPostalCode || "",
-        language: account.language || "en",
-        roles: account.roles.map((r) => r.name),
-      });
-    }
+    if (account) setFormData(accountToForm(account));
     setEditing(false);
   };
 
@@ -285,7 +271,7 @@ export default function AccountDetail() {
         </div>
         <div className="flex-1 min-w-0">
           <h1 className="text-2xl font-semibold" data-testid="text-account-name">
-            {account.firstName} {account.lastName}
+            {[account.firstName, account.middleName, account.lastName].filter(Boolean).join(" ")}
           </h1>
           <p className="text-muted-foreground" data-testid="text-account-email">{account.email}</p>
           <div className="flex gap-2 mt-1 flex-wrap">
@@ -297,9 +283,20 @@ export default function AccountDetail() {
                 {role.name.toUpperCase()}
               </Badge>
             ))}
+            {(account.access === "observer" || account.access === "manager") && (
+              <Badge variant="outline" data-testid="badge-delegated-access">
+                {t("delegations.yourAccess", { level: t(`delegations.levels.${account.access}`) })}
+              </Badge>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <Link href={`${lp("dashboard")}?accountId=${account.id}`}>
+            <Button variant="outline" className="gap-2" data-testid="button-view-portfolio">
+              <Briefcase className="h-4 w-4" />
+              {t("entityDetail.viewPortfolio")}
+            </Button>
+          </Link>
           {isAdmin && !isOwnAccount && !isImpersonating && (
             <Button
               variant="outline"
@@ -355,11 +352,11 @@ export default function AccountDetail() {
           ))}
         </TabsList>
 
-        <TabsContent value="personal" className="mt-6">
+        <TabsContent value="overview" className="mt-6">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0">
-              <h2 className="text-lg font-semibold">{t("accountDetail.personalInfo")}</h2>
-              {!editing ? (
+              <h2 className="text-lg font-semibold">{t("accountDetail.overview")}</h2>
+              {account.access === "observer" ? null : !editing ? (
                 <Button variant="outline" size="sm" onClick={() => setEditing(true)} data-testid="button-edit">
                   <Pencil className="h-3.5 w-3.5 mr-1.5" />
                   {t("common.edit")}
@@ -383,7 +380,7 @@ export default function AccountDetail() {
               )}
             </CardHeader>
             <CardContent className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="firstName">{t("common.firstName")} *</Label>
                   <Input
@@ -392,6 +389,16 @@ export default function AccountDetail() {
                     onChange={(e) => updateField("firstName", e.target.value)}
                     disabled={!editing}
                     data-testid="input-first-name"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="middleName">{t("common.middleName")}</Label>
+                  <Input
+                    id="middleName"
+                    value={(formData.middleName as string) || ""}
+                    onChange={(e) => updateField("middleName", e.target.value)}
+                    disabled={!editing}
+                    data-testid="input-middle-name"
                   />
                 </div>
                 <div className="space-y-2">
@@ -567,6 +574,80 @@ export default function AccountDetail() {
                   />
                 </div>
               </div>
+
+              <Separator />
+
+              <div className="space-y-1">
+                <h3 className="text-base font-semibold">{t("accountDetail.mailingAddress")}</h3>
+                <p className="text-xs text-muted-foreground">{t("accountDetail.mailingAddressHelper")}</p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="mailingStreetAddress1">{t("createAccount.streetAddress1")}</Label>
+                <Input
+                  id="mailingStreetAddress1"
+                  value={(formData.mailingStreetAddress1 as string) || ""}
+                  onChange={(e) => updateField("mailingStreetAddress1", e.target.value)}
+                  disabled={!editing}
+                  data-testid="input-mailing-street-1"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="mailingStreetAddress2">{t("createAccount.streetAddress2Optional")}</Label>
+                <Input
+                  id="mailingStreetAddress2"
+                  value={(formData.mailingStreetAddress2 as string) || ""}
+                  onChange={(e) => updateField("mailingStreetAddress2", e.target.value)}
+                  disabled={!editing}
+                  data-testid="input-mailing-street-2"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="mailingCity">{t("common.city")}</Label>
+                  <Input
+                    id="mailingCity"
+                    value={(formData.mailingCity as string) || ""}
+                    onChange={(e) => updateField("mailingCity", e.target.value)}
+                    disabled={!editing}
+                    data-testid="input-mailing-city"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="mailingStateProvince">{t("common.state")}</Label>
+                  <Input
+                    id="mailingStateProvince"
+                    value={(formData.mailingStateProvince as string) || ""}
+                    onChange={(e) => updateField("mailingStateProvince", e.target.value)}
+                    disabled={!editing}
+                    data-testid="input-mailing-state"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="mailingZipPostalCode">{t("createAccount.zipPostalCode")}</Label>
+                  <Input
+                    id="mailingZipPostalCode"
+                    value={(formData.mailingZipPostalCode as string) || ""}
+                    onChange={(e) => updateField("mailingZipPostalCode", e.target.value)}
+                    disabled={!editing}
+                    data-testid="input-mailing-zip"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="mailingCountry">{t("common.country")}</Label>
+                  <CountrySelect
+                    value={(formData.mailingCountry as string) || ""}
+                    onValueChange={(val) => updateField("mailingCountry", val)}
+                    disabled={!editing}
+                    data-testid="select-mailing-country"
+                  />
+                </div>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -574,7 +655,7 @@ export default function AccountDetail() {
         <TabsContent value="login" className="mt-6">
           <Card>
             <CardHeader>
-              <h2 className="text-lg font-semibold">{t("accountDetail.loginInfo")}</h2>
+              <h2 className="text-lg font-semibold">{t("accountDetail.login")}</h2>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
@@ -807,8 +888,19 @@ export default function AccountDetail() {
         </TabsContent>
 
         {isAdmin && (
-          <TabsContent value="introductions" className="mt-6">
-            <AccountIntroductions accountId={account.id} />
+          <TabsContent value="connections" className="mt-6 space-y-10">
+            <section className="space-y-4" data-testid="section-delegation">
+              <h2 className="text-xl font-semibold">{t("delegations.section")}</h2>
+              <AccountDelegations accountId={account.id} />
+            </section>
+            <section className="space-y-4" data-testid="section-introductions">
+              <h2 className="text-xl font-semibold">{t("introductions.section")}</h2>
+              <AccountIntroductions accountId={account.id} />
+            </section>
+            <section className="space-y-4" data-testid="section-relationships">
+              <h2 className="text-xl font-semibold">{t("relationships.section")}</h2>
+              <AccountRelationships account={account} />
+            </section>
           </TabsContent>
         )}
       </Tabs>

@@ -145,6 +145,61 @@ const setupStrings: Record<Lang, {
   },
 };
 
+// ─── Registration translations (self sign-up through an invite link) ─────────
+
+const registrationStrings: Record<Lang, {
+  subject: string;
+  heading: string;
+  greeting: (name: string) => string;
+  intro: (org: string) => string;
+  usernameLabel: string;
+  cta: string;
+  btnLabel: string;
+  fallback: string;
+  footer: string;
+  textBody: (firstName: string, email: string, org: string, url: string) => string;
+}> = {
+  en: {
+    subject: "Welcome to FundFlow",
+    heading: "Welcome to FundFlow",
+    greeting: (name) => `Hi ${name},`,
+    intro: (org) => `Your FundFlow account has been created and you now have access to <strong>${org}</strong>.`,
+    usernameLabel: "Username&nbsp;(Email):",
+    cta: "Sign in with this email and the password you chose:",
+    btnLabel: "Sign In to FundFlow",
+    fallback: "If the button doesn't work, copy and paste this link into your browser:",
+    footer: "FundFlow - Fund Management Platform",
+    textBody: (firstName, email, org, url) =>
+      `Hi ${firstName},\n\nYour FundFlow account has been created and you now have access to ${org}.\n\nUsername (Email): ${email}\n\nSign in with this email and the password you chose at: ${url}\n\nFundFlow - Fund Management Platform`,
+  },
+  es: {
+    subject: "Bienvenido a FundFlow",
+    heading: "Bienvenido a FundFlow",
+    greeting: (name) => `Hola ${name},`,
+    intro: (org) => `Tu cuenta en FundFlow se ha creado y ya tienes acceso a <strong>${org}</strong>.`,
+    usernameLabel: "Usuario&nbsp;(Email):",
+    cta: "Inicia sesión con este email y la contraseña que elegiste:",
+    btnLabel: "Iniciar sesión en FundFlow",
+    fallback: "Si el botón no funciona, copia y pega este enlace en tu navegador:",
+    footer: "FundFlow - Plataforma de Gestión de Fondos",
+    textBody: (firstName, email, org, url) =>
+      `Hola ${firstName},\n\nTu cuenta en FundFlow se ha creado y ya tienes acceso a ${org}.\n\nUsuario (Email): ${email}\n\nInicia sesión con este email y la contraseña que elegiste en: ${url}\n\nFundFlow - Plataforma de Gestión de Fondos`,
+  },
+  fr: {
+    subject: "Bienvenue sur FundFlow",
+    heading: "Bienvenue sur FundFlow",
+    greeting: (name) => `Bonjour ${name},`,
+    intro: (org) => `Votre compte FundFlow a été créé et vous avez désormais accès à <strong>${org}</strong>.`,
+    usernameLabel: "Identifiant&nbsp;(Email)&nbsp;:",
+    cta: "Connectez-vous avec cet e-mail et le mot de passe que vous avez choisi :",
+    btnLabel: "Se connecter à FundFlow",
+    fallback: "Si le bouton ne fonctionne pas, copiez et collez ce lien dans votre navigateur :",
+    footer: "FundFlow - Plateforme de Gestion de Fonds",
+    textBody: (firstName, email, org, url) =>
+      `Bonjour ${firstName},\n\nVotre compte FundFlow a été créé et vous avez désormais accès à ${org}.\n\nIdentifiant (Email) : ${email}\n\nConnectez-vous avec cet e-mail et le mot de passe que vous avez choisi sur : ${url}\n\nFundFlow - Plateforme de Gestion de Fonds`,
+  },
+};
+
 // ─── Password reset translations ──────────────────────────────────────────────
 
 const resetStrings: Record<Lang, {
@@ -294,6 +349,64 @@ export async function sendAccountSetupEmail(
     return true;
   } catch (error) {
     log(`Failed to send account setup email to ${email}: ${(error as Error).message}`);
+    return false;
+  }
+}
+
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+}
+
+/**
+ * Welcome email for someone who created their own account from an invite
+ * link: they chose the password themselves, so it isn't repeated here — only
+ * the username, the organization they joined and a link to sign in.
+ */
+export async function sendRegistrationEmail(
+  email: string,
+  firstName: string,
+  organizationName: string,
+  language?: string,
+): Promise<boolean> {
+  const lang = normalizeLang(language);
+  const s = registrationStrings[lang];
+  const loginUrl = `${getBaseUrl()}/${lang}`;
+  const fromAddress = process.env.SMTP_FROM || process.env.SMTP_USER || "noreply@example.com";
+  // Self-registration: the name comes straight from an anonymous form.
+  const name = escapeHtml(firstName);
+
+  try {
+    await transporter.sendMail({
+      from: `"FundFlow" <${fromAddress}>`,
+      to: email,
+      subject: s.subject,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <h2 style="color: #1a1a1a;">${s.heading}</h2>
+          <p>${s.greeting(name)}</p>
+          <p>${s.intro(escapeHtml(organizationName))}</p>
+          <div style="background: #f4f4f5; border-radius: 6px; padding: 16px; margin: 24px 0;">
+            <p style="margin: 0; font-size: 14px;"><strong>${s.usernameLabel}</strong>&nbsp;${escapeHtml(email)}</p>
+          </div>
+          <p>${s.cta}</p>
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="${loginUrl}"
+               style="display: inline-block; padding: 12px 32px; background-color: #18181b; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: 500;">
+              ${s.btnLabel}
+            </a>
+          </div>
+          <p style="color: #666; font-size: 14px;">${s.fallback}</p>
+          <p style="color: #666; font-size: 12px; word-break: break-all;">${loginUrl}</p>
+          <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;" />
+          <p style="color: #999; font-size: 12px;">${s.footer}</p>
+        </div>
+      `,
+      text: s.textBody(firstName, email, organizationName, loginUrl),
+    });
+    log(`Registration email sent to ${email}`);
+    return true;
+  } catch (error) {
+    log(`Failed to send registration email to ${email}: ${(error as Error).message}`);
     return false;
   }
 }

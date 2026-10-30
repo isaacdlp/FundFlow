@@ -139,7 +139,8 @@ export function buildPromoterContractDraft(
   ourSigner: string,
   ready: boolean,
 ): ContractDraft {
-  const name = `${account.firstName} ${account.lastName}`.trim();
+  // Full legal name, middle name included.
+  const name = [account.firstName, account.middleName, account.lastName].map(p => p?.trim()).filter(Boolean).join(" ");
   const invite = INVITES[account.language === "es" || account.language === "fr" ? account.language : "en"];
   const join = (parts: (string | null | undefined)[]) => parts.map(p => p?.trim()).filter(Boolean).join(", ");
   // The template's two signature slots: the promoter, then our Managing Partner.

@@ -8,10 +8,14 @@
  * Tax IDs and bank account/routing numbers are blanked on export.
  */
 
+import { DEFAULT_CLASS_NAME } from "@shared/vehicle-classes";
+
 export interface DevAccount {
   ref: number;
   email: string;
   firstName: string;
+  // Optional: snapshots taken before these fields existed don't have them.
+  middleName?: string | null;
   lastName: string;
   phone: string | null;
   birthdate: string | null;
@@ -22,6 +26,12 @@ export interface DevAccount {
   city: string | null;
   stateProvince: string | null;
   zipPostalCode: string | null;
+  mailingStreetAddress1?: string | null;
+  mailingStreetAddress2?: string | null;
+  mailingCountry?: string | null;
+  mailingCity?: string | null;
+  mailingStateProvince?: string | null;
+  mailingZipPostalCode?: string | null;
   language: string;
   profileComplete: boolean | null;
   isAdmin: boolean;
@@ -30,13 +40,38 @@ export interface DevAccount {
 export interface DevEntity {
   ref: number;
   fields: Record<string, unknown>;
-  managers: number[];
+  /** Accounts acting for the entity. */
+  delegations?: DevEntityDelegation[];
+  /** Snapshots taken before delegations: every listed account is a manager. */
+  managers?: number[];
   owners: { ownerType: string; accountRef: number | null; entityRef: number | null; ownershipPercent: string | null }[];
+}
+
+export interface DevMember {
+  accountRef: number;
+  status: string;
+  /** Default fee percentages; absent in snapshots taken before they existed. */
+  managementFeePercent?: string | null;
+  successFeePercent?: string | null;
+}
+
+export interface DevEntityDelegation {
+  accountRef: number;
+  level: string;
+  notes: string | null;
+}
+
+export interface DevVehicleClass {
+  ref: number;
+  name: string;
+  notes: string | null;
 }
 
 export interface DevVehicleMember {
   accountRef: number | null;
   entityRef: number | null;
+  /** The share class (a DevVehicleClass ref); absent in snapshots taken before classes existed. */
+  classRef?: number | null;
   committed: string | null;
   managementFee: string | null;
   otherFee: string | null;
@@ -48,6 +83,7 @@ export interface DevVehicleMember {
 }
 
 export interface DevVehicleAsset {
+  classRef?: number | null;
   companyName: string;
   instrumentType: string;
   purchaseDate: string | null;
@@ -61,6 +97,8 @@ export interface DevVehicle {
   fields: Record<string, unknown>;
   managerRef: number | null;
   signatoryRef: number | null;
+  /** Absent in snapshots taken before share classes existed (seeded with the default class). */
+  classes?: DevVehicleClass[];
   members: DevVehicleMember[];
   assets: DevVehicleAsset[];
 }
@@ -71,7 +109,7 @@ export interface DevDataset {
   organization: Record<string, unknown>;
   accounts: DevAccount[];
   organizers: number[];
-  members: { accountRef: number; status: string }[];
+  members: DevMember[];
   entities: DevEntity[];
   vehicles: DevVehicle[];
 }
@@ -122,17 +160,25 @@ export async function exportDevData(
   const entityRefs = new Set<number>();
   const organizers: number[] = (org.organizers ?? []).map((o: any) => o.accountId);
   organizers.forEach(id => accountRefs.add(id));
-  const members = orgMembers.map(m => ({ accountRef: m.accountId as number, status: m.status as string }));
+  const members: DevMember[] = orgMembers.map(m => ({
+    accountRef: m.accountId as number,
+    status: m.status as string,
+    managementFeePercent: m.managementFeePercent ?? null,
+    successFeePercent: m.successFeePercent ?? null,
+  }));
   members.forEach(m => accountRefs.add(m.accountRef));
 
   const vehicles: DevVehicle[] = [];
   for (const vehicle of allVehicles.filter(s => vehicleMatches(s, patterns))) {
     const vehicleMembers: any[] = await get(`/api/vehicles/${vehicle.id}/members`);
+    // A source instance from before share classes has no such endpoint: its Vehicles get the default class on import.
+    const classes: any[] = await get(`/api/vehicles/${vehicle.id}/classes`).catch(() => []);
     const assets: any[] = await get(`/api/vehicles/${vehicle.id}/assets`);
     const devAssets: DevVehicleAsset[] = [];
     for (const asset of assets) {
       const vals: any[] = await get(`/api/vehicles/${vehicle.id}/assets/${asset.id}/valuations`);
       devAssets.push({
+        classRef: asset.classId ?? null,
         companyName: asset.companyName,
         instrumentType: asset.instrumentType,
         purchaseDate: asset.purchaseDate,
@@ -152,12 +198,14 @@ export async function exportDevData(
 
     vehicles.push({
       fields: pick(vehicle, [...SERVER_FIELDS, "organizationId", "managerId", "signatoryId",
-        "manager", "signatory", "memberCount", "organization", "cash", "assetValue", "currentValue"]),
+        "manager", "signatory", "memberCount", "classCount", "organization", "cash", "assetValue", "currentValue"]),
       managerRef: vehicle.managerId ?? null,
       signatoryRef: vehicle.signatoryId ?? null,
+      classes: classes.map(c => ({ ref: c.id, name: c.name, notes: c.notes ?? null })),
       members: vehicleMembers.map(m => ({
         accountRef: m.accountId ?? null,
         entityRef: m.entityId ?? null,
+        classRef: m.classId ?? null,
         committed: m.committed,
         managementFee: m.managementFee,
         otherFee: m.otherFee,
@@ -181,16 +229,18 @@ export async function exportDevData(
     seen.add(id);
     const entity = await get(`/api/entities/${id}`);
     const owners: any[] = await get(`/api/entities/${id}/owners`);
-    const managers: any[] = await get(`/api/entities/${id}/managers`);
+    // Instances older than entity delegations only list managers.
+    const delegations: any[] = await get(`/api/entities/${id}/delegations`).catch(async () =>
+      (await get(`/api/entities/${id}/managers`)).map((m: any) => ({ delegateAccountId: m.accountId, level: "manager", notes: null })));
     for (const o of owners) {
       if (o.ownerAccountId) accountRefs.add(o.ownerAccountId);
       if (o.ownerEntityId) queue.push(o.ownerEntityId);
     }
-    managers.forEach(m => accountRefs.add(m.accountId));
+    delegations.forEach(d => accountRefs.add(d.delegateAccountId));
     entities.push({
       ref: id,
-      fields: pick(entity, [...SERVER_FIELDS, "managers", "ownerCount"]),
-      managers: managers.map(m => m.accountId),
+      fields: pick(entity, [...SERVER_FIELDS, "managers", "ownerCount", "access"]),
+      delegations: delegations.map(d => ({ accountRef: d.delegateAccountId, level: d.level, notes: d.notes ?? null })),
       owners: owners.map(o => ({
         ownerType: o.ownerType,
         accountRef: o.ownerAccountId ?? null,
@@ -207,6 +257,7 @@ export async function exportDevData(
       ref: a.id,
       email: a.email,
       firstName: a.firstName,
+      middleName: a.middleName ?? null,
       lastName: a.lastName,
       phone: a.phone,
       birthdate: a.birthdate,
@@ -217,6 +268,12 @@ export async function exportDevData(
       city: a.city,
       stateProvince: a.stateProvince,
       zipPostalCode: a.zipPostalCode,
+      mailingStreetAddress1: a.mailingStreetAddress1 ?? null,
+      mailingStreetAddress2: a.mailingStreetAddress2 ?? null,
+      mailingCountry: a.mailingCountry ?? null,
+      mailingCity: a.mailingCity ?? null,
+      mailingStateProvince: a.mailingStateProvince ?? null,
+      mailingZipPostalCode: a.mailingZipPostalCode ?? null,
       language: a.language ?? "en",
       profileComplete: a.profileComplete,
       isAdmin: (a.roles ?? []).some((r: any) => r.name === "admin"),
@@ -243,13 +300,14 @@ export interface DevDataSink {
   grantAdmin(accountId: number): Promise<void>;
   insertOrganization(fields: Record<string, unknown>): Promise<number>;
   addOrganizer(organizationId: number, accountId: number): Promise<void>;
-  addMember(organizationId: number, accountId: number, status: string): Promise<void>;
+  addMember(organizationId: number, accountId: number, status: string, fees: { managementFeePercent: string | null; successFeePercent: string | null }): Promise<void>;
   insertEntity(fields: Record<string, unknown>): Promise<number>;
-  addEntityManager(entityId: number, accountId: number): Promise<void>;
+  addEntityDelegation(entityId: number, delegation: { accountId: number; level: string; notes: string | null }): Promise<void>;
   addEntityOwner(entityId: number, owner: { ownerType: string; ownerAccountId: number | null; ownerEntityId: number | null; ownershipPercent: string | null }): Promise<void>;
   insertVehicle(fields: Record<string, unknown>): Promise<number>;
-  insertVehicleMember(vehicleId: number, member: Omit<DevVehicleMember, "accountRef" | "entityRef"> & { accountId: number | null; entityId: number | null }): Promise<void>;
-  insertVehicleAsset(vehicleId: number, asset: Omit<DevVehicleAsset, "valuations">): Promise<number>;
+  insertVehicleClass(vehicleId: number, cls: { name: string; notes: string | null }): Promise<number>;
+  insertVehicleMember(vehicleId: number, member: Omit<DevVehicleMember, "accountRef" | "entityRef" | "classRef"> & { accountId: number | null; entityId: number | null; classId: number }): Promise<void>;
+  insertVehicleAsset(vehicleId: number, asset: Omit<DevVehicleAsset, "valuations" | "classRef"> & { classId: number }): Promise<number>;
   insertValuation(assetId: number, valuation: { date: string; value: string; note: string | null }): Promise<void>;
 }
 
@@ -286,7 +344,10 @@ export async function importDevData(data: DevDataset, sink: DevDataSink): Promis
 
   const orgId = await sink.insertOrganization(data.organization);
   for (const ref of data.organizers) await sink.addOrganizer(orgId, account(ref)!);
-  for (const m of data.members) await sink.addMember(orgId, account(m.accountRef)!, m.status);
+  for (const m of data.members) {
+    await sink.addMember(orgId, account(m.accountRef)!, m.status,
+      { managementFeePercent: m.managementFeePercent ?? null, successFeePercent: m.successFeePercent ?? null });
+  }
 
   // Insert every entity before linking owners, since owners may be entities too.
   const entityIds = new Map<number, number>();
@@ -302,7 +363,10 @@ export async function importDevData(data: DevDataset, sink: DevDataSink): Promis
   };
   for (const e of data.entities) {
     const id = entity(e.ref)!;
-    for (const m of e.managers) await sink.addEntityManager(id, account(m)!);
+    const delegations = e.delegations ?? (e.managers ?? []).map(accountRef => ({ accountRef, level: "manager", notes: null }));
+    for (const d of delegations) {
+      await sink.addEntityDelegation(id, { accountId: account(d.accountRef)!, level: d.level, notes: d.notes });
+    }
     for (const o of e.owners) {
       await sink.addEntityOwner(id, {
         ownerType: o.ownerType,
@@ -321,12 +385,24 @@ export async function importDevData(data: DevDataset, sink: DevDataSink): Promis
       signatoryId: account(vehicle.signatoryRef),
     });
     result.vehicles++;
-    for (const { accountRef, entityRef, ...investment } of vehicle.members) {
-      await sink.insertVehicleMember(vehicleId, { ...investment, accountId: account(accountRef), entityId: entity(entityRef) });
+    // Every Vehicle has a class; snapshots taken before classes existed get the default one.
+    const classes = vehicle.classes?.length ? vehicle.classes : [{ ref: -1, name: DEFAULT_CLASS_NAME, notes: null }];
+    const classIds = new Map<number, number>();
+    for (const c of classes) {
+      classIds.set(c.ref, await sink.insertVehicleClass(vehicleId, { name: c.name, notes: c.notes }));
+    }
+    const shareClass = (ref: number | null | undefined) => {
+      if (ref === null || ref === undefined) return classIds.get(classes[0].ref)!;
+      const id = classIds.get(ref);
+      if (id === undefined) throw new Error(`Dataset references unknown share class ${ref}`);
+      return id;
+    };
+    for (const { accountRef, entityRef, classRef, ...investment } of vehicle.members) {
+      await sink.insertVehicleMember(vehicleId, { ...investment, accountId: account(accountRef), entityId: entity(entityRef), classId: shareClass(classRef) });
       result.vehicleMembers++;
     }
-    for (const { valuations, ...asset } of vehicle.assets) {
-      const assetId = await sink.insertVehicleAsset(vehicleId, asset);
+    for (const { valuations, classRef, ...asset } of vehicle.assets) {
+      const assetId = await sink.insertVehicleAsset(vehicleId, { ...asset, classId: shareClass(classRef) });
       for (const v of valuations) await sink.insertValuation(assetId, v);
     }
   }

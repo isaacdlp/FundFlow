@@ -55,6 +55,7 @@ export function makeMockStorage(overrides: Partial<Record<string, any>> = {}) {
     getMembers: vi.fn().mockResolvedValue([]),
     createMemberRequest: vi.fn(),
     updateMemberStatus: vi.fn(),
+    updateMemberFees: vi.fn(),
     removeMember: vi.fn().mockResolvedValue(true),
 
     // Invites
@@ -62,6 +63,7 @@ export function makeMockStorage(overrides: Partial<Record<string, any>> = {}) {
     getInviteByToken: vi.fn().mockResolvedValue(null),
     createInvite: vi.fn(),
     useInvite: vi.fn().mockResolvedValue(undefined),
+    deleteInvite: vi.fn().mockResolvedValue(true),
 
     // Vehicles
     getAllVehicles: vi.fn().mockResolvedValue([]),
@@ -75,6 +77,13 @@ export function makeMockStorage(overrides: Partial<Record<string, any>> = {}) {
     updateVehicleMemberById: vi.fn(),
     removeVehicleMemberById: vi.fn().mockResolvedValue(true),
     getVehicleIdsForAccount: vi.fn().mockResolvedValue([]),
+
+    // Vehicle share classes
+    // Every Vehicle has at least one share class.
+    getVehicleClasses: vi.fn().mockResolvedValue([{ id: 1, vehicleId: 100, name: "Class A", notes: "" }]),
+    createVehicleClass: vi.fn(),
+    updateVehicleClass: vi.fn(),
+    deleteVehicleClass: vi.fn().mockResolvedValue("deleted"),
 
     // Vehicle Assets
     getVehicleAssets: vi.fn().mockResolvedValue([]),
@@ -100,11 +109,6 @@ export function makeMockStorage(overrides: Partial<Record<string, any>> = {}) {
     addEntityOwner: vi.fn(),
     removeEntityOwner: vi.fn().mockResolvedValue(true),
 
-    // Entity managers
-    getEntityManagers: vi.fn().mockResolvedValue([]),
-    addEntityManager: vi.fn(),
-    removeEntityManager: vi.fn().mockResolvedValue(true),
-
     // Introductions
     getIntroductionGraph: vi.fn().mockResolvedValue({ accountEdges: [], entityEdges: [], managers: [] }),
     getIntroduction: vi.fn().mockResolvedValue(undefined),
@@ -113,6 +117,22 @@ export function makeMockStorage(overrides: Partial<Record<string, any>> = {}) {
     createIntroduction: vi.fn(),
     updateIntroduction: vi.fn(),
     deleteIntroduction: vi.fn().mockResolvedValue(true),
+
+    // Delegations
+    getDelegation: vi.fn().mockResolvedValue(undefined),
+    getDelegationsForAccount: vi.fn().mockResolvedValue({ delegatedIn: [], delegatedOut: [] }),
+    getDelegationsForEntity: vi.fn().mockResolvedValue([]),
+    getDelegatorsOf: vi.fn().mockResolvedValue([]),
+    createDelegation: vi.fn(),
+    updateDelegation: vi.fn().mockResolvedValue(undefined),
+    deleteDelegation: vi.fn().mockResolvedValue(false),
+
+    // Relationships
+    getRelationship: vi.fn().mockResolvedValue(undefined),
+    getRelationshipsForAccount: vi.fn().mockResolvedValue([]),
+    createRelationship: vi.fn(),
+    updateRelationship: vi.fn().mockResolvedValue(undefined),
+    deleteRelationship: vi.fn().mockResolvedValue(false),
 
     // Promoters
     getPromoters: vi.fn().mockResolvedValue([]),

@@ -257,6 +257,25 @@ describe("/api/vehicles", () => {
       expect(res.status).toBe(403);
     });
 
+    it("an investor in the Vehicle can't edit it", async () => {
+      const agent = await loginAs(app, mockStorage, fixtures.memberAccount);
+      mockStorage.getVehicleIdsForAccount.mockResolvedValue([vehicleA.id]);
+      mockStorage.getVehicle.mockResolvedValue(vehicleA);
+      mockStorage.getOrganization.mockResolvedValue({ ...orgA, organizers: [] });
+      const res = await agent.patch(`/api/vehicles/${vehicleA.id}`).send({ displayName: "X" });
+      expect(res.status).toBe(403);
+      expect(mockStorage.updateVehicle).not.toHaveBeenCalled();
+    });
+
+    it("an organizer of the Vehicle's org can edit it", async () => {
+      const agent = await loginAs(app, mockStorage, fixtures.organizerAccount);
+      mockStorage.getVehicle.mockResolvedValue(vehicleA);
+      mockStorage.getOrganization.mockResolvedValue({ ...orgA, organizers: [{ accountId: fixtures.organizerAccount.id }] });
+      mockStorage.updateVehicle.mockResolvedValue({ ...vehicleA, displayName: "Renamed" });
+      const res = await agent.patch(`/api/vehicles/${vehicleA.id}`).send({ displayName: "Renamed" });
+      expect(res.status).toBe(200);
+    });
+
     it("admin can update any Vehicle", async () => {
       const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
       mockStorage.updateVehicle.mockResolvedValue({ ...vehicleA, displayName: "Renamed" });

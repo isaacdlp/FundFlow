@@ -3,16 +3,18 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import {
   accounts, roles, accountRoles, organizations, organizationOrganizers,
   organizationMembers, organizationInvites, vehicles, vehicleMembers,
-  vehicleAssets, vehicleAssetValuations,
-  entities, entityOwners, entityManagers, introductions, promoters, promoterIncentives, contracts, passwordResetTokens,
+  vehicleAssets, vehicleAssetValuations, vehicleClasses,
+  entities, entityOwners, introductions, delegations, relationships, promoters, promoterIncentives, contracts, passwordResetTokens,
   apiTokens, currencies, appSettings, PASSWORD_RESET_TTL_MS,
   type Account, type Role, type InsertAccount, type UpdateAccount,
   type Organization, type InsertOrganization, type UpdateOrganization,
   type OrganizationMember, type OrganizationInvite,
   type Vehicle, type VehicleMember, type InsertVehicle, type UpdateVehicle,
-  type VehicleAsset, type VehicleAssetValuation,
-  type Entity, type EntityOwner, type EntityManager,
+  type VehicleAsset, type VehicleAssetValuation, type VehicleClass,
+  type Entity, type EntityOwner,
   type Introduction, type CreateIntroductionInput, type UpdateIntroductionInput,
+  type Delegation, type DelegationLevel, type CreateDelegationInput, type UpdateDelegationInput,
+  type Relationship, type CreateRelationshipInput, type UpdateRelationshipInput,
   type Promoter, type PromoterIncentive, type CreatePromoterInput, type UpdatePromoterInput,
   type CreateIncentiveInput, type UpdateIncentiveInput,
   type Contract,
@@ -24,8 +26,10 @@ import crypto from "crypto";
 import bcrypt from "bcrypt";
 import { resolveSeedAdminPassword } from "./seed";
 import { computeInheritedIntroducers, type IntroductionGraph } from "./introductions";
+import { poolFinancials, totalFinancials, memberShares, DEFAULT_CLASS_NAME, type PoolFinancials } from "@shared/vehicle-classes";
 
 type InvestmentFields = {
+  classId?: number;
   committed?: string;
   managementFee?: string;
   otherFee?: string;
@@ -37,6 +41,7 @@ type InvestmentFields = {
 };
 
 export type AssetFields = {
+  classId?: number;
   companyName?: string;
   instrumentType?: string;
   purchaseDate?: string | null;
@@ -83,13 +88,28 @@ export interface VehicleWithDetails extends Vehicle {
   manager?: { id: number; email: string; firstName: string; lastName: string } | null;
   signatory?: { id: number; email: string; firstName: string; lastName: string } | null;
   memberCount: number;
+  classCount: number;
   organization?: { id: number; name: string; slug: string } | null;
   cash: string;
   assetValue: string;
   currentValue: string;
 }
 
+/** A share class with the financials of its pool. */
+export interface VehicleClassWithDetails extends VehicleClass {
+  memberCount: number;
+  assetCount: number;
+  committed: string;
+  totalCalled: string;
+  cash: string;
+  assetValue: string;
+  currentValue: string;
+}
+
+export type DeleteVehicleClassResult = "deleted" | "not_found" | "in_use" | "last_class";
+
 export interface VehicleMemberWithAccount extends VehicleMember {
+  className: string | null;
   investorType: "account" | "entity";
   account: { id: number; email: string; firstName: string; lastName: string } | null;
   entity: { id: number; name: string; entityType: string } | null;
@@ -100,6 +120,10 @@ export interface PortfolioInvestment {
   memberId: number;
   vehicleId: number;
   vehicleName: string;
+  classId: number;
+  className: string;
+  /** The Vehicle's number of classes (the UI only shows classes when there are several). */
+  vehicleClassCount: number;
   investmentCompanyName: string;
   investmentType: string;
   organizationId: number;
@@ -131,10 +155,6 @@ export interface EntityOwnerWithDetails extends EntityOwner {
   ownerEntity?: { id: number; name: string; entityType: string } | null;
 }
 
-export interface EntityManagerWithAccount extends EntityManager {
-  account: { id: number; email: string; firstName: string; lastName: string };
-}
-
 export interface IntroductionWithDetails extends Introduction {
   introducer: { id: number; email: string; firstName: string; lastName: string } | null;
   introducedAccount: { id: number; email: string; firstName: string; lastName: string } | null;
@@ -147,6 +167,28 @@ export interface AccountIntroductions {
   introducedBy: IntroductionWithDetails[];
   /** Accounts and entities this account introduced, including inherited entity rows. */
   introduced: IntroductionWithDetails[];
+}
+
+type AccountSummary = { id: number; email: string; firstName: string; lastName: string };
+
+export interface DelegationWithDetails extends Delegation {
+  /** Set when the principal is an account. */
+  principal: AccountSummary | null;
+  /** Set when the principal is an entity. */
+  principalEntity: { id: number; name: string; entityType: string } | null;
+  delegate: AccountSummary | null;
+}
+
+export interface AccountDelegations {
+  /** Accounts and entities that delegated to this one (this account acts for them). */
+  delegatedIn: DelegationWithDetails[];
+  /** Accounts this one delegated to (they act for this account). */
+  delegatedOut: DelegationWithDetails[];
+}
+
+export interface RelationshipWithDetails extends Relationship {
+  fromAccount: AccountSummary | null;
+  toAccount: AccountSummary | null;
 }
 
 export interface PromoterWithDetails extends Promoter {
@@ -185,12 +227,15 @@ export interface IStorage {
   getMember(organizationId: number, accountId: number): Promise<MemberWithAccount | undefined>;
   createMemberRequest(organizationId: number, accountId: number, inviteId?: number, initialStatus?: "pending" | "approved"): Promise<MemberWithAccount>;
   updateMemberStatus(organizationId: number, accountId: number, status: string): Promise<MemberWithAccount | undefined>;
+  /** Sets the member's default fee percentages (null clears one; undefined leaves it). */
+  updateMemberFees(organizationId: number, accountId: number, fees: { managementFeePercent?: string | null; successFeePercent?: string | null }): Promise<MemberWithAccount | undefined>;
   removeMember(organizationId: number, accountId: number): Promise<boolean>;
 
   getInvites(organizationId: number): Promise<InviteWithAccount[]>;
   createInvite(organizationId: number): Promise<OrganizationInvite>;
   getInviteByToken(token: string): Promise<InviteWithAccount | undefined>;
   useInvite(token: string, accountId: number): Promise<void>;
+  deleteInvite(organizationId: number, inviteId: number): Promise<boolean>;
 
   getAllVehicles(): Promise<VehicleWithDetails[]>;
   getVehicles(organizationId: number): Promise<VehicleWithDetails[]>;
@@ -202,6 +247,11 @@ export interface IStorage {
   addVehicleMember(vehicleId: number, investor: { accountId: number } | { entityId: number }, investment?: InvestmentFields): Promise<VehicleMemberWithAccount>;
   updateVehicleMemberById(vehicleId: number, memberId: number, investment: InvestmentFields): Promise<VehicleMemberWithAccount | undefined>;
   removeVehicleMemberById(vehicleId: number, memberId: number): Promise<boolean>;
+  getVehicleClasses(vehicleId: number): Promise<VehicleClassWithDetails[]>;
+  createVehicleClass(vehicleId: number, data: { name: string; notes?: string }): Promise<VehicleClassWithDetails>;
+  updateVehicleClass(vehicleId: number, classId: number, data: { name?: string; notes?: string }): Promise<VehicleClassWithDetails | undefined>;
+  /** Refused while the class holds positions or assets ("in_use") or is the Vehicle's last ("last_class"). */
+  deleteVehicleClass(vehicleId: number, classId: number): Promise<DeleteVehicleClassResult>;
   getVehicleAssets(vehicleId: number): Promise<VehicleAssetWithCurrent[]>;
   getVehicleAsset(vehicleId: number, assetId: number): Promise<VehicleAssetWithCurrent | undefined>;
   createVehicleAsset(vehicleId: number, data: AssetFields & { companyName: string }): Promise<VehicleAssetWithCurrent>;
@@ -215,15 +265,13 @@ export interface IStorage {
 
   getAllEntities(search?: string): Promise<EntityWithDetails[]>;
   getEntity(id: number): Promise<EntityWithDetails | undefined>;
-  createEntity(data: InsertEntity): Promise<EntityWithDetails>;
+  /** Creates the entity with a manager-level delegation for each of the accounts. */
+  createEntity(data: InsertEntity, managerAccountIds: number[]): Promise<EntityWithDetails>;
   updateEntity(id: number, data: UpdateEntity): Promise<EntityWithDetails | undefined>;
   deleteEntity(id: number): Promise<boolean>;
   getEntityOwners(entityId: number): Promise<EntityOwnerWithDetails[]>;
   addEntityOwner(entityId: number, ownerType: string, ownerAccountId: number | null, ownerEntityId: number | null, ownershipPercent: string): Promise<EntityOwnerWithDetails>;
   removeEntityOwner(ownerId: number): Promise<boolean>;
-  getEntityManagers(entityId: number): Promise<EntityManagerWithAccount[]>;
-  addEntityManager(entityId: number, accountId: number): Promise<EntityManagerWithAccount>;
-  removeEntityManager(entityId: number, accountId: number): Promise<boolean>;
 
   getIntroductionGraph(): Promise<IntroductionGraph>;
   getIntroduction(id: number): Promise<Introduction | undefined>;
@@ -234,7 +282,25 @@ export interface IStorage {
   updateIntroduction(id: number, data: UpdateIntroductionInput): Promise<IntroductionWithDetails | undefined>;
   deleteIntroduction(id: number): Promise<boolean>;
 
-  getPromoters(): Promise<PromoterWithDetails[]>;
+  getDelegation(id: number): Promise<Delegation | undefined>;
+  getDelegationsForAccount(accountId: number): Promise<AccountDelegations>;
+  getDelegationsForEntity(entityId: number): Promise<DelegationWithDetails[]>;
+  /** Accounts (not entities) that delegated to this account, with the level each granted. */
+  getDelegatorsOf(delegateAccountId: number): Promise<{ accountId: number; level: DelegationLevel }[]>;
+  /** Returns null if the principal already delegated to that account. */
+  createDelegation(data: CreateDelegationInput): Promise<DelegationWithDetails | null>;
+  updateDelegation(id: number, data: UpdateDelegationInput): Promise<DelegationWithDetails | undefined>;
+  deleteDelegation(id: number): Promise<boolean>;
+
+  getRelationship(id: number): Promise<Relationship | undefined>;
+  /** Relationships on either side of the account. */
+  getRelationshipsForAccount(accountId: number): Promise<RelationshipWithDetails[]>;
+  /** Returns null if the same from → to relationship already exists. */
+  createRelationship(data: CreateRelationshipInput): Promise<RelationshipWithDetails | null>;
+  updateRelationship(id: number, data: UpdateRelationshipInput): Promise<RelationshipWithDetails | undefined>;
+  deleteRelationship(id: number): Promise<boolean>;
+
+  getPromoters():Promise<PromoterWithDetails[]>;
   getPromoter(id: number): Promise<PromoterWithDetails | undefined>;
   getPromoterByAccountId(accountId: number): Promise<Promoter | undefined>;
   /** Creates the promoter with its incentives; returns null if the account already is one. */
@@ -260,7 +326,8 @@ export interface IStorage {
 
   getOrganizationIdsForAccount(accountId: number): Promise<number[]>;
   getOrganizationIdsAsOrganizer(accountId: number): Promise<number[]>;
-  getEntityIdsForAccount(accountId: number): Promise<number[]>;
+  /** Entities that delegated to the account at `minLevel` or above (any level by default). */
+  getEntityIdsForAccount(accountId: number, minLevel?: DelegationLevel): Promise<number[]>;
   getVehicleIdsForAccount(accountId: number): Promise<number[]>;
 
   createPasswordResetToken(accountId: number, ttlMs?: number): Promise<string>;
@@ -603,6 +670,15 @@ export class DatabaseStorage implements IStorage {
     return { ...updated, account: acct! };
   }
 
+  async updateMemberFees(organizationId: number, accountId: number, fees: { managementFeePercent?: string | null; successFeePercent?: string | null }): Promise<MemberWithAccount | undefined> {
+    const fields = Object.fromEntries(Object.entries(fees).filter(([, v]) => v !== undefined));
+    if (Object.keys(fields).length > 0) {
+      await db.update(organizationMembers).set(fields)
+        .where(and(eq(organizationMembers.organizationId, organizationId), eq(organizationMembers.accountId, accountId)));
+    }
+    return this.getMember(organizationId, accountId);
+  }
+
   async removeMember(organizationId: number, accountId: number): Promise<boolean> {
     const result = await db.delete(organizationMembers)
       .where(and(
@@ -655,58 +731,50 @@ export class DatabaseStorage implements IStorage {
       .where(eq(organizationInvites.token, token));
   }
 
-  private async computeVehicleFinancials(vehicleId: number): Promise<{ cash: string; assetValue: string; currentValue: string; totalCalled: number }> {
-    const memberRows = await db.select({ totalCalled: vehicleMembers.totalCalled }).from(vehicleMembers).where(eq(vehicleMembers.vehicleId, vehicleId));
-    const totalCalled = memberRows.reduce((s, r) => s + parseFloat(r.totalCalled || "0"), 0);
-
-    const assetList = await db.select().from(vehicleAssets).where(eq(vehicleAssets.vehicleId, vehicleId));
-    let assetCost = 0;
-    let assetValue = 0;
-    for (const a of assetList) {
-      assetCost += parseFloat(a.cost || "0");
-      const [latest] = await db.select().from(vehicleAssetValuations)
-        .where(eq(vehicleAssetValuations.assetId, a.id))
-        .orderBy(sql`${vehicleAssetValuations.date} DESC, ${vehicleAssetValuations.id} DESC`)
-        .limit(1);
-      assetValue += latest ? parseFloat(latest.value || "0") : parseFloat(a.cost || "0");
-    }
-    const cash = totalCalled - assetCost;
-    return {
-      cash: cash.toFixed(2),
-      assetValue: assetValue.toFixed(2),
-      currentValue: (cash + assetValue).toFixed(2),
-      totalCalled,
-    };
+  async deleteInvite(organizationId: number, inviteId: number): Promise<boolean> {
+    const result = await db.delete(organizationInvites)
+      .where(and(
+        eq(organizationInvites.id, inviteId),
+        eq(organizationInvites.organizationId, organizationId),
+      ))
+      .returning();
+    return result.length > 0;
   }
 
-  private computeMemberShares(members: VehicleMember[], allocationMethod: string | null | undefined): Record<number, number> {
-    const method = allocationMethod || "By Commitment";
-    const out: Record<number, number> = {};
-    if (method === "Custom") {
-      for (const m of members) {
-        const p = m.ownershipPercent != null ? parseFloat(m.ownershipPercent) : 0;
-        out[m.id] = isFinite(p) ? p / 100 : 0;
-      }
-      return out;
+  /** A Vehicle's positions and assets, and the financials of each of its pools (one per share class). */
+  private async vehiclePools(vehicleId: number): Promise<{ members: VehicleMember[]; assets: VehicleAssetWithCurrent[]; pools: Map<number, PoolFinancials> }> {
+    const members = await db.select().from(vehicleMembers).where(eq(vehicleMembers.vehicleId, vehicleId));
+    const assets = await this.getVehicleAssets(vehicleId);
+    return { members, assets, pools: poolFinancials(members, assets) };
+  }
+
+  /** Each position's current value: its share of its class pool's value. */
+  private memberValues(members: VehicleMember[], pools: Map<number, PoolFinancials>, allocationMethod: string | null | undefined): Record<number, string> {
+    const shares = memberShares(members, allocationMethod);
+    const out: Record<number, string> = {};
+    for (const m of members) {
+      out[m.id] = ((shares[m.id] ?? 0) * (pools.get(m.classId)?.currentValue ?? 0)).toFixed(2);
     }
-    if (method === "By Capital Invested") {
-      const nets = members.map(m => Math.max(0, parseFloat(m.committed || "0") - parseFloat(m.managementFee || "0")));
-      const total = nets.reduce((a, b) => a + b, 0);
-      members.forEach((m, i) => { out[m.id] = total > 0 ? nets[i] / total : 0; });
-      return out;
-    }
-    const committeds = members.map(m => Math.max(0, parseFloat(m.committed || "0")));
-    const total = committeds.reduce((a, b) => a + b, 0);
-    members.forEach((m, i) => { out[m.id] = total > 0 ? committeds[i] / total : 0; });
     return out;
+  }
+
+  private async classNames(vehicleId: number): Promise<Map<number, string>> {
+    const rows = await db.select({ id: vehicleClasses.id, name: vehicleClasses.name })
+      .from(vehicleClasses).where(eq(vehicleClasses.vehicleId, vehicleId));
+    return new Map(rows.map(r => [r.id, r.name]));
   }
 
   private async enrichVehicle(vehicle: Vehicle): Promise<VehicleWithDetails> {
     const manager = vehicle.managerId ? await getAccountSummary(vehicle.managerId) : null;
     const signatory = vehicle.signatoryId ? await getAccountSummary(vehicle.signatoryId) : null;
-    const members = await db.select().from(vehicleMembers).where(eq(vehicleMembers.vehicleId, vehicle.id));
-    const fin = await this.computeVehicleFinancials(vehicle.id);
-    return { ...vehicle, manager, signatory, memberCount: members.length, cash: fin.cash, assetValue: fin.assetValue, currentValue: fin.currentValue };
+    const { members, pools } = await this.vehiclePools(vehicle.id);
+    const total = totalFinancials(pools);
+    const [{ count: classCount }] = await db.select({ count: sql<number>`count(*)::int` })
+      .from(vehicleClasses).where(eq(vehicleClasses.vehicleId, vehicle.id));
+    return {
+      ...vehicle, manager, signatory, memberCount: members.length, classCount,
+      cash: total.cash.toFixed(2), assetValue: total.assetValue.toFixed(2), currentValue: total.currentValue.toFixed(2),
+    };
   }
 
   async getAllVehicles(): Promise<VehicleWithDetails[]> {
@@ -738,7 +806,12 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createVehicle(data: InsertVehicle): Promise<VehicleWithDetails> {
-    const [vehicle] = await db.insert(vehicles).values(data).returning();
+    // Every Vehicle has at least one share class; a single one isn't shown.
+    const vehicle = await db.transaction(async (tx) => {
+      const [row] = await tx.insert(vehicles).values(data).returning();
+      await tx.insert(vehicleClasses).values({ vehicleId: row.id, name: DEFAULT_CLASS_NAME });
+      return row;
+    });
     return this.enrichVehicle(vehicle);
   }
 
@@ -767,31 +840,38 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getVehicleMembers(vehicleId: number): Promise<VehicleMemberWithAccount[]> {
-    const members = await db.select().from(vehicleMembers)
-      .where(eq(vehicleMembers.vehicleId, vehicleId))
-      .orderBy(sql`${vehicleMembers.createdAt} DESC`);
-
     const [vehicleRow] = await db.select().from(vehicles).where(eq(vehicles.id, vehicleId));
-    const fin = await this.computeVehicleFinancials(vehicleId);
-    const vehicleCurrent = parseFloat(fin.currentValue);
-    const shares = this.computeMemberShares(members, vehicleRow?.allocationMethod);
+    const { members, pools } = await this.vehiclePools(vehicleId);
+    members.sort((a, b) => (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0) || b.id - a.id);
+    const values = this.memberValues(members, pools, vehicleRow?.allocationMethod);
+    const names = await this.classNames(vehicleId);
 
     const result: VehicleMemberWithAccount[] = [];
     for (const m of members) {
-      const currentValue = (shares[m.id] * vehicleCurrent).toFixed(2);
-      if (m.accountId !== null) {
-        const acct = await getAccountSummary(m.accountId);
-        if (acct) {
-          result.push({ ...m, investorType: "account", account: acct, entity: null, currentValue });
-        }
-      } else if (m.entityId !== null) {
-        const ent = await getEntitySummary(m.entityId);
-        if (ent) {
-          result.push({ ...m, investorType: "entity", account: null, entity: ent, currentValue });
-        }
-      }
+      const enriched = await this.withInvestor(m, values[m.id], names);
+      if (enriched) result.push(enriched);
     }
     return result;
+  }
+
+  private async withInvestor(m: VehicleMember, currentValue: string, classNames: Map<number, string>): Promise<VehicleMemberWithAccount | undefined> {
+    const className = classNames.get(m.classId) ?? null;
+    if (m.accountId !== null) {
+      const acct = await getAccountSummary(m.accountId);
+      return acct ? { ...m, className, investorType: "account", account: acct, entity: null, currentValue } : undefined;
+    }
+    const ent = m.entityId !== null ? await getEntitySummary(m.entityId) : null;
+    return ent ? { ...m, className, investorType: "entity", account: null, entity: ent, currentValue } : undefined;
+  }
+
+  /** A position with its investor, class and current value (recomputed against its whole pool). */
+  private async enrichVehicleMember(vehicleId: number, memberId: number): Promise<VehicleMemberWithAccount | undefined> {
+    const [vehicleRow] = await db.select().from(vehicles).where(eq(vehicles.id, vehicleId));
+    const { members, pools } = await this.vehiclePools(vehicleId);
+    const member = members.find(m => m.id === memberId);
+    if (!member) return undefined;
+    const values = this.memberValues(members, pools, vehicleRow?.allocationMethod);
+    return this.withInvestor(member, values[member.id], await this.classNames(vehicleId));
   }
 
   async addVehicleMember(
@@ -806,7 +886,8 @@ export class DatabaseStorage implements IStorage {
 
     const member = await db.transaction(async (tx) => {
       const [vehicleRow] = await tx.select().from(vehicles).where(eq(vehicles.id, vehicleId));
-      // AutoDeploy: auto-call the net capital (committed − management fee) and deploy it into the default asset
+      // AutoDeploy: auto-call the net capital (committed − management fee) and deploy it into
+      // the default asset of the position's class
       if (vehicleRow?.autoDeploy) {
         const committed = parseFloat(values.committed ?? "0");
         const mgmtFee = parseFloat(values.managementFee ?? "0");
@@ -815,7 +896,7 @@ export class DatabaseStorage implements IStorage {
         values.totalCalled = capital.toFixed(2);
         if (capital > 0) {
           const [defaultAsset] = await tx.select().from(vehicleAssets)
-            .where(and(eq(vehicleAssets.vehicleId, vehicleId), eq(vehicleAssets.isDefault, true)));
+            .where(and(eq(vehicleAssets.vehicleId, vehicleId), eq(vehicleAssets.classId, values.classId), eq(vehicleAssets.isDefault, true)));
           if (!defaultAsset) {
             throw new Error("AutoDeploy is enabled but the Vehicle has no default asset.");
           }
@@ -830,21 +911,9 @@ export class DatabaseStorage implements IStorage {
       return inserted;
     });
 
-    // Recompute share/currentValue with the new member included
-    const all = await db.select().from(vehicleMembers).where(eq(vehicleMembers.vehicleId, vehicleId));
-    const [vehicleRow] = await db.select().from(vehicles).where(eq(vehicles.id, vehicleId));
-    const fin = await this.computeVehicleFinancials(vehicleId);
-    const shares = this.computeMemberShares(all, vehicleRow?.allocationMethod);
-    const currentValue = ((shares[member.id] || 0) * parseFloat(fin.currentValue)).toFixed(2);
-
-    if ("accountId" in investor) {
-      const acct = await getAccountSummary(investor.accountId);
-      return { ...member, investorType: "account", account: acct!, entity: null, currentValue };
-    } else {
-      const ent = await getEntitySummary(investor.entityId);
-      return { ...member, investorType: "entity", account: null, entity: ent!, currentValue };
-    }
+    return (await this.enrichVehicleMember(vehicleId, member.id))!;
   }
+
 
   async updateVehicleMemberById(
     vehicleId: number,
@@ -860,20 +929,64 @@ export class DatabaseStorage implements IStorage {
       [row] = await db.update(vehicleMembers).set(updates).where(memberWhere).returning();
     }
     if (!row) return undefined;
+    return this.enrichVehicleMember(vehicleId, row.id);
+  }
 
-    const all = await db.select().from(vehicleMembers).where(eq(vehicleMembers.vehicleId, vehicleId));
-    const [vehicleRow] = await db.select().from(vehicles).where(eq(vehicles.id, vehicleId));
-    const fin = await this.computeVehicleFinancials(vehicleId);
-    const shares = this.computeMemberShares(all, vehicleRow?.allocationMethod);
-    const currentValue = ((shares[row.id] || 0) * parseFloat(fin.currentValue)).toFixed(2);
+  async getVehicleClasses(vehicleId: number): Promise<VehicleClassWithDetails[]> {
+    const rows = await db.select().from(vehicleClasses)
+      .where(eq(vehicleClasses.vehicleId, vehicleId))
+      .orderBy(vehicleClasses.name, vehicleClasses.id);
+    if (rows.length === 0) return [];
+    const { assets, pools } = await this.vehiclePools(vehicleId);
+    return rows.map(c => {
+      const p = pools.get(c.id);
+      return {
+        ...c,
+        memberCount: p?.memberCount ?? 0,
+        assetCount: assets.filter(a => a.classId === c.id).length,
+        committed: (p?.committed ?? 0).toFixed(2),
+        totalCalled: (p?.totalCalled ?? 0).toFixed(2),
+        cash: (p?.cash ?? 0).toFixed(2),
+        assetValue: (p?.assetValue ?? 0).toFixed(2),
+        currentValue: (p?.currentValue ?? 0).toFixed(2),
+      };
+    });
+  }
 
-    if (row.accountId !== null) {
-      const acct = await getAccountSummary(row.accountId);
-      return { ...row, investorType: "account", account: acct!, entity: null, currentValue };
-    } else {
-      const ent = await getEntitySummary(row.entityId!);
-      return { ...row, investorType: "entity", account: null, entity: ent!, currentValue };
-    }
+  private async getVehicleClass(vehicleId: number, classId: number): Promise<VehicleClassWithDetails | undefined> {
+    return (await this.getVehicleClasses(vehicleId)).find(c => c.id === classId);
+  }
+
+  async createVehicleClass(vehicleId: number, data: { name: string; notes?: string }): Promise<VehicleClassWithDetails> {
+    const [row] = await db.insert(vehicleClasses).values({ vehicleId, name: data.name, notes: data.notes ?? "" }).returning();
+    return (await this.getVehicleClass(vehicleId, row.id))!;
+  }
+
+  async updateVehicleClass(vehicleId: number, classId: number, data: { name?: string; notes?: string }): Promise<VehicleClassWithDetails | undefined> {
+    const updates: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(data)) if (v !== undefined) updates[k] = v;
+    const where = and(eq(vehicleClasses.vehicleId, vehicleId), eq(vehicleClasses.id, classId));
+    const [row] = Object.keys(updates).length > 0
+      ? await db.update(vehicleClasses).set(updates).where(where).returning()
+      : await db.select().from(vehicleClasses).where(where);
+    if (!row) return undefined;
+    return this.getVehicleClass(vehicleId, classId);
+  }
+
+  async deleteVehicleClass(vehicleId: number, classId: number): Promise<DeleteVehicleClassResult> {
+    return db.transaction(async (tx) => {
+      // Lock the Vehicle so two concurrent deletes can't remove its last two classes.
+      await tx.select({ id: vehicles.id }).from(vehicles).where(eq(vehicles.id, vehicleId)).for("update");
+      const classes = await tx.select({ id: vehicleClasses.id }).from(vehicleClasses).where(eq(vehicleClasses.vehicleId, vehicleId));
+      if (!classes.some(c => c.id === classId)) return "not_found";
+      if (classes.length === 1) return "last_class";
+      // The class FKs would refuse this too; checking first gives a clear answer.
+      const [m] = await tx.select({ id: vehicleMembers.id }).from(vehicleMembers).where(eq(vehicleMembers.classId, classId)).limit(1);
+      const [a] = await tx.select({ id: vehicleAssets.id }).from(vehicleAssets).where(eq(vehicleAssets.classId, classId)).limit(1);
+      if (m || a) return "in_use";
+      await tx.delete(vehicleClasses).where(and(eq(vehicleClasses.vehicleId, vehicleId), eq(vehicleClasses.id, classId)));
+      return "deleted";
+    });
   }
 
   async removeVehicleMemberById(vehicleId: number, memberId: number): Promise<boolean> {
@@ -904,6 +1017,8 @@ export class DatabaseStorage implements IStorage {
         memberId: vehicleMembers.id,
         vehicleId: vehicles.id,
         vehicleName: vehicles.displayName,
+        classId: vehicleMembers.classId,
+        className: vehicleClasses.name,
         investmentCompanyName: vehicles.investmentCompanyName,
         investmentType: vehicles.investmentType,
         organizationId: organizations.id,
@@ -932,27 +1047,30 @@ export class DatabaseStorage implements IStorage {
       .innerJoin(organizations, eq(organizations.id, vehicles.organizationId))
       .leftJoin(accounts, eq(accounts.id, vehicleMembers.accountId))
       .leftJoin(entities, eq(entities.id, vehicleMembers.entityId))
+      .innerJoin(vehicleClasses, eq(vehicleClasses.id, vehicleMembers.classId))
       .where(where)
-      .orderBy(sql`${vehicles.displayName} ASC`);
+      .orderBy(sql`${vehicles.displayName} ASC, ${vehicleClasses.name} ASC`);
 
-    // Group rows by vehicle so we can compute member share against full Vehicle roster
-    const vehicleCache = new Map<number, { fin: { currentValue: string }; allMembers: VehicleMember[]; allocationMethod: string | null }>();
+    // Each position's value is its share of its whole class pool, so compute per Vehicle once
+    const vehicleCache = new Map<number, { values: Record<number, string>; classCount: number }>();
     const out: PortfolioInvestment[] = [];
     for (const r of rows) {
       let cached = vehicleCache.get(r.vehicleId);
       if (!cached) {
-        const allMembers = await db.select().from(vehicleMembers).where(eq(vehicleMembers.vehicleId, r.vehicleId));
-        const fin = await this.computeVehicleFinancials(r.vehicleId);
-        cached = { fin: { currentValue: fin.currentValue }, allMembers, allocationMethod: r.allocationMethod };
+        const { members, pools } = await this.vehiclePools(r.vehicleId);
+        const classCount = (await this.classNames(r.vehicleId)).size;
+        cached = { values: this.memberValues(members, pools, r.allocationMethod), classCount };
         vehicleCache.set(r.vehicleId, cached);
       }
-      const shares = this.computeMemberShares(cached.allMembers, cached.allocationMethod);
-      const currentValue = ((shares[r.memberId] || 0) * parseFloat(cached.fin.currentValue)).toFixed(2);
+      const currentValue = cached.values[r.memberId] ?? "0.00";
       const isAccount = r.accountId !== null;
       out.push({
         memberId: r.memberId,
         vehicleId: r.vehicleId,
         vehicleName: r.vehicleName,
+        classId: r.classId,
+        className: r.className,
+        vehicleClassCount: cached.classCount,
         investmentCompanyName: r.investmentCompanyName ?? "",
         investmentType: r.investmentType ?? "",
         organizationId: r.organizationId,
@@ -1011,6 +1129,7 @@ export class DatabaseStorage implements IStorage {
     const created = await db.transaction(async (tx) => {
       const [row] = await tx.insert(vehicleAssets).values({
         vehicleId,
+        classId: data.classId!,
         companyName: data.companyName,
         instrumentType: data.instrumentType ?? "Equity",
         purchaseDate: data.purchaseDate ?? null,
@@ -1020,7 +1139,7 @@ export class DatabaseStorage implements IStorage {
       }).returning();
       if (data.isDefault) {
         await tx.update(vehicleAssets).set({ isDefault: false })
-          .where(and(eq(vehicleAssets.vehicleId, vehicleId), sql`${vehicleAssets.id} <> ${row.id}`));
+          .where(and(eq(vehicleAssets.vehicleId, vehicleId), eq(vehicleAssets.classId, row.classId), sql`${vehicleAssets.id} <> ${row.id}`));
         const [promoted] = await tx.update(vehicleAssets).set({ isDefault: true })
           .where(eq(vehicleAssets.id, row.id)).returning();
         return promoted;
@@ -1035,10 +1154,19 @@ export class DatabaseStorage implements IStorage {
     for (const [k, v] of Object.entries(data)) if (v !== undefined) updates[k] = v;
     if (Object.keys(updates).length === 0) return this.getVehicleAsset(vehicleId, assetId);
     const ok = await db.transaction(async (tx) => {
+      const [current] = await tx.select().from(vehicleAssets)
+        .where(and(eq(vehicleAssets.vehicleId, vehicleId), eq(vehicleAssets.id, assetId)));
+      if (!current) return false;
+      const targetClassId = updates.classId !== undefined ? updates.classId : current.classId;
+      // A default asset moved to another class stops being the default unless asked to stay one
+      // (then it replaces that class's default).
+      if (targetClassId !== current.classId && current.isDefault && updates.isDefault !== true) {
+        updates.isDefault = false;
+      }
       // Clear other defaults FIRST to avoid the partial unique index transiently seeing two true rows.
       if (updates.isDefault === true) {
         await tx.update(vehicleAssets).set({ isDefault: false })
-          .where(and(eq(vehicleAssets.vehicleId, vehicleId), sql`${vehicleAssets.id} <> ${assetId}`, eq(vehicleAssets.isDefault, true)));
+          .where(and(eq(vehicleAssets.vehicleId, vehicleId), eq(vehicleAssets.classId, targetClassId), sql`${vehicleAssets.id} <> ${assetId}`, eq(vehicleAssets.isDefault, true)));
       }
       const [updated] = await tx.update(vehicleAssets).set(updates)
         .where(and(eq(vehicleAssets.vehicleId, vehicleId), eq(vehicleAssets.id, assetId)))
@@ -1101,12 +1229,13 @@ export class DatabaseStorage implements IStorage {
   }
 
   private async enrichEntity(entity: Entity): Promise<EntityWithDetails> {
-    const mgrs = await db.select().from(entityManagers).where(eq(entityManagers.entityId, entity.id));
+    const mgrs = await db.select().from(delegations)
+      .where(and(eq(delegations.principalEntityId, entity.id), eq(delegations.level, "manager")));
     const managersWithAccounts = [];
     for (const m of mgrs) {
-      const acct = await getAccountSummary(m.accountId);
+      const acct = await getAccountSummary(m.delegateAccountId);
       if (acct) {
-        managersWithAccounts.push({ id: m.id, accountId: m.accountId, account: acct });
+        managersWithAccounts.push({ id: m.id, accountId: m.delegateAccountId, account: acct });
       }
     }
     const owners = await db.select().from(entityOwners).where(eq(entityOwners.entityId, entity.id));
@@ -1131,8 +1260,15 @@ export class DatabaseStorage implements IStorage {
     return this.enrichEntity(entity);
   }
 
-  async createEntity(data: InsertEntity): Promise<EntityWithDetails> {
-    const [entity] = await db.insert(entities).values(data).returning();
+  async createEntity(data: InsertEntity, managerAccountIds: number[]): Promise<EntityWithDetails> {
+    const entity = await db.transaction(async tx => {
+      const [row] = await tx.insert(entities).values(data).returning();
+      await tx.insert(delegations).values(managerAccountIds.map(delegateAccountId => (
+        { principalEntityId: row.id, delegateAccountId, level: "manager" })));
+      return row;
+    });
+    // Managers pass their introducers on to the entity.
+    await this.syncInheritedIntroductions([entity.id]);
     return this.enrichEntity(entity);
   }
 
@@ -1200,44 +1336,13 @@ export class DatabaseStorage implements IStorage {
     return result.length > 0;
   }
 
-  async getEntityManagers(entityId: number): Promise<EntityManagerWithAccount[]> {
-    const mgrs = await db.select().from(entityManagers)
-      .where(eq(entityManagers.entityId, entityId))
-      .orderBy(sql`${entityManagers.createdAt} DESC`);
-    const result: EntityManagerWithAccount[] = [];
-    for (const m of mgrs) {
-      const acct = await getAccountSummary(m.accountId);
-      if (acct) result.push({ ...m, account: acct });
-    }
-    return result;
-  }
-
-  async addEntityManager(entityId: number, accountId: number): Promise<EntityManagerWithAccount> {
-    const [mgr] = await db.insert(entityManagers).values({ entityId, accountId })
-      .onConflictDoNothing().returning();
-    if (!mgr) {
-      const existing = await db.select().from(entityManagers)
-        .where(and(eq(entityManagers.entityId, entityId), eq(entityManagers.accountId, accountId)));
-      const acct = await getAccountSummary(accountId);
-      return { ...existing[0], account: acct! };
-    }
-    await this.syncInheritedIntroductions([entityId]);
-    const acct = await getAccountSummary(accountId);
-    return { ...mgr, account: acct! };
-  }
-
-  async removeEntityManager(entityId: number, accountId: number): Promise<boolean> {
-    const result = await db.delete(entityManagers)
-      .where(and(eq(entityManagers.entityId, entityId), eq(entityManagers.accountId, accountId)))
-      .returning();
-    if (result.length > 0) await this.syncInheritedIntroductions([entityId]);
-    return result.length > 0;
-  }
-
   async getIntroductionGraph(): Promise<IntroductionGraph> {
     const rows = await db.select().from(introductions);
-    const mgrs = await db.select({ entityId: entityManagers.entityId, accountId: entityManagers.accountId })
-      .from(entityManagers);
+    // Only managers pass introductions on — observers don't act for the entity.
+    const mgrs = (await db.select({ entityId: delegations.principalEntityId, accountId: delegations.delegateAccountId })
+      .from(delegations)
+      .where(and(sql`${delegations.principalEntityId} IS NOT NULL`, eq(delegations.level, "manager"))))
+      .map(m => ({ entityId: m.entityId!, accountId: m.accountId }));
     return {
       accountEdges: rows
         .filter(r => r.introducedAccountId !== null)
@@ -1332,9 +1437,9 @@ export class DatabaseStorage implements IStorage {
 
   private async getManagedEntityIds(accountIds: number[]): Promise<number[]> {
     if (accountIds.length === 0) return [];
-    const rows = await db.select({ entityId: entityManagers.entityId }).from(entityManagers)
-      .where(inArray(entityManagers.accountId, accountIds));
-    return Array.from(new Set(rows.map(r => r.entityId)));
+    const rows = await db.select({ entityId: delegations.principalEntityId }).from(delegations)
+      .where(and(inArray(delegations.delegateAccountId, accountIds), sql`${delegations.principalEntityId} IS NOT NULL`, eq(delegations.level, "manager")));
+    return Array.from(new Set(rows.map(r => r.entityId!)));
   }
 
   /**
@@ -1386,6 +1491,140 @@ export class DatabaseStorage implements IStorage {
       introducedAccount: r.introducedAccountId !== null ? acctMap.get(r.introducedAccountId) ?? null : null,
       introducedEntity: r.introducedEntityId !== null ? entMap.get(r.introducedEntityId) ?? null : null,
       via: r.viaAccountId !== null ? acctMap.get(r.viaAccountId) ?? null : null,
+    }));
+  }
+
+  private async accountSummaries(ids: number[]): Promise<Map<number, AccountSummary>> {
+    if (ids.length === 0) return new Map();
+    const rows = await db.select({ id: accounts.id, email: accounts.email, firstName: accounts.firstName, lastName: accounts.lastName })
+      .from(accounts).where(inArray(accounts.id, Array.from(new Set(ids))));
+    return new Map(rows.map(a => [a.id, a]));
+  }
+
+  async getDelegation(id: number): Promise<Delegation | undefined> {
+    const [row] = await db.select().from(delegations).where(eq(delegations.id, id));
+    return row;
+  }
+
+  async getDelegationsForEntity(entityId: number): Promise<DelegationWithDetails[]> {
+    const rows = await db.select().from(delegations)
+      .where(eq(delegations.principalEntityId, entityId)).orderBy(delegations.id);
+    return this.enrichDelegations(rows);
+  }
+
+  async getDelegationsForAccount(accountId: number): Promise<AccountDelegations> {
+    const [delegatedIn, delegatedOut] = await Promise.all([
+      db.select().from(delegations).where(eq(delegations.delegateAccountId, accountId)),
+      db.select().from(delegations).where(eq(delegations.principalAccountId, accountId)),
+    ]);
+    return {
+      delegatedIn: await this.enrichDelegations(delegatedIn),
+      delegatedOut: await this.enrichDelegations(delegatedOut),
+    };
+  }
+
+  async getDelegatorsOf(delegateAccountId: number): Promise<{ accountId: number; level: DelegationLevel }[]> {
+    const rows = await db.select({ accountId: delegations.principalAccountId, level: delegations.level })
+      .from(delegations).where(and(
+        eq(delegations.delegateAccountId, delegateAccountId),
+        sql`${delegations.principalAccountId} IS NOT NULL`,
+      ));
+    return rows.map(r => ({ accountId: r.accountId!, level: r.level as DelegationLevel }));
+  }
+
+  async createDelegation(data: CreateDelegationInput): Promise<DelegationWithDetails | null> {
+    const [row] = await db.insert(delegations).values({
+      principalAccountId: data.principalAccountId ?? null,
+      principalEntityId: data.principalEntityId ?? null,
+      delegateAccountId: data.delegateAccountId,
+      level: data.level,
+      notes: data.notes ?? "",
+    }).onConflictDoNothing().returning();
+    if (!row) return null;
+    await this.syncEntityDelegation(row);
+    const [enriched] = await this.enrichDelegations([row]);
+    return enriched;
+  }
+
+  async updateDelegation(id: number, data: UpdateDelegationInput): Promise<DelegationWithDetails | undefined> {
+    const fields: Record<string, unknown> = {};
+    if (data.level !== undefined) fields.level = data.level;
+    if (data.notes !== undefined) fields.notes = data.notes;
+    let row = await this.getDelegation(id);
+    if (!row) return undefined;
+    if (Object.keys(fields).length > 0) {
+      const levelChanged = data.level !== undefined && data.level !== row.level;
+      [row] = await db.update(delegations).set({ ...fields, updatedAt: new Date() }).where(eq(delegations.id, id)).returning();
+      if (levelChanged) await this.syncEntityDelegation(row);
+    }
+    const [enriched] = await this.enrichDelegations([row]);
+    return enriched;
+  }
+
+  async deleteDelegation(id: number): Promise<boolean> {
+    const [row] = await db.delete(delegations).where(eq(delegations.id, id)).returning();
+    if (row) await this.syncEntityDelegation(row);
+    return !!row;
+  }
+
+  /** An entity's managers pass their introducers on to it; keep that credit current. */
+  private async syncEntityDelegation(row: Delegation): Promise<void> {
+    if (row.principalEntityId !== null) await this.syncInheritedIntroductions([row.principalEntityId]);
+  }
+
+  private async enrichDelegations(rows: Delegation[]): Promise<DelegationWithDetails[]> {
+    const accts = await this.accountSummaries(rows.flatMap(r =>
+      [r.principalAccountId, r.delegateAccountId].filter((v): v is number => v !== null)));
+    const entityIds = Array.from(new Set(rows.map(r => r.principalEntityId).filter((v): v is number => v !== null)));
+    const ents = entityIds.length === 0 ? [] : await db.select({ id: entities.id, name: entities.name, entityType: entities.entityType })
+      .from(entities).where(inArray(entities.id, entityIds));
+    const entMap = new Map(ents.map(e => [e.id, e]));
+    return rows.map(r => ({
+      ...r,
+      principal: r.principalAccountId !== null ? accts.get(r.principalAccountId) ?? null : null,
+      principalEntity: r.principalEntityId !== null ? entMap.get(r.principalEntityId) ?? null : null,
+      delegate: accts.get(r.delegateAccountId) ?? null,
+    }));
+  }
+
+  async getRelationship(id: number): Promise<Relationship | undefined> {
+    const [row] = await db.select().from(relationships).where(eq(relationships.id, id));
+    return row;
+  }
+
+  async getRelationshipsForAccount(accountId: number): Promise<RelationshipWithDetails[]> {
+    const rows = await db.select().from(relationships)
+      .where(or(eq(relationships.fromAccountId, accountId), eq(relationships.toAccountId, accountId)))
+      .orderBy(relationships.id);
+    return this.enrichRelationships(rows);
+  }
+
+  async createRelationship(data: CreateRelationshipInput): Promise<RelationshipWithDetails | null> {
+    const [row] = await db.insert(relationships).values(data).onConflictDoNothing().returning();
+    if (!row) return null;
+    const [enriched] = await this.enrichRelationships([row]);
+    return enriched;
+  }
+
+  async updateRelationship(id: number, data: UpdateRelationshipInput): Promise<RelationshipWithDetails | undefined> {
+    const [row] = await db.update(relationships).set({ description: data.description })
+      .where(eq(relationships.id, id)).returning();
+    if (!row) return undefined;
+    const [enriched] = await this.enrichRelationships([row]);
+    return enriched;
+  }
+
+  async deleteRelationship(id: number): Promise<boolean> {
+    const [row] = await db.delete(relationships).where(eq(relationships.id, id)).returning();
+    return !!row;
+  }
+
+  private async enrichRelationships(rows: Relationship[]): Promise<RelationshipWithDetails[]> {
+    const accts = await this.accountSummaries(rows.flatMap(r => [r.fromAccountId, r.toAccountId]));
+    return rows.map(r => ({
+      ...r,
+      fromAccount: accts.get(r.fromAccountId) ?? null,
+      toAccount: accts.get(r.toAccountId) ?? null,
     }));
   }
 
@@ -1628,11 +1867,15 @@ export class DatabaseStorage implements IStorage {
     return Array.from(new Set(rows.map(r => r.id)));
   }
 
-  async getEntityIdsForAccount(accountId: number): Promise<number[]> {
-    const managed = await db.select({ id: entityManagers.entityId })
-      .from(entityManagers)
-      .where(eq(entityManagers.accountId, accountId));
-    return managed.map(r => r.id);
+  async getEntityIdsForAccount(accountId: number, minLevel: DelegationLevel = "observer"): Promise<number[]> {
+    const rows = await db.select({ id: delegations.principalEntityId })
+      .from(delegations)
+      .where(and(
+        eq(delegations.delegateAccountId, accountId),
+        sql`${delegations.principalEntityId} IS NOT NULL`,
+        minLevel === "manager" ? eq(delegations.level, "manager") : undefined,
+      ));
+    return rows.map(r => r.id!);
   }
 
   async getVehicleIdsForAccount(accountId: number): Promise<number[]> {

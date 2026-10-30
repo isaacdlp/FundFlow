@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { useLocalePath, useLocale } from "@/i18n/hooks";
 import { fmtMoney } from "@/lib/format";
 import { ROUTE_PATTERNS } from "@/i18n/routes";
-import type { VehicleInfo, VehicleMemberInfo, MemberInfo, OrganizerAccount, EntityInfo, VehicleAssetInfo, VehicleAssetValuationInfo, CurrencyInfo } from "@shared/types";
+import type { VehicleInfo, VehicleMemberInfo, MemberInfo, OrganizerAccount, EntityInfo, VehicleAssetInfo, VehicleAssetValuationInfo, VehicleClassInfo, CurrencyInfo } from "@shared/types";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -26,37 +26,23 @@ import { ArrowLeft, Pencil, Save, X, UserPlus, Trash2, FileText, Users, Plus, Tr
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useOrgPermissions } from "@/hooks/use-org-permissions";
+import { SearchPicker, type SearchPickerOption } from "@/components/search-picker";
+import { investorFeeDefaults, managementFeeAmount } from "@shared/fees";
+import { memberShares, showsClasses } from "@shared/vehicle-classes";
+import { VehicleClassesTab, ClassSelect } from "@/components/vehicle-classes";
 
 const ENTITY_TYPES = ["LLC", "LP", "Corporation", "Trust", "Other"];
 const ALLOCATION_METHODS = ["By Commitment", "By Capital Invested", "Custom"] as const;
 const INSTRUMENT_TYPES = ["Equity", "Convertible Note", "SAFE", "Preferred Stock", "Common Stock", "Warrant", "Debt", "Other"] as const;
 
-function capitalOf(m: { committed: string | null; managementFee: string | null }): number {
-  return Math.max(0, parseFloat(m.committed || "0") - parseFloat(m.managementFee || "0"));
-}
-
+/** Each position's ownership % of its share class (of the Vehicle when it has no classes). */
 function computeOwnershipPercents(
   members: VehicleMemberInfo[],
   method: string | null | undefined,
 ): Record<number, number | null> {
+  const shares = memberShares(members, method);
   const out: Record<number, number | null> = {};
-  if (method === "Custom") {
-    for (const m of members) {
-      const p = m.ownershipPercent != null ? parseFloat(m.ownershipPercent) : null;
-      out[m.id] = p != null && isFinite(p) ? p : null;
-    }
-    return out;
-  }
-  if (method === "By Capital Invested") {
-    const nets = members.map(capitalOf);
-    const total = nets.reduce((a, b) => a + b, 0);
-    members.forEach((m, i) => { out[m.id] = total > 0 ? (nets[i] / total) * 100 : null; });
-    return out;
-  }
-  // Default: By Commitment
-  const committeds = members.map(m => Math.max(0, parseFloat(m.committed || "0")));
-  const total = committeds.reduce((a, b) => a + b, 0);
-  members.forEach((m, i) => { out[m.id] = total > 0 ? (committeds[i] / total) * 100 : null; });
+  for (const m of members) out[m.id] = shares[m.id] != null ? shares[m.id]! * 100 : null;
   return out;
 }
 function formatCurrency(value: string | number | null, symbol: string, locale: string): string {
@@ -64,7 +50,7 @@ function formatCurrency(value: string | number | null, symbol: string, locale: s
   return symbol + fmtMoney(num, locale);
 }
 
-function VehicleMembersTab({ vehicleId, orgId, canEdit, allocationMethod, currencySymbol }: { vehicleId: string; orgId: number; canEdit: boolean; allocationMethod: string; currencySymbol: string }) {
+function VehicleMembersTab({ vehicleId, orgId, canEdit, allocationMethod, currencySymbol, classes }: { vehicleId: string; orgId: number; canEdit: boolean; allocationMethod: string; currencySymbol: string; classes: VehicleClassInfo[] }) {
   const { toast } = useToast();
   const { t } = useTranslation();
   const locale = useLocale();
@@ -80,9 +66,16 @@ function VehicleMembersTab({ vehicleId, orgId, canEdit, allocationMethod, curren
   const [newTotalCalled, setNewTotalCalled] = useState("");
   const [newDistributed, setNewDistributed] = useState("");
   const [newOwnershipPercent, setNewOwnershipPercent] = useState("");
+  // Fees follow the investor's defaults until typed over.
+  const [managementFeeTouched, setManagementFeeTouched] = useState(false);
+  const [carryTouched, setCarryTouched] = useState(false);
   const [editingMemberId, setEditingMemberId] = useState<number | null>(null);
-  const [editValues, setEditValues] = useState<{ date: string; committed: string; managementFee: string; otherFee: string; carry: string; totalCalled: string; distributed: string; ownershipPercent: string }>({ date: "", committed: "", managementFee: "", otherFee: "", carry: "", totalCalled: "", distributed: "", ownershipPercent: "" });
+  const [editValues, setEditValues] = useState<{ classId: string; date: string; committed: string; managementFee: string; otherFee: string; carry: string; totalCalled: string; distributed: string; ownershipPercent: string }>({ classId: "", date: "", committed: "", managementFee: "", otherFee: "", carry: "", totalCalled: "", distributed: "", ownershipPercent: "" });
   const showOwnership = allocationMethod === "Custom";
+  // Classes only show once there are several; a single class is filled in by the server.
+  const hasClasses = showsClasses(classes.length);
+  const [newClassId, setNewClassId] = useState("");
+  const [classFilter, setClassFilter] = useState("all");
 
   const { data: vehicleMembers, isLoading: membersLoading } = useQuery<VehicleMemberInfo[]>({
     queryKey: ["/api/vehicles", vehicleId, "members"],
@@ -100,11 +93,33 @@ function VehicleMembersTab({ vehicleId, orgId, canEdit, allocationMethod, curren
 
   const approvedOrgMembers = orgMembers?.filter(m => m.status === "approved") || [];
   // Investors can hold multiple positions ("tranches") in the same Vehicle — do not filter out existing members.
-  const availableAccounts = approvedOrgMembers;
-  const availableEntities = entitiesList || [];
+  const accountOptions: SearchPickerOption[] = approvedOrgMembers.map(m => (
+    { value: String(m.accountId), label: `${m.account.firstName} ${m.account.lastName}`, detail: m.account.email }));
+  const entityOptions: SearchPickerOption[] = (entitiesList ?? []).map(e => ({ value: String(e.id), label: e.name, detail: e.entityType }));
+
+  // Default fees: the member's own, or for an entity the lowest of its managers' in the organization.
+  const selectedEntity = entitiesList?.find(e => String(e.id) === selectedEntityId);
+  const investorMemberships = investorType === "account"
+    ? (selectedAccountId ? approvedOrgMembers.filter(m => String(m.accountId) === selectedAccountId) : null)
+    : (selectedEntity ? (orgMembers ?? []).filter(m => selectedEntity.managers.some(x => x.accountId === m.accountId)) : null);
+  const feeDefaults = investorMemberships ? investorFeeDefaults(investorMemberships) : null;
+  const defaultManagementPercent = feeDefaults?.managementFeePercent ?? null;
+  const defaultSuccessPercent = feeDefaults?.successFeePercent ?? null;
+  useEffect(() => {
+    if (!managementFeeTouched) {
+      setNewManagementFee(defaultManagementPercent !== null && newCommitted
+        ? managementFeeAmount(parseFloat(newCommitted) || 0, defaultManagementPercent) : "");
+    }
+    if (!carryTouched) setNewCarry(defaultSuccessPercent !== null ? defaultSuccessPercent.toFixed(2) : "");
+  }, [defaultManagementPercent, defaultSuccessPercent, newCommitted, managementFeeTouched, carryTouched]);
+  const pickInvestor = (setter: (v: string) => void) => (value: string) => {
+    setter(value);
+    setManagementFeeTouched(false);
+    setCarryTouched(false);
+  };
 
   const addMutation = useMutation({
-    mutationFn: async (payload: { accountId?: number; entityId?: number; date: string | null; committed: string; managementFee: string; otherFee: string; carry: string; totalCalled: string; distributed: string; ownershipPercent: string | null }) => {
+    mutationFn: async (payload: { accountId?: number; entityId?: number; classId?: number; date: string | null; committed: string; managementFee: string; otherFee: string; carry: string; totalCalled: string; distributed: string; ownershipPercent: string | null }) => {
       const res = await apiRequest("POST", `/api/vehicles/${vehicleId}/members`, payload);
       return res.json();
     },
@@ -112,8 +127,9 @@ function VehicleMembersTab({ vehicleId, orgId, canEdit, allocationMethod, curren
       queryClient.invalidateQueries({ queryKey: ["/api/vehicles", vehicleId, "members"] });
       queryClient.invalidateQueries({ queryKey: ["/api/vehicles", vehicleId] });
       queryClient.invalidateQueries({ predicate: q => typeof q.queryKey[0] === "string" && (q.queryKey[0] as string).startsWith("/api/portfolio") });
-      setSelectedAccountId(""); setSelectedEntityId("");
+      setSelectedAccountId(""); setSelectedEntityId(""); setNewClassId("");
       setNewDate(""); setNewCommitted(""); setNewManagementFee(""); setNewOtherFee(""); setNewCarry(""); setNewTotalCalled(""); setNewDistributed(""); setNewOwnershipPercent("");
+      setManagementFeeTouched(false); setCarryTouched(false);
       toast({ title: t("vehicleDetail.investmentAdded") });
     },
     onError: (error: Error) => {
@@ -122,13 +138,14 @@ function VehicleMembersTab({ vehicleId, orgId, canEdit, allocationMethod, curren
   });
 
   const updateMutation = useMutation({
-    mutationFn: async (payload: { memberId: number; date: string | null; committed: string; managementFee: string; otherFee: string; carry: string; totalCalled: string; distributed: string; ownershipPercent: string | null }) => {
+    mutationFn: async (payload: { memberId: number; classId?: number; date: string | null; committed: string; managementFee: string; otherFee: string; carry: string; totalCalled: string; distributed: string; ownershipPercent: string | null }) => {
       const { memberId, ...rest } = payload;
       const res = await apiRequest("PATCH", `/api/vehicles/${vehicleId}/members/${memberId}`, rest);
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/vehicles", vehicleId, "members"] });
+      // Also refreshes the class figures, which a changed or moved investment affects.
+      queryClient.invalidateQueries({ queryKey: ["/api/vehicles", vehicleId] });
       queryClient.invalidateQueries({ predicate: q => typeof q.queryKey[0] === "string" && (q.queryKey[0] as string).startsWith("/api/portfolio") });
       setEditingMemberId(null);
       toast({ title: t("vehicleDetail.investmentUpdated") });
@@ -157,6 +174,7 @@ function VehicleMembersTab({ vehicleId, orgId, canEdit, allocationMethod, curren
   const startEdit = (m: VehicleMemberInfo) => {
     setEditingMemberId(m.id);
     setEditValues({
+      classId: m.classId != null ? String(m.classId) : "",
       date: m.date || "",
       committed: m.committed || "0",
       managementFee: m.managementFee || "0",
@@ -168,9 +186,12 @@ function VehicleMembersTab({ vehicleId, orgId, canEdit, allocationMethod, curren
     });
   };
 
-  const canSubmit = (investorType === "account" ? !!selectedAccountId : !!selectedEntityId) && !!newDate;
+  const canSubmit = (investorType === "account" ? !!selectedAccountId : !!selectedEntityId) && !!newDate
+    && (!hasClasses || !!newClassId);
 
   const ownershipPercentsMap = computeOwnershipPercents(vehicleMembers || [], allocationMethod);
+  const filterClass = classes.length > 1 && classes.some(c => String(c.id) === classFilter) ? classFilter : "all";
+  const shownMembers = (vehicleMembers ?? []).filter(m => filterClass === "all" || String(m.classId) === filterClass);
 
   if (membersLoading) return <Skeleton className="h-64 w-full" />;
 
@@ -183,13 +204,24 @@ function VehicleMembersTab({ vehicleId, orgId, canEdit, allocationMethod, curren
             {t("vehicleDetail.vehicleInvestmentsSubtitle")}
           </p>
         </div>
+        {classes.length > 1 && (
+          <div className="w-48">
+            <ClassSelect classes={classes} value={filterClass} onChange={setClassFilter} testId="select-member-class-filter" includeAll />
+          </div>
+        )}
       </CardHeader>
       <CardContent className="space-y-6">
         {canEdit && (
         <div className="space-y-3 p-4 rounded-md border bg-muted/30">
+          {hasClasses && (
+            <div className="space-y-2">
+              <Label>{t("vehicleDetail.shareClass")} *</Label>
+              <ClassSelect classes={classes} value={newClassId} onChange={setNewClassId} testId="select-new-member-class" />
+            </div>
+          )}
           <div className="space-y-2">
             <Label>{t("vehicleDetail.investorType")}</Label>
-            <Select value={investorType} onValueChange={v => { setInvestorType(v as "account" | "entity"); setSelectedAccountId(""); setSelectedEntityId(""); }}>
+            <Select value={investorType} onValueChange={v => { setInvestorType(v as "account" | "entity"); setSelectedAccountId(""); setSelectedEntityId(""); setManagementFeeTouched(false); setCarryTouched(false); }}>
               <SelectTrigger data-testid="select-investor-type">
                 <SelectValue />
               </SelectTrigger>
@@ -202,39 +234,25 @@ function VehicleMembersTab({ vehicleId, orgId, canEdit, allocationMethod, curren
           <div className="space-y-2">
             <Label>{t("vehicleDetail.investor")}</Label>
             {investorType === "account" ? (
-              <Select value={selectedAccountId} onValueChange={setSelectedAccountId}>
-                <SelectTrigger data-testid="select-vehicle-account">
-                  <SelectValue placeholder={t("vehicleDetail.selectApprovedMember")} />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableAccounts.length > 0 ? (
-                    availableAccounts.map(m => (
-                      <SelectItem key={m.accountId} value={String(m.accountId)}>
-                        {m.account.firstName} {m.account.lastName} ({m.account.email})
-                      </SelectItem>
-                    ))
-                  ) : (
-                    <SelectItem value="none" disabled>{t("vehicleDetail.noAvailableAccounts")}</SelectItem>
-                  )}
-                </SelectContent>
-              </Select>
+              <SearchPicker
+                options={accountOptions}
+                onSelect={pickInvestor(setSelectedAccountId)}
+                selectedLabel={accountOptions.find(o => o.value === selectedAccountId)?.label}
+                placeholder={accountOptions.length > 0 ? t("vehicleDetail.selectApprovedMember") : t("vehicleDetail.noAvailableAccounts")}
+                searchPlaceholder={t("introductions.searchPeople")}
+                className="w-full"
+                data-testid="select-vehicle-account"
+              />
             ) : (
-              <Select value={selectedEntityId} onValueChange={setSelectedEntityId}>
-                <SelectTrigger data-testid="select-vehicle-entity">
-                  <SelectValue placeholder={t("vehicleDetail.selectEntityPlaceholder")} />
-                </SelectTrigger>
-                <SelectContent>
-                  {availableEntities.length > 0 ? (
-                    availableEntities.map(e => (
-                      <SelectItem key={e.id} value={String(e.id)}>
-                        {e.name} ({e.entityType})
-                      </SelectItem>
-                    ))
-                  ) : (
-                    <SelectItem value="none" disabled>{t("vehicleDetail.noAvailableEntities")}</SelectItem>
-                  )}
-                </SelectContent>
-              </Select>
+              <SearchPicker
+                options={entityOptions}
+                onSelect={pickInvestor(setSelectedEntityId)}
+                selectedLabel={entityOptions.find(o => o.value === selectedEntityId)?.label}
+                placeholder={entityOptions.length > 0 ? t("vehicleDetail.selectEntityPlaceholder") : t("vehicleDetail.noAvailableEntities")}
+                searchPlaceholder={t("introductions.searchIntroduced")}
+                className="w-full"
+                data-testid="select-vehicle-entity"
+              />
             )}
           </div>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
@@ -248,7 +266,7 @@ function VehicleMembersTab({ vehicleId, orgId, canEdit, allocationMethod, curren
             </div>
             <div className="space-y-1">
               <Label className="text-xs">{t("vehicleDetail.managementFee")}</Label>
-              <Input type="number" step="0.01" placeholder="0.00" value={newManagementFee} onChange={e => setNewManagementFee(e.target.value)} data-testid="input-new-management-fee" />
+              <Input type="number" step="0.01" placeholder="0.00" value={newManagementFee} onChange={e => { setManagementFeeTouched(true); setNewManagementFee(e.target.value); }} data-testid="input-new-management-fee" />
             </div>
             <div className="space-y-1">
               <Label className="text-xs">{t("vehicleDetail.otherFee")}</Label>
@@ -256,7 +274,7 @@ function VehicleMembersTab({ vehicleId, orgId, canEdit, allocationMethod, curren
             </div>
             <div className="space-y-1">
               <Label className="text-xs">{t("vehicleDetail.carrySuccessFee")}</Label>
-              <Input type="number" step="0.01" min="0" max="100" placeholder="0.00" value={newCarry} onChange={e => setNewCarry(e.target.value)} data-testid="input-new-carry" />
+              <Input type="number" step="0.01" min="0" max="100" placeholder="0.00" value={newCarry} onChange={e => { setCarryTouched(true); setNewCarry(e.target.value); }} data-testid="input-new-carry" />
             </div>
             <div className="space-y-1">
               <Label className="text-xs">{t("vehicleDetail.totalCalled")}</Label>
@@ -273,6 +291,16 @@ function VehicleMembersTab({ vehicleId, orgId, canEdit, allocationMethod, curren
               </div>
             )}
           </div>
+          {feeDefaults && (
+            <p className="text-xs text-muted-foreground" data-testid="text-fee-defaults">
+              {defaultManagementPercent === null && defaultSuccessPercent === null
+                ? t("vehicleDetail.noFeeDefaults")
+                : t("vehicleDetail.feeDefaults", {
+                    management: defaultManagementPercent === null ? "—" : `${defaultManagementPercent}%`,
+                    success: defaultSuccessPercent === null ? "—" : `${defaultSuccessPercent}%`,
+                  })}
+            </p>
+          )}
           <p className="text-xs text-muted-foreground">
             {t("vehicleDetail.capitalHelper")}
           </p>
@@ -281,6 +309,7 @@ function VehicleMembersTab({ vehicleId, orgId, canEdit, allocationMethod, curren
               onClick={() => {
                 if (!canSubmit) return;
                 const base = {
+                  ...(hasClasses ? { classId: parseInt(newClassId) } : {}),
                   date: newDate || null,
                   committed: newCommitted || "0",
                   managementFee: newManagementFee || "0",
@@ -308,9 +337,9 @@ function VehicleMembersTab({ vehicleId, orgId, canEdit, allocationMethod, curren
 
         {canEdit && <Separator />}
 
-        {vehicleMembers && vehicleMembers.length > 0 ? (
+        {shownMembers.length > 0 ? (
           <div className="space-y-3">
-            {vehicleMembers.map(member => {
+            {shownMembers.map(member => {
               const isEditing = editingMemberId === member.id;
               const committed = parseFloat(member.committed || "0");
               const mgmtFee = parseFloat(member.managementFee || "0");
@@ -358,6 +387,7 @@ function VehicleMembersTab({ vehicleId, orgId, canEdit, allocationMethod, curren
                         <p className="text-sm font-medium truncate">{displayName}</p>
                       )}
                       <p className="text-xs text-muted-foreground truncate">
+                        {hasClasses && <Badge variant="outline" className="mr-2 text-[10px]" data-testid={`badge-member-class-${member.id}`}>{member.className}</Badge>}
                         {isEntity && <Badge variant="secondary" className="mr-2 text-[10px]">{t("vehicleDetail.entityBadge")}</Badge>}
                         {subText}
                       </p>
@@ -382,6 +412,12 @@ function VehicleMembersTab({ vehicleId, orgId, canEdit, allocationMethod, curren
                   {isEditing && canEdit ? (
                     <div className="mt-3 space-y-3">
                       <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                        {classes.length > 1 && (
+                          <div className="space-y-1">
+                            <Label className="text-xs">{t("vehicleDetail.shareClass")}</Label>
+                            <ClassSelect classes={classes} value={editValues.classId} onChange={v => setEditValues(ev => ({ ...ev, classId: v }))} testId={`select-edit-class-${member.id}`} />
+                          </div>
+                        )}
                         <div className="space-y-1">
                           <Label className="text-xs">{t("common.date")}</Label>
                           <Input type="date" value={editValues.date} onChange={e => setEditValues(v => ({ ...v, date: e.target.value }))} data-testid={`input-edit-date-${member.id}`} />
@@ -423,6 +459,7 @@ function VehicleMembersTab({ vehicleId, orgId, canEdit, allocationMethod, curren
                         </Button>
                         <Button size="sm" onClick={() => updateMutation.mutate({
                           memberId: member.id,
+                          ...(classes.length > 1 && editValues.classId ? { classId: parseInt(editValues.classId) } : {}),
                           date: editValues.date || null,
                           committed: editValues.committed,
                           managementFee: editValues.managementFee,
@@ -507,7 +544,7 @@ function VehicleMembersTab({ vehicleId, orgId, canEdit, allocationMethod, curren
   );
 }
 
-function VehicleAssetsTab({ vehicleId, canEdit, vehicleCash, currencyCode, currencySymbol }: { vehicleId: string; canEdit: boolean; vehicleCash: string; currencyCode: string; currencySymbol: string }) {
+function VehicleAssetsTab({ vehicleId, canEdit, vehicleCash, currencyCode, currencySymbol, classes }: { vehicleId: string; canEdit: boolean; vehicleCash: string; currencyCode: string; currencySymbol: string; classes: VehicleClassInfo[] }) {
   const { toast } = useToast();
   const { t } = useTranslation();
   const locale = useLocale();
@@ -534,10 +571,18 @@ function VehicleAssetsTab({ vehicleId, canEdit, vehicleCash, currencyCode, curre
   const [valDate, setValDate] = useState("");
   const [valValue, setValValue] = useState("");
   const [valNote, setValNote] = useState("");
+  // Classes only show once there are several; a single class is filled in by the server.
+  const hasClasses = showsClasses(classes.length);
+  const [newClassId, setNewClassId] = useState("");
+  const [classFilter, setClassFilter] = useState("all");
+  const newClass = hasClasses ? classes.find(c => String(c.id) === newClassId) : undefined;
+  const classNameOf = (id: number) => classes.find(c => c.id === id)?.name ?? null;
 
   const { data: assets, isLoading } = useQuery<VehicleAssetInfo[]>({
     queryKey: ["/api/vehicles", vehicleId, "assets"],
   });
+  const filterClass = classes.length > 1 && classes.some(c => String(c.id) === classFilter) ? classFilter : "all";
+  const shownAssets = (assets ?? []).filter(a => filterClass === "all" || String(a.classId) === filterClass);
 
   const createMutation = useMutation({
     mutationFn: async (payload: any) => {
@@ -549,10 +594,23 @@ function VehicleAssetsTab({ vehicleId, canEdit, vehicleCash, currencyCode, curre
       queryClient.invalidateQueries({ queryKey: ["/api/vehicles", vehicleId] });
       queryClient.invalidateQueries({ queryKey: ["/api/vehicles", vehicleId, "members"] });
       queryClient.invalidateQueries({ predicate: q => typeof q.queryKey[0] === "string" && (q.queryKey[0] as string).startsWith("/api/portfolio") });
-      setCompanyName(""); setInstrumentType("Equity"); setPurchaseDate(""); setCost(""); setNotes(""); setIsDefault(false);
+      setCompanyName(""); setInstrumentType("Equity"); setPurchaseDate(""); setCost(""); setNotes(""); setIsDefault(false); setNewClassId("");
       toast({ title: t("vehicleDetail.assetAdded") });
     },
     onError: (e: Error) => toast({ title: t("vehicleDetail.assetAddFailed"), description: e.message, variant: "destructive" }),
+  });
+
+  const moveMutation = useMutation({
+    mutationFn: async ({ assetId, classId }: { assetId: number; classId: number }) => {
+      const res = await apiRequest("PATCH", `/api/vehicles/${vehicleId}/assets/${assetId}`, { classId });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/vehicles", vehicleId] });
+      queryClient.invalidateQueries({ predicate: q => typeof q.queryKey[0] === "string" && (q.queryKey[0] as string).startsWith("/api/portfolio") });
+      toast({ title: t("vehicleDetail.assetUpdated") });
+    },
+    onError: (e: Error) => toast({ title: t("vehicleDetail.assetUpdateFailed"), description: e.message, variant: "destructive" }),
   });
 
   const setDefaultMutation = useMutation({
@@ -586,15 +644,28 @@ function VehicleAssetsTab({ vehicleId, canEdit, vehicleCash, currencyCode, curre
 
   return (
     <Card>
-      <CardHeader>
-        <h2 className="text-lg font-semibold">{t("vehicleDetail.financialInstruments")}</h2>
-        <p className="text-sm text-muted-foreground mt-1">
-          {t("vehicleDetail.financialInstrumentsHelp")}
-        </p>
+      <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0">
+        <div>
+          <h2 className="text-lg font-semibold">{t("vehicleDetail.financialInstruments")}</h2>
+          <p className="text-sm text-muted-foreground mt-1">
+            {t("vehicleDetail.financialInstrumentsHelp")}
+          </p>
+        </div>
+        {classes.length > 1 && (
+          <div className="w-48">
+            <ClassSelect classes={classes} value={filterClass} onChange={setClassFilter} testId="select-asset-class-filter" includeAll />
+          </div>
+        )}
       </CardHeader>
       <CardContent className="space-y-6">
         {canEdit && (
           <div className="space-y-3 p-4 rounded-md border bg-muted/30">
+            {hasClasses && (
+              <div className="space-y-1">
+                <Label className="text-xs">{t("vehicleDetail.shareClass")} *</Label>
+                <ClassSelect classes={classes} value={newClassId} onChange={setNewClassId} testId="select-asset-class" />
+              </div>
+            )}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div className="space-y-1">
                 <Label className="text-xs">{t("vehicleDetail.companyIssuerName")}</Label>
@@ -636,10 +707,15 @@ function VehicleAssetsTab({ vehicleId, canEdit, vehicleCash, currencyCode, curre
                 {t("vehicleDetail.setAsDefaultLabel")}
               </Label>
             </div>
-            <p className="text-xs text-muted-foreground">{t("vehicleDetail.vehicleCashAvailable", { cash: formatCurrency(vehicleCash, currencySymbol, locale) })}</p>
+            <p className="text-xs text-muted-foreground">
+              {newClass
+                ? t("vehicleDetail.classCashAvailable", { name: newClass.name, cash: formatCurrency(newClass.cash, currencySymbol, locale) })
+                : t("vehicleDetail.vehicleCashAvailable", { cash: formatCurrency(vehicleCash, currencySymbol, locale) })}
+            </p>
             <div className="flex justify-end">
               <Button
                 onClick={() => createMutation.mutate({
+                  ...(hasClasses ? { classId: parseInt(newClassId) } : {}),
                   companyName: companyName.trim(),
                   instrumentType,
                   purchaseDate: purchaseDate || null,
@@ -647,7 +723,7 @@ function VehicleAssetsTab({ vehicleId, canEdit, vehicleCash, currencyCode, curre
                   notes,
                   isDefault,
                 })}
-                disabled={!companyName.trim() || createMutation.isPending}
+                disabled={!companyName.trim() || (hasClasses && !newClassId) || createMutation.isPending}
                 data-testid="button-add-asset"
               >
                 <Plus className="h-4 w-4 mr-2" />
@@ -659,9 +735,9 @@ function VehicleAssetsTab({ vehicleId, canEdit, vehicleCash, currencyCode, curre
 
         {canEdit && <Separator />}
 
-        {assets && assets.length > 0 ? (
+        {shownAssets.length > 0 ? (
           <div className="space-y-3">
-            {assets.map(a => {
+            {shownAssets.map(a => {
               const isOpen = expandedAssetId === a.id;
               const cv = parseFloat(a.currentValue || "0");
               const c = parseFloat(a.cost || "0");
@@ -681,6 +757,7 @@ function VehicleAssetsTab({ vehicleId, canEdit, vehicleCash, currencyCode, curre
                         {a.companyName}
                       </p>
                       <p className="text-xs text-muted-foreground">
+                        {hasClasses && <Badge variant="outline" className="mr-2 text-[10px]" data-testid={`badge-asset-class-${a.id}`}>{classNameOf(a.classId)}</Badge>}
                         <Badge variant="secondary" className="mr-2 text-[10px]">{instrumentLabel(a.instrumentType)}</Badge>
                         {a.purchaseDate && <>{t("vehicleDetail.purchasedOn", { date: a.purchaseDate })} </>}
                         {t("vehicleDetail.costLabel", { cost: formatCurrency(a.cost, currencySymbol, locale) })} · {t("vehicleDetail.currentLabel", { value: formatCurrency(a.currentValue, currencySymbol, locale) })}
@@ -695,6 +772,16 @@ function VehicleAssetsTab({ vehicleId, canEdit, vehicleCash, currencyCode, curre
                       <TrendingUp className="h-4 w-4 mr-1" />
                       {isOpen ? t("vehicleDetail.hide") : t("vehicleDetail.valuations")}
                     </Button>
+                    {canEdit && classes.length > 1 && (
+                      <div className="w-36">
+                        <ClassSelect
+                          classes={classes}
+                          value={a.classId != null ? String(a.classId) : ""}
+                          onChange={v => moveMutation.mutate({ assetId: a.id, classId: parseInt(v) })}
+                          testId={`select-move-asset-class-${a.id}`}
+                        />
+                      </div>
+                    )}
                     {canEdit && !a.isDefault && (
                       <Button variant="ghost" size="sm" onClick={() => setDefaultMutation.mutate(a.id)} disabled={setDefaultMutation.isPending} data-testid={`button-set-default-${a.id}`}>
                         {t("vehicleDetail.setDefaultBtn")}
@@ -837,6 +924,11 @@ export default function VehicleDetail() {
 
   const { data: currencies } = useQuery<CurrencyInfo[]>({
     queryKey: ["/api/currencies"],
+  });
+
+  const { data: classes, isLoading: classesLoading } = useQuery<VehicleClassInfo[]>({
+    queryKey: ["/api/vehicles", vehicleId, "classes"],
+    enabled: !!vehicleId,
   });
   const currencyCode = vehicle?.currency || "USD";
   const currencyInfo = currencies?.find(c => c.code === currencyCode);
@@ -1018,6 +1110,9 @@ export default function VehicleDetail() {
           <div className="flex gap-2 mt-1 flex-wrap">
             <Badge variant="secondary">{vehicle.entityType || "LLC"}</Badge>
             <Badge variant="outline">{t("vehicleDetail.memberCount", { count: vehicle.memberCount })}</Badge>
+            {showsClasses(vehicle.classCount) && (
+              <Badge variant="outline" data-testid="badge-class-count">{t("vehicleDetail.classCount", { count: vehicle.classCount })}</Badge>
+            )}
             {vehicle.manager && (
               <Badge variant="outline">{t("vehicleDetail.managerLabel", { name: `${vehicle.manager.firstName} ${vehicle.manager.lastName}` })}</Badge>
             )}
@@ -1058,6 +1153,9 @@ export default function VehicleDetail() {
       <Tabs value={activeTab} onValueChange={(t) => navigate(`${location}?tab=${t}`, { replace: true })}>
         <TabsList>
           <TabsTrigger value="configuration" data-testid="tab-configuration">{t("vehicleDetail.configuration")}</TabsTrigger>
+          {(canManageOrg(vehicle.organizationId) || showsClasses(classes?.length ?? 0)) && (
+            <TabsTrigger value="classes" data-testid="tab-vehicle-classes">{t("vehicleDetail.classes")}</TabsTrigger>
+          )}
           <TabsTrigger value="assets" data-testid="tab-vehicle-assets">{t("vehicleDetail.assets")}</TabsTrigger>
           <TabsTrigger value="members" data-testid="tab-vehicle-members">{t("vehicleDetail.members")}</TabsTrigger>
         </TabsList>
@@ -1344,12 +1442,16 @@ export default function VehicleDetail() {
           </Card>
         </TabsContent>
 
+        <TabsContent value="classes" className="mt-6">
+          <VehicleClassesTab vehicleId={vehicleId!} classes={classes} isLoading={classesLoading} canEdit={canManageOrg(vehicle.organizationId)} currencySymbol={currencySymbol} />
+        </TabsContent>
+
         <TabsContent value="assets" className="mt-6">
-          <VehicleAssetsTab vehicleId={vehicleId!} canEdit={canManageOrg(vehicle.organizationId)} vehicleCash={vehicle.cash} currencyCode={currencyCode} currencySymbol={currencySymbol} />
+          <VehicleAssetsTab vehicleId={vehicleId!} canEdit={canManageOrg(vehicle.organizationId)} vehicleCash={vehicle.cash} currencyCode={currencyCode} currencySymbol={currencySymbol} classes={classes ?? []} />
         </TabsContent>
 
         <TabsContent value="members" className="mt-6">
-          <VehicleMembersTab vehicleId={vehicleId!} orgId={vehicle.organizationId} canEdit={canManageOrg(vehicle.organizationId)} allocationMethod={vehicle.allocationMethod || "By Commitment"} currencySymbol={currencySymbol} />
+          <VehicleMembersTab vehicleId={vehicleId!} orgId={vehicle.organizationId} canEdit={canManageOrg(vehicle.organizationId)} allocationMethod={vehicle.allocationMethod || "By Commitment"} currencySymbol={currencySymbol} classes={classes ?? []} />
         </TabsContent>
       </Tabs>
     </div>

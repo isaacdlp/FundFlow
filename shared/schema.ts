@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, serial, text, varchar, date, boolean, timestamp, integer, uniqueIndex, numeric, check } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, varchar, date, boolean, timestamp, integer, uniqueIndex, numeric, check, unique } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -14,6 +14,7 @@ export const accounts = pgTable("accounts", {
   email: varchar("email", { length: 255 }).notNull().unique(),
   passwordHash: text("password_hash").notNull(),
   firstName: varchar("first_name", { length: 100 }).notNull(),
+  middleName: varchar("middle_name", { length: 100 }).default(""),
   lastName: varchar("last_name", { length: 100 }).notNull(),
   phone: varchar("phone", { length: 50 }).default(""),
   birthdate: date("birthdate"),
@@ -26,6 +27,13 @@ export const accounts = pgTable("accounts", {
   city: varchar("city", { length: 100 }).default(""),
   stateProvince: varchar("state_province", { length: 100 }).default(""),
   zipPostalCode: varchar("zip_postal_code", { length: 20 }).default(""),
+  // Optional postal address, when it differs from the residential one above (empty = same).
+  mailingStreetAddress1: varchar("mailing_street_address_1", { length: 255 }).default(""),
+  mailingStreetAddress2: varchar("mailing_street_address_2", { length: 255 }).default(""),
+  mailingCountry: varchar("mailing_country", { length: 100 }).default(""),
+  mailingCity: varchar("mailing_city", { length: 100 }).default(""),
+  mailingStateProvince: varchar("mailing_state_province", { length: 100 }).default(""),
+  mailingZipPostalCode: varchar("mailing_zip_postal_code", { length: 20 }).default(""),
   language: varchar("language", { length: 10 }).default("en").notNull(),
   profileComplete: boolean("profile_complete").default(false),
   createdAt: timestamp("created_at").defaultNow(),
@@ -69,6 +77,11 @@ export const organizationMembers = pgTable("organization_members", {
   accountId: integer("account_id").notNull().references(() => accounts.id, { onDelete: "cascade" }),
   status: varchar("status", { length: 20 }).notNull().default("pending"),
   inviteId: integer("invite_id"),
+  // The member's default terms in this organization, as percentages: applied
+  // to their new investments unless the investment states its own (see
+  // shared/fees.ts). Null = no default.
+  managementFeePercent: numeric("management_fee_percent", { precision: 5, scale: 2 }),
+  successFeePercent: numeric("success_fee_percent", { precision: 5, scale: 2 }),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
   uniqueIndex("org_member_unique").on(table.organizationId, table.accountId),
@@ -167,15 +180,6 @@ export const entityOwners = pgTable("entity_owners", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const entityManagers = pgTable("entity_managers", {
-  id: serial("id").primaryKey(),
-  entityId: integer("entity_id").notNull().references(() => entities.id, { onDelete: "cascade" }),
-  accountId: integer("account_id").notNull().references(() => accounts.id, { onDelete: "cascade" }),
-  createdAt: timestamp("created_at").defaultNow(),
-}, (table) => [
-  uniqueIndex("entity_manager_unique").on(table.entityId, table.accountId),
-]);
-
 // Who introduced whom. Exactly one of introducedAccountId / introducedEntityId
 // is set. Rows with `viaAccountId` are inherited entity introductions: the
 // introducer introduced that managing account, so its entities count too.
@@ -193,6 +197,47 @@ export const introductions = pgTable("introductions", {
   uniqueIndex("introductions_account_unique").on(table.introducerAccountId, table.introducedAccountId),
   uniqueIndex("introductions_entity_unique").on(table.introducerAccountId, table.introducedEntityId),
   check("introductions_one_target", sql`(${table.introducedAccountId} IS NULL) <> (${table.introducedEntityId} IS NULL)`),
+]);
+
+// How much of the principal's data a delegate gets: an observer reads it, a
+// manager may also change what the principal could change themselves.
+export const DELEGATION_LEVELS = ["observer", "manager"] as const;
+export type DelegationLevel = typeof DELEGATION_LEVELS[number];
+
+// The principal — an account or an entity, exactly one — lets the delegate
+// account (an attorney, family member, accountant…) act on its behalf. Only
+// accounts can be delegates. Not transitive: a delegate of a delegate gets
+// nothing. At most one row per principal → delegate. Entities can't act by
+// themselves, so each keeps at least one manager-level delegation (enforced
+// by the API). These rows used to be `entity_managers` (see db-renames).
+export const delegations = pgTable("delegations", {
+  id: serial("id").primaryKey(),
+  principalAccountId: integer("principal_account_id").references(() => accounts.id, { onDelete: "cascade" }),
+  principalEntityId: integer("principal_entity_id").references(() => entities.id, { onDelete: "cascade" }),
+  delegateAccountId: integer("delegate_account_id").notNull().references(() => accounts.id, { onDelete: "cascade" }),
+  level: varchar("level", { length: 20 }).notNull(),
+  notes: text("notes").default(""),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("delegations_account_unique").on(table.principalAccountId, table.delegateAccountId),
+  uniqueIndex("delegations_entity_unique").on(table.principalEntityId, table.delegateAccountId),
+  check("delegations_one_principal", sql`(${table.principalAccountId} IS NULL) <> (${table.principalEntityId} IS NULL)`),
+  check("delegations_not_self", sql`${table.principalAccountId} <> ${table.delegateAccountId}`),
+]);
+
+// Personal ties between two accounts, read as "<from> is the <description> of
+// <to>" (e.g. "wife", "brother", "ex-husband"). Informational only — they
+// grant no access.
+export const relationships = pgTable("relationships", {
+  id: serial("id").primaryKey(),
+  fromAccountId: integer("from_account_id").notNull().references(() => accounts.id, { onDelete: "cascade" }),
+  toAccountId: integer("to_account_id").notNull().references(() => accounts.id, { onDelete: "cascade" }),
+  description: varchar("description", { length: 100 }).notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("relationships_unique").on(table.fromAccountId, table.toAccountId),
+  check("relationships_not_self", sql`${table.fromAccountId} <> ${table.toAccountId}`),
 ]);
 
 // Vetted introducers under contract who earn commissions on what the
@@ -249,9 +294,26 @@ export const contracts = pgTable("contracts", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// Share classes split a Vehicle into "sub-vehicles": each class has its own
+// investors (vehicle_members) and assets (vehicle_assets), and so its own cash,
+// value and ownership pool. Every Vehicle has at least one class (created with
+// it), and every member and asset belongs to one; the UI only shows classes
+// once a Vehicle has several. That a member's or asset's class is one of its
+// own Vehicle's is checked by the API (resolveClassId).
+export const vehicleClasses = pgTable("vehicle_classes", {
+  id: serial("id").primaryKey(),
+  vehicleId: integer("vehicle_id").notNull().references(() => vehicles.id, { onDelete: "cascade" }),
+  name: varchar("name", { length: 100 }).notNull(),
+  notes: text("notes").default(""),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  unique("vehicle_classes_vehicle_name_unique").on(table.vehicleId, table.name),
+]);
+
 export const vehicleMembers = pgTable("vehicle_members", {
   id: serial("id").primaryKey(),
   vehicleId: integer("vehicle_id").notNull().references(() => vehicles.id, { onDelete: "cascade" }),
+  classId: integer("class_id").notNull().references(() => vehicleClasses.id),
   accountId: integer("account_id").references(() => accounts.id, { onDelete: "cascade" }),
   entityId: integer("entity_id").references(() => entities.id, { onDelete: "cascade" }),
   committed: numeric("committed", { precision: 15, scale: 2 }).default("0"),
@@ -270,6 +332,7 @@ export const vehicleMembers = pgTable("vehicle_members", {
 export const vehicleAssets = pgTable("vehicle_assets", {
   id: serial("id").primaryKey(),
   vehicleId: integer("vehicle_id").notNull().references(() => vehicles.id, { onDelete: "cascade" }),
+  classId: integer("class_id").notNull().references(() => vehicleClasses.id),
   companyName: varchar("company_name", { length: 255 }).notNull(),
   instrumentType: varchar("instrument_type", { length: 100 }).notNull().default("Equity"),
   purchaseDate: date("purchase_date"),
@@ -278,7 +341,8 @@ export const vehicleAssets = pgTable("vehicle_assets", {
   isDefault: boolean("is_default").default(false).notNull(),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
-  uniqueIndex("vehicle_default_asset_unique").on(table.vehicleId).where(sql`is_default = true`),
+  // One default asset (the AutoDeploy target) per class.
+  uniqueIndex("vehicle_class_default_asset_unique").on(table.classId).where(sql`is_default = true`),
 ]);
 
 export const vehicleAssetValuations = pgTable("vehicle_asset_valuations", {
@@ -432,10 +496,42 @@ export const updateVehicleSchema = createInsertSchema(vehicles).omit({
   updatedAt: true,
 }).partial();
 
+export const insertVehicleClassSchema = z.object({
+  name: z.string().trim().min(1, "Class name is required").max(100),
+  notes: z.string().optional(),
+});
+
+export const updateVehicleClassSchema = insertVehicleClassSchema.partial();
+
 export const insertEntitySchema = createInsertSchema(entities).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
+});
+
+// A fee percentage as stored (numeric(5,2)): accepts 5 or "5"; null clears it.
+const feePercent = z.union([z.number(), z.string().regex(/^\s*\d+(\.\d+)?\s*$/, "must be a number")])
+  .transform(v => Number(v))
+  .refine(n => n >= 0 && n <= 100, "must be between 0 and 100")
+  .transform(n => n.toFixed(2))
+  .nullable()
+  .optional();
+
+// What organizers change on a membership: its status and/or the member's
+// default fees in the organization.
+export const updateMemberSchema = z.object({
+  status: z.enum(["approved", "rejected"]).optional(),
+  managementFeePercent: feePercent,
+  successFeePercent: feePercent,
+}).refine(d => d.status !== undefined || d.managementFeePercent !== undefined || d.successFeePercent !== undefined, {
+  message: "Provide status, managementFeePercent and/or successFeePercent",
+});
+
+// An entity can't act by itself: it's created with at least one manager.
+export const createEntitySchema = insertEntitySchema.extend({
+  managerAccountIds: z.array(z.number().int().positive())
+    .min(1, "An entity needs at least one manager")
+    .transform(ids => Array.from(new Set(ids))),
 });
 
 export const updateEntitySchema = createInsertSchema(entities).omit({
@@ -452,6 +548,7 @@ export type OrganizationOrganizer = typeof organizationOrganizers.$inferSelect;
 export type OrganizationMember = typeof organizationMembers.$inferSelect;
 export type OrganizationInvite = typeof organizationInvites.$inferSelect;
 export type Vehicle = typeof vehicles.$inferSelect;
+export type VehicleClass = typeof vehicleClasses.$inferSelect;
 export type VehicleMember = typeof vehicleMembers.$inferSelect;
 export type VehicleAsset = typeof vehicleAssets.$inferSelect;
 export type VehicleAssetValuation = typeof vehicleAssetValuations.$inferSelect;
@@ -461,8 +558,9 @@ export type InsertOrganization = z.infer<typeof insertOrganizationSchema>;
 export type UpdateOrganization = z.infer<typeof updateOrganizationSchema>;
 export type Entity = typeof entities.$inferSelect;
 export type EntityOwner = typeof entityOwners.$inferSelect;
-export type EntityManager = typeof entityManagers.$inferSelect;
 export type Introduction = typeof introductions.$inferSelect;
+export type Delegation = typeof delegations.$inferSelect;
+export type Relationship = typeof relationships.$inferSelect;
 export type Promoter = typeof promoters.$inferSelect;
 export type PromoterIncentive = typeof promoterIncentives.$inferSelect;
 export type Contract = typeof contracts.$inferSelect;
@@ -514,6 +612,42 @@ export const updateIntroductionSchema = z.object(introductionDetails);
 
 export type CreateIntroductionInput = z.infer<typeof createIntroductionSchema>;
 export type UpdateIntroductionInput = z.infer<typeof updateIntroductionSchema>;
+
+const delegationDetails = {
+  level: z.enum(DELEGATION_LEVELS),
+  notes: z.string().max(2000).optional(),
+};
+
+export const createDelegationSchema = z.object({
+  principalAccountId: z.number().int().positive().optional(),
+  principalEntityId: z.number().int().positive().optional(),
+  delegateAccountId: z.number().int().positive(),
+  ...delegationDetails,
+}).refine(d => (d.principalAccountId === undefined) !== (d.principalEntityId === undefined), {
+  message: "Exactly one of principalAccountId or principalEntityId is required",
+}).refine(d => d.principalAccountId !== d.delegateAccountId, {
+  message: "An account can't delegate to itself",
+});
+
+export const updateDelegationSchema = z.object(delegationDetails).partial();
+
+export type CreateDelegationInput = z.infer<typeof createDelegationSchema>;
+export type UpdateDelegationInput = z.infer<typeof updateDelegationSchema>;
+
+const relationshipDescription = z.string().trim().min(1, "description is required").max(100);
+
+export const createRelationshipSchema = z.object({
+  fromAccountId: z.number().int().positive(),
+  toAccountId: z.number().int().positive(),
+  description: relationshipDescription,
+}).refine(d => d.fromAccountId !== d.toAccountId, {
+  message: "An account can't have a relationship with itself",
+});
+
+export const updateRelationshipSchema = z.object({ description: relationshipDescription });
+
+export type CreateRelationshipInput = z.infer<typeof createRelationshipSchema>;
+export type UpdateRelationshipInput = z.infer<typeof updateRelationshipSchema>;
 
 const incentiveDetails = {
   // Accepts 20 or "20"; stored as numeric(5,2).

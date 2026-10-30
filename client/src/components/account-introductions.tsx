@@ -177,7 +177,7 @@ export function AccountIntroductions({ accountId }: { accountId: number }) {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between gap-4 space-y-0 flex-wrap">
           <div>
-            <h2 className="text-lg font-semibold">{t("introductions.introducedByTitle")}</h2>
+            <h3 className="text-lg font-semibold">{t("introductions.introducedByTitle")}</h3>
             <p className="text-sm text-muted-foreground">{t("introductions.introducedByHint")}</p>
           </div>
           <SearchPicker
@@ -228,7 +228,7 @@ export function AccountIntroductions({ accountId }: { accountId: number }) {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between gap-4 space-y-0 flex-wrap">
           <div>
-            <h2 className="text-lg font-semibold">{t("introductions.introducedTitle")}</h2>
+            <h3 className="text-lg font-semibold">{t("introductions.introducedTitle")}</h3>
             <p className="text-sm text-muted-foreground">{t("introductions.introducedHint")}</p>
           </div>
           <SearchPicker

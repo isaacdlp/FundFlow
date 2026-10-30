@@ -18,9 +18,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { SearchPicker, type SearchPickerOption } from "@/components/search-picker";
 import { ArrowLeft, X } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
 
 const ENTITY_TYPES = [
   "LLC", "LP", "LLP", "Non-Profit", "C-Corp", "S-Corp",
@@ -34,6 +36,7 @@ export default function CreateEntity() {
   const lp = useLocalePath();
   const { t } = useTranslation();
   const { toast } = useToast();
+  const { user, isAdmin } = useAuth();
 
   const { data: accountsList } = useQuery<AccountWithRoles[]>({
     queryKey: ["/api/accounts"],
@@ -62,7 +65,12 @@ export default function CreateEntity() {
     forFurtherCreditTo: "",
   });
 
+  // An entity can't act by itself: it needs at least one manager. Non-admins
+  // must be one of them, so they start selected.
   const [selectedManagers, setSelectedManagers] = useState<number[]>([]);
+  useEffect(() => {
+    if (user && !isAdmin) setSelectedManagers(prev => (prev.length === 0 ? [user.id] : prev));
+  }, [user, isAdmin]);
 
   const updateField = (field: string, value: string) => {
     setForm(prev => ({ ...prev, [field]: value }));
@@ -70,15 +78,12 @@ export default function CreateEntity() {
 
   const createMutation = useMutation({
     mutationFn: async () => {
-      const payload: Record<string, unknown> = { ...form };
+      const payload: Record<string, unknown> = { ...form, managerAccountIds: selectedManagers };
       if (!payload.dateEstablished) payload.dateEstablished = null;
       const res = await apiRequest("POST", "/api/entities", payload);
       return res.json();
     },
     onSuccess: async (entity) => {
-      for (const accountId of selectedManagers) {
-        await apiRequest("POST", `/api/entities/${entity.id}/managers`, { accountId });
-      }
       queryClient.invalidateQueries({ queryKey: ["/api/entities"] });
       toast({ title: t("createEntity.successTitle") });
       navigate(lp("entityDetail", { id: entity.id }));
@@ -98,7 +103,9 @@ export default function CreateEntity() {
     setSelectedManagers(prev => prev.filter(id => id !== accountId));
   };
 
-  const availableAccounts = accountsList?.filter(a => !selectedManagers.includes(a.id)) || [];
+  const managerOptions: SearchPickerOption[] = (accountsList ?? [])
+    .filter(a => !selectedManagers.includes(a.id))
+    .map(a => ({ value: String(a.id), label: `${a.firstName} ${a.lastName}`, detail: a.email }));
 
   return (
     <div className="p-6 space-y-6 max-w-4xl">
@@ -203,19 +210,15 @@ export default function CreateEntity() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label>{t("createEntity.managers")}</Label>
-            <Select onValueChange={v => addManager(parseInt(v))}>
-              <SelectTrigger data-testid="select-manager">
-                <SelectValue placeholder={t("createEntity.selectManagersPlaceholder")} />
-              </SelectTrigger>
-              <SelectContent>
-                {availableAccounts.map(a => (
-                  <SelectItem key={a.id} value={String(a.id)}>
-                    {a.firstName} {a.lastName} ({a.email})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Label>{t("createEntity.managers")} *</Label>
+            <p className="text-xs text-muted-foreground">{t("createEntity.managersHint")}</p>
+            <SearchPicker
+              options={managerOptions}
+              onSelect={v => addManager(parseInt(v))}
+              placeholder={t("createEntity.selectManagersPlaceholder")}
+              searchPlaceholder={t("introductions.searchPeople")}
+              data-testid="select-manager"
+            />
             {selectedManagers.length > 0 && (
               <div className="flex flex-wrap gap-2 mt-2">
                 {selectedManagers.map(id => {
@@ -332,7 +335,7 @@ export default function CreateEntity() {
         </Link>
         <Button
           onClick={() => createMutation.mutate()}
-          disabled={createMutation.isPending || !form.name}
+          disabled={createMutation.isPending || !form.name || selectedManagers.length === 0}
           data-testid="button-create-entity"
         >
           {createMutation.isPending ? t("common.creating") : t("createEntity.confirmChanges")}

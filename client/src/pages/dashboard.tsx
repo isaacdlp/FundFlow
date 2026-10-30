@@ -20,6 +20,7 @@ import { sortItems, useSortState, type SortAccessors } from "@/hooks/use-sort";
 import { SortButton } from "@/components/sortable-table-head";
 import { usePagination } from "@/hooks/use-pagination";
 import { ListPagination } from "@/components/list-pagination";
+import { showsClasses } from "@shared/vehicle-classes";
 
 const PIE_GRADIENTS: { id: string; from: string; to: string }[] = [
   { id: "grad-blue",       from: "#93c5fd", to: "#1e40af" },
@@ -756,6 +757,7 @@ export default function Dashboard() {
                               <Link href={lp("vehicleDetail", { id: inv.vehicleId })}>
                                 <span className="text-muted-foreground hover:text-foreground cursor-pointer" data-testid={`text-vehicle-${inv.memberId}`}>
                                   {inv.vehicleName}
+                                  {showsClasses(inv.vehicleClassCount) && <span className="ml-1">· {inv.className}</span>}
                                   <span className="ml-1.5 text-xs opacity-60">{inv.organizationName}</span>
                                 </span>
                               </Link>

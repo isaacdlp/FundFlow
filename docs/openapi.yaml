@@ -27,6 +27,11 @@ info:
     - Permission checks happen identically for cookie- and token-authenticated
       requests.
 
+    ## Errors
+    Errors are JSON: `{ "message": "…" }`. A 4xx message describes what was
+    wrong with the request. An unexpected server error (5xx) always reads
+    `Internal Server Error` — the details are only in the server log.
+
   contact:
     name: FundFlow
 
@@ -50,9 +55,23 @@ tags:
   - name: Organization Invites
     description: Single-use invite tokens
   - name: Vehicles
-    description: Investment vehicles (SPVs, funds, etc.) and their investors
+    description: |
+      Investment vehicles (SPVs, funds, etc.) and their investors.
+
+      **Share classes.** Every Vehicle has share classes — "sub-vehicles" with
+      segregated investors and assets — and every position and asset belongs to
+      one. A Vehicle is created with one class ("Class A") and always keeps at
+      least one; apps show classes only once a Vehicle has several, so a
+      single-class Vehicle looks like it has none. Each class is its own pool: its
+      cash (its investors' `totalCalled` − its assets' `cost`), asset value,
+      ownership shares and AutoDeploy default asset are computed within the class.
+      Investors only see the classes — and those classes' assets — they hold
+      positions in.
   - name: Entities
-    description: Legal entities (LLCs, Corps, Trusts) with owners and managers
+    description: |
+      Legal entities (LLCs, Corps, Trusts) with owners and delegates. An
+      entity can't act by itself: accounts act for it through delegations
+      (see [Delegations](#tag/Delegations)), and it always has at least one `manager`.
   - name: Introductions
     description: |
       Who introduced whom (admin-only), to track network growth and referral
@@ -63,9 +82,45 @@ tags:
       anyone upstream of it.
 
       Entities inherit their managers' introducers: if X introduced M, every
-      entity M manages also counts as introduced by X. Those rows carry
-      `viaAccountId` and are kept in sync automatically when introductions
-      or entity managers change; they can't be edited or deleted directly.
+      entity M manages (a `manager`-level entity delegation) also counts as
+      introduced by X. Those rows carry `viaAccountId` and are kept in sync
+      automatically when introductions or entity delegations change; they
+      can't be edited or deleted directly. Observers pass nothing on.
+  - name: Delegations
+    description: |
+      A principal — an account or an entity — lets a delegate account (an
+      attorney, accountant, family member…) act on its behalf. Only accounts
+      can be delegates. Levels:
+
+      - `observer` — the delegate reads what the principal can read.
+        For an account: its profile, portfolio
+        (`GET /api/portfolio?accountId=`), the entities it is a delegate of,
+        its positions in Vehicles, and its documents (including those of
+        entities it owns or is a delegate of). For an entity: the entity, its
+        owners, delegates, portfolio and documents.
+      - `manager` — additionally changes what the principal can change:
+        an account's profile (`PATCH /api/accounts/{id}`, roles excluded) and
+        the entities it manages; an entity's details, owners and delegations.
+
+      An account delegate reaches its principal's entities at the lower of the
+      two levels. Delegation is otherwise not transitive (a delegate of a
+      delegate gets nothing) and never extends to the principal's admin role
+      or organizer powers.
+
+      **Who changes them:** an account's delegations, admins only; an
+      entity's, admins and the entity's managers.
+
+      **Entities can't act by themselves**, so they're created with at least
+      one manager (`POST /api/entities`) and the last manager-level
+      delegation can't be removed or downgraded (409). Entity delegations
+      used to be "entity managers"; existing managers became `manager`-level
+      delegations.
+  - name: Relationships
+    description: |
+      Personal ties between two accounts (admin-only), read as
+      "<from> is the <description> of <to>" — e.g. "wife", "brother",
+      "ex-husband". One row per direction, so "wife" and "husband" can both
+      be recorded. Informational only: they grant no access.
   - name: Promoters
     description: |
       Introducers that, after vetting and signing a contract, earn commissions
@@ -97,7 +152,7 @@ tags:
       Files attached to either an Account or an Entity, organized in a
       user-defined folder tree. Visibility for non-admin callers is scoped to
       documents owned by their account, plus documents owned by entities they
-      own (recursively, via `entity_owners`) or manage (via `entity_managers`).
+      own (recursively, via `entity_owners`) or are delegates of (see [Delegations](#tag/Delegations)).
       Upload, delete, and storage settings are admin-only.
   - name: Settings
     description: Platform-wide settings (admin-only)
@@ -351,7 +406,8 @@ paths:
       summary: List accounts
       description: |
         Admins see all accounts (with optional `?search=` and `?role=` filters).
-        Non-admins receive a single-element array containing their own account.
+        Non-admins receive their own account first, followed by the accounts
+        that delegated to them (see [Delegations](#tag/Delegations)).
       parameters:
         - { name: search, in: query, schema: { type: string } }
         - { name: role, in: query, schema: { type: string } }
@@ -417,13 +473,33 @@ paths:
     get:
       tags: [Accounts]
       summary: Get a single account
+      description: |
+        Admins can get any account; others their own and those that delegated
+        to them (see [Delegations](#tag/Delegations)).
       responses:
-        '200': { content: { application/json: { schema: { $ref: '#/components/schemas/Account' } } }, description: Account }
+        '200':
+          description: Account
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Account'
+                  - type: object
+                    required: [access]
+                    properties:
+                      access:
+                        type: string
+                        enum: [admin, self, observer, manager]
+                        description: How the caller reaches this account — `observer`/`manager` through a delegation.
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
     patch:
       tags: [Accounts]
       summary: Update account fields and/or roles
+      description: |
+        Admins can update any account; others their own and those that made
+        them a `manager` delegate (see [Delegations](#tag/Delegations)). Only admins can change roles
+        or set a password.
       requestBody:
         required: true
         content:
@@ -452,7 +528,7 @@ paths:
     delete:
       tags: [Accounts]
       summary: Delete an account (admin-only)
-      description: Cascades to account_roles, api_tokens and introductions.
+      description: Cascades to account_roles, api_tokens, introductions, delegations and relationships.
       responses:
         '200': { description: Deleted }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -544,6 +620,144 @@ paths:
       responses:
         '200': { description: Removed }
         '400': { description: The introduction is inherited — remove the managing account's introduction instead, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/accounts/{id}/delegations:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    get:
+      tags: [Delegations]
+      summary: An account's delegations (admin-only)
+      responses:
+        '200':
+          description: Delegations on both sides of the account
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  delegatedIn: { type: array, items: { $ref: '#/components/schemas/Delegation' }, description: Accounts and entities that delegated to this one (it acts on their behalf) }
+                  delegatedOut: { type: array, items: { $ref: '#/components/schemas/Delegation' }, description: Accounts this one delegated to (they act on its behalf) }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/delegations:
+    post:
+      tags: [Delegations]
+      summary: Delegate an account's or entity's access to an account
+      description: Admins only for an account principal; admins or the entity's managers for an entity principal.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [delegateAccountId, level]
+              description: Exactly one of `principalAccountId` / `principalEntityId`.
+              properties:
+                principalAccountId: { type: integer, description: The account whose data is shared }
+                principalEntityId: { type: integer, description: The entity whose data is shared }
+                delegateAccountId: { type: integer, description: The account that acts on its behalf }
+                level: { type: string, enum: [observer, manager] }
+                notes: { type: string, maxLength: 2000, description: 'e.g. the power of attorney it rests on' }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Delegation' } } } }
+        '400': { description: 'Validation error, both or neither principal, or an account delegating to itself', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Principal account or entity, or delegate account, not found, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '409': { description: The principal already delegates to that account, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+
+  /api/delegations/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    patch:
+      tags: [Delegations]
+      summary: Change a delegation's level or notes
+      description: Same permissions as creating it. Making an entity's last manager an observer answers 409.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                level: { type: string, enum: [observer, manager] }
+                notes: { type: string, maxLength: 2000 }
+      responses:
+        '200': { description: Updated, content: { application/json: { schema: { $ref: '#/components/schemas/Delegation' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: It is the entity's last manager, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+    delete:
+      tags: [Delegations]
+      summary: Remove a delegation
+      description: Same permissions as creating it. Removing an entity's last manager answers 409.
+      responses:
+        '200': { description: Removed }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { description: It is the entity's last manager, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+
+  /api/accounts/{id}/relationships:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    get:
+      tags: [Relationships]
+      summary: An account's relationships, on either side (admin-only)
+      responses:
+        '200': { description: Relationships, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Relationship' } } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /api/relationships:
+    post:
+      tags: [Relationships]
+      summary: Record a relationship between two accounts (admin-only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [fromAccountId, toAccountId, description]
+              properties:
+                fromAccountId: { type: integer }
+                toAccountId: { type: integer }
+                description: { type: string, minLength: 1, maxLength: 100, example: wife, description: 'Trimmed. Reads "<from> is the <description> of <to>"' }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/Relationship' } } } }
+        '400': { description: 'Validation error, empty description, or both sides the same account', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Account not found, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '409': { description: The same from → to relationship already exists, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+
+  /api/relationships/{id}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    patch:
+      tags: [Relationships]
+      summary: Change a relationship's description (admin-only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [description]
+              properties:
+                description: { type: string, minLength: 1, maxLength: 100 }
+      responses:
+        '200': { description: Updated, content: { application/json: { schema: { $ref: '#/components/schemas/Relationship' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Relationships]
+      summary: Remove a relationship (admin-only)
+      responses:
+        '200': { description: Removed }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
 
@@ -948,21 +1162,30 @@ paths:
       - { name: accountId, in: path, required: true, schema: { type: integer } }
     patch:
       tags: [Organization Members]
-      summary: Approve / reject a pending membership
-      description: Admin, or an organizer of this organization. Approved membership alone is not enough (403).
+      summary: Approve / reject a membership, and set the member's default fees
+      description: |
+        Admin, or an organizer of this organization. Approved membership alone
+        is not enough (403). Send `status` and/or the member's default fees —
+        at least one.
+
+        The default fees apply to the member's new investments in this
+        organization's Vehicles (and to those of entities they manage) when
+        the investment doesn't state its own; see `POST /api/vehicles/{id}/members`.
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              required: [status]
               properties:
                 status: { type: string, enum: [approved, rejected], description: "Server only accepts approved or rejected (pending is the initial state set by the request endpoint)." }
+                managementFeePercent: { oneOf: [{ type: number }, { type: string }], nullable: true, description: "Default management fee, 0–100 (% of the commitment). null clears it." }
+                successFeePercent: { oneOf: [{ type: number }, { type: string }], nullable: true, description: "Default success fee (carry), 0–100. null clears it." }
       responses:
-        '200': { description: Updated }
-        '400': { description: Invalid status value }
+        '200': { description: Updated, content: { application/json: { schema: { $ref: '#/components/schemas/Member' } } } }
+        '400': { description: 'Invalid status or fee, or nothing to update' }
         '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
     delete:
       tags: [Organization Members]
       summary: Remove a member from an organization
@@ -992,6 +1215,23 @@ paths:
         '201': { content: { application/json: { schema: { $ref: '#/components/schemas/Invite' } } }, description: Created }
         '403': { $ref: '#/components/responses/Forbidden' }
 
+  /api/organizations/{id}/invites/{inviteId}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+      - { name: inviteId, in: path, required: true, schema: { type: integer } }
+    delete:
+      tags: [Organization Invites]
+      summary: Delete an invite
+      description: |
+        Admin, or an organizer of this organization. Approved membership alone
+        is not enough (403). The link stops working at once (`/api/invites/{token}`
+        returns 404). Memberships already created through it are kept.
+      responses:
+        '200': { description: Deleted }
+        '400': { description: Invalid ID }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   /api/invites/{token}:
     parameters:
       - { name: token, in: path, required: true, schema: { type: string } }
@@ -1018,6 +1258,10 @@ paths:
           with an empty body — the invite is accepted for the caller's account.
 
         A client-supplied `accountId` is ignored.
+
+        A new account gets a welcome email (username, the organization joined
+        and a sign-in link; never the password) in its `language`. A failed
+        send doesn't undo the sign-up — see `welcomeEmail` in the response.
       security: []
       requestBody:
         required: false
@@ -1034,8 +1278,25 @@ paths:
                     password: { type: string }
                     firstName: { type: string }
                     lastName: { type: string }
+                    language:
+                      type: string
+                      enum: [en, es, fr]
+                      default: en
+                      description: The new account's language (also used for the welcome email). Unknown values fall back to `en`.
       responses:
-        '200': { description: Accepted }
+        '200':
+          description: Accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  member: { type: object, description: The organization membership (approved) }
+                  message: { type: string }
+                  welcomeEmail:
+                    type: string
+                    enum: [sent, failed]
+                    description: Only when a new account was created — whether its welcome email went out.
         '400': { description: Not authenticated and no new account details supplied }
         '404': { $ref: '#/components/responses/NotFound' }
         '409': { description: Email already registered (sign in instead) }
@@ -1080,11 +1341,15 @@ paths:
       summary: Get a single Vehicle
     patch:
       tags: [Vehicles]
-      summary: Update a Vehicle
+      summary: Update a Vehicle (admins and organizers of its organization)
+      description: Investing in a Vehicle only grants read access; investors get 403.
       requestBody:
         required: true
         content: { application/json: { schema: { $ref: '#/components/schemas/VehicleCreate' } } }
-      responses: { '200': { description: Updated, content: { application/json: { schema: { $ref: '#/components/schemas/Vehicle' } } } } }
+      responses:
+        '200': { description: Updated, content: { application/json: { schema: { $ref: '#/components/schemas/Vehicle' } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
     delete:
       tags: [Vehicles]
       summary: Delete a Vehicle (admin-only)
@@ -1098,7 +1363,7 @@ paths:
     get:
       tags: [Vehicles]
       summary: List Vehicle members (investors), one row per tranche
-      description: Admins and organizers of the Vehicle's organization see every member row. Non-admin investors see only their own tranches (rows where the investor is their own account or an entity they own). Non-investor non-admins receive 403.
+      description: Admins and organizers of the Vehicle's organization see every member row. Non-admin investors see only their own tranches (rows where the investor is their own account or an entity they own or manage), plus those of the accounts that delegated to them (see [Delegations](#tag/Delegations)). Non-investor non-admins receive 403.
       responses:
         '200':
           description: Each row has investorType + either an account or entity block. The same investor may appear in multiple rows (tranches), each with its own values. For non-admin investors, the response is filtered to only their own rows.
@@ -1107,6 +1372,14 @@ paths:
     post:
       tags: [Vehicles]
       summary: Add an investor position / tranche (account OR entity, never both). Calling multiple times for the same investor creates additional tranches.
+      description: |
+        **Default fees.** When `managementFee` or `carry` is omitted (or
+        empty), it comes from the investor's default fees in the Vehicle's
+        organization: `managementFee` = `committed` × the member's
+        `managementFeePercent`, `carry` = their `successFeePercent`. An
+        entity investor takes the lowest of its managers' defaults in the
+        organization, fee by fee; with no default, the fee stays 0. Sending a
+        value — even 0 — overrides the default.
       requestBody:
         required: true
         content:
@@ -1116,17 +1389,18 @@ paths:
               properties:
                 accountId: { type: integer, nullable: true }
                 entityId: { type: integer, nullable: true }
+                classId: { type: integer, description: "The share class this position goes into (one of the Vehicle's). Required when the Vehicle has several classes; defaults to its only class otherwise." }
                 date: { type: string, format: date, nullable: true, description: "Investment date." }
                 committed: { type: string, description: "Total commitment (gross)." }
-                managementFee: { type: string, description: "Management fee charged on this position." }
+                managementFee: { type: string, description: "Management fee charged on this position (an amount). Defaults from the investor's managementFeePercent." }
                 otherFee: { type: string, description: "Any other fee charged on this position." }
-                carry: { type: string, description: "Carry / Success Fee percentage (0-100) for this position. Stored per tranche; informational only — not subtracted from capital." }
+                carry: { type: string, description: "Carry / Success Fee percentage (0-100) for this position. Stored per tranche; informational only — not subtracted from capital. Defaults from the investor's successFeePercent." }
                 totalCalled: { type: string, description: "Capital actually called from the investor so far." }
                 distributed: { type: string, description: "Distributions paid back to the investor." }
                 ownershipPercent: { type: string, nullable: true, description: "Explicit ownership % (0–100). Only meaningful when the Vehicle's allocationMethod is 'Custom'." }
       responses:
         '201': { description: Added }
-        '400': { $ref: '#/components/responses/BadRequest' }
+        '400': { description: "Invalid fields; a missing or foreign `classId` (see above); or AutoDeploy is on and the position's pool (its class, or the Vehicle) has no default asset.", content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
 
   /api/vehicles/{id}/members/{memberId}:
     parameters:
@@ -1135,11 +1409,71 @@ paths:
     patch:
       tags: [Vehicles]
       summary: Update investment fields for a specific tranche
-      responses: { '200': { description: Updated } }
+      description: Takes the same investment fields as POST. `classId` moves the position to another share class of the Vehicle; omitted, it stays in its class. Moving doesn't move capital already deployed into the old class's assets.
+      responses:
+        '200': { description: Updated }
+        '400': { $ref: '#/components/responses/BadRequest' }
     delete:
       tags: [Vehicles]
       summary: Remove a specific tranche from a Vehicle
       responses: { '200': { description: Removed } }
+
+  /api/vehicles/{id}/classes:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    get:
+      tags: [Vehicles]
+      summary: List the Vehicle's share classes with each pool's figures
+      description: Admins and organizers of the Vehicle's organization see every class; investors see the classes they hold positions in; others receive 403.
+      responses:
+        '200': { description: Share classes by name, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/VehicleClass' } } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Vehicles]
+      summary: Create a share class. Admin or organizer only.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/VehicleClassInput' }
+      responses:
+        '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/VehicleClass' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Vehicle not found }
+        '409': { description: Another class of the Vehicle has that name (case-insensitive) }
+
+  /api/vehicles/{id}/classes/{classId}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+      - { name: classId, in: path, required: true, schema: { type: integer } }
+    patch:
+      tags: [Vehicles]
+      summary: Rename a share class or change its notes. Admin or organizer only.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string, maxLength: 100 }
+                notes: { type: string }
+      responses:
+        '200': { description: Updated, content: { application/json: { schema: { $ref: '#/components/schemas/VehicleClass' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not a share class of this Vehicle }
+        '409': { description: Another class of the Vehicle has that name }
+    delete:
+      tags: [Vehicles]
+      summary: Delete a share class. Admin or organizer only.
+      description: Refused (409) while the class holds positions or assets — move or remove them first — and for the Vehicle's last class (a Vehicle always has at least one).
+      responses:
+        '200': { description: Deleted }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { description: Not a share class of this Vehicle }
+        '409': { description: "The class still holds positions or assets, or is the Vehicle's last" }
 
   # ──── Entities ────────────────────────────────────────────────────────────
   /api/vehicles/{id}/assets:
@@ -1147,9 +1481,11 @@ paths:
       - { name: id, in: path, required: true, schema: { type: integer } }
     get:
       tags: [Vehicles]
-      summary: List the Vehicle's assets (financial instruments). Read access mirrors Vehicle read access.
+      summary: List the Vehicle's assets (financial instruments)
+      description: Admins and organizers of the Vehicle's organization see every asset. Investors see the assets of the share classes they hold positions in (every asset when the Vehicle has no classes); others receive 403.
       responses:
         '200': { description: Assets, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/VehicleAsset' } } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
     post:
       tags: [Vehicles]
       summary: Add an asset to the Vehicle. Requires admin or organization organizer. Cost may exceed current `vehicle.cash` (cash will simply go negative).
@@ -1166,7 +1502,8 @@ paths:
                 purchaseDate: { type: string, format: date, nullable: true }
                 cost: { type: string, description: "Initial cost. May exceed current Vehicle cash (cash will go negative)." }
                 notes: { type: string }
-                isDefault: { type: boolean, description: "Mark this asset as the Vehicle's default. Auto-clears the flag on any other asset in the same Vehicle." }
+                classId: { type: integer, description: "The share class holding this asset. Same rules as for positions: required with several classes, defaults to the only one." }
+                isDefault: { type: boolean, description: "Mark this asset as its class's default. Auto-clears the flag on any other asset in the same class." }
       responses:
         '201': { description: Created, content: { application/json: { schema: { $ref: '#/components/schemas/VehicleAsset' } } } }
         '400': { $ref: '#/components/responses/BadRequest' }
@@ -1179,7 +1516,10 @@ paths:
     patch:
       tags: [Vehicles]
       summary: Update an asset's fields. Admin or organizer only.
-      responses: { '200': { description: Updated, content: { application/json: { schema: { $ref: '#/components/schemas/VehicleAsset' } } } } }
+      description: Takes the same fields as POST. `classId` moves the asset to another share class; a default asset moved this way stops being the default unless `isDefault` is true (then it replaces the new class's default).
+      responses:
+        '200': { description: Updated, content: { application/json: { schema: { $ref: '#/components/schemas/VehicleAsset' } } } }
+        '400': { $ref: '#/components/responses/BadRequest' }
     delete:
       tags: [Vehicles]
       summary: Delete an asset (cascades valuations). Admin or organizer only.
@@ -1192,8 +1532,10 @@ paths:
     get:
       tags: [Vehicles]
       summary: List the asset's valuation history (newest first).
+      description: Same access as listing the Vehicle's assets — investors get 403 for an asset of a share class they don't hold positions in.
       responses:
         '200': { description: Valuations, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/VehicleAssetValuation' } } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
     post:
       tags: [Vehicles]
       summary: Add a new valuation (mark) for the asset. Admin or organizer only.
@@ -1231,30 +1573,58 @@ paths:
         '200': { content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Entity' } } } }, description: Entities }
     post:
       tags: [Entities]
-      summary: Create an entity
+      summary: Create an entity with its managers
+      description: |
+        An entity can't act by itself, so `managerAccountIds` (at least one)
+        become its `manager`-level delegates. Non-admins must include
+        themselves.
       requestBody:
         required: true
-        content: { application/json: { schema: { $ref: '#/components/schemas/EntityCreate' } } }
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/EntityCreate'
+                - type: object
+                  required: [managerAccountIds]
+                  properties:
+                    managerAccountIds: { type: array, minItems: 1, items: { type: integer } }
       responses:
         '201': { content: { application/json: { schema: { $ref: '#/components/schemas/Entity' } } }, description: Created }
+        '400': { description: 'Validation error, no managers, or a non-admin not among them', content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
+        '404': { description: A manager account doesn't exist, content: { application/json: { schema: { $ref: '#/components/schemas/Error' } } } }
 
   /api/entities/{id}:
     parameters:
       - { name: id, in: path, required: true, schema: { type: integer } }
     get:
       tags: [Entities]
-      responses: { '200': { description: Entity, content: { application/json: { schema: { $ref: '#/components/schemas/Entity' } } } } }
       summary: Get a single entity
+      description: Admins, and accounts that are delegates of the entity — themselves or through an account that delegated to them.
+      responses:
+        '200':
+          description: Entity
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Entity'
+                  - type: object
+                    required: [access]
+                    properties:
+                      access: { type: string, enum: [admin, observer, manager], description: How the caller reaches this entity }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
     patch:
       tags: [Entities]
-      summary: Update an entity
+      summary: Update an entity (admins and its managers)
       requestBody:
         required: true
         content: { application/json: { schema: { $ref: '#/components/schemas/EntityCreate' } } }
       responses: { '200': { description: Updated, content: { application/json: { schema: { $ref: '#/components/schemas/Entity' } } } } }
     delete:
       tags: [Entities]
-      summary: Delete an entity (admin-only) — cascades owners/managers
+      summary: Delete an entity (admin-only) — cascades owners and delegations
       responses:
         '200': { description: Deleted }
         '403': { $ref: '#/components/responses/Forbidden' }
@@ -1303,35 +1673,20 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
 
-  /api/entities/{id}/managers:
+  /api/entities/{id}/delegations:
     parameters:
       - { name: id, in: path, required: true, schema: { type: integer } }
     get:
-      tags: [Entities]
-      summary: List entity managers
-      responses: { '200': { description: Managers } }
-    post:
-      tags: [Entities]
-      summary: Add an account as a manager
-      description: The entity inherits the new manager's introducers (see Introductions); removing a manager drops credit inherited only through them.
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [accountId]
-              properties: { accountId: { type: integer } }
-      responses: { '201': { description: Added } }
-
-  /api/entities/{id}/managers/{accountId}:
-    parameters:
-      - { name: id, in: path, required: true, schema: { type: integer } }
-      - { name: accountId, in: path, required: true, schema: { type: integer } }
-    delete:
-      tags: [Entities]
-      summary: Remove a manager
-      responses: { '200': { description: Removed } }
+      tags: [Entities, Delegations]
+      summary: Accounts acting for the entity
+      description: |
+        Anyone who can read the entity. Change them through `/api/delegations`
+        with `principalEntityId`. Replaces the former `/api/entities/{id}/managers`
+        endpoints — managers are the `manager`-level rows.
+      responses:
+        '200': { description: Delegations, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Delegation' } } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
 
   # ──── Documents ───────────────────────────────────────────────────────────
   /api/documents:
@@ -1341,7 +1696,8 @@ paths:
       description: |
         Admins see every document. Non-admins see documents owned by their
         own account, plus documents owned by entities they own (recursively,
-        via `entity_owners`) or manage (via `entity_managers`).
+        via `entity_owners`) or are delegates of — and the same
+        for every account that delegated to them (see [Delegations](#tag/Delegations)).
       responses:
         '200':
           description: Documents (newest first)
@@ -1626,14 +1982,16 @@ paths:
         Optional filters:
         - `?accountId=<id>` — investments owned directly by the account *plus*
           investments held by entities the account owns (recursively, via
-          `entity_owners`). Non-admins may only request their own accountId.
+          `entity_owners`). Non-admins may only request their own accountId or one that
+          delegated to them (see [Delegations](#tag/Delegations)).
         - `?entityId=<id>` — investments held directly by that entity.
-          Non-admins must own or manage the entity.
+          Non-admins must own or manage the entity, themselves or through an
+          account that delegated to them.
       parameters:
         - { name: accountId, in: query, schema: { type: integer } }
         - { name: entityId, in: query, schema: { type: integer } }
       responses:
-        '200': { description: Portfolio positions }
+        '200': { description: "Portfolio positions. Each carries `classId` / `className` — the share class it's in — `vehicleClassCount` (show the class only when > 1), and its `currentValue` within that class's pool." }
         '400': { $ref: '#/components/responses/BadRequest' }
         '403': { $ref: '#/components/responses/Forbidden' }
 
@@ -1691,7 +2049,14 @@ components:
         email: { type: string, format: email }
         firstName: { type: string }
         lastName: { type: string }
+        middleName: { type: string, nullable: true, description: Optional middle name. Included in the full legal name on contracts }
         nationality: { type: string, description: Country of citizenship (country name; empty if unknown). Used for contracts }
+        mailingStreetAddress1: { type: string, nullable: true, description: Optional mailing address, when it differs from the residential one (empty = same) }
+        mailingStreetAddress2: { type: string, nullable: true }
+        mailingCity: { type: string, nullable: true }
+        mailingStateProvince: { type: string, nullable: true }
+        mailingZipPostalCode: { type: string, nullable: true }
+        mailingCountry: { type: string, nullable: true, description: Country name }
         profileComplete: { type: boolean }
         roles:
           type: array
@@ -1710,7 +2075,14 @@ components:
             create their own password instead (requires `welcome_email` to be true).
         firstName: { type: string }
         lastName: { type: string }
+        middleName: { type: string, nullable: true, description: Optional middle name. Included in the full legal name on contracts }
         nationality: { type: string, description: Country of citizenship (country name; empty if unknown). Used for contracts }
+        mailingStreetAddress1: { type: string, nullable: true, description: Optional mailing address, when it differs from the residential one (empty = same) }
+        mailingStreetAddress2: { type: string, nullable: true }
+        mailingCity: { type: string, nullable: true }
+        mailingStateProvince: { type: string, nullable: true }
+        mailingZipPostalCode: { type: string, nullable: true }
+        mailingCountry: { type: string, nullable: true, description: Country name }
         roles:
           type: array
           items: { type: string }
@@ -1732,7 +2104,14 @@ components:
         email: { type: string, format: email }
         firstName: { type: string }
         lastName: { type: string }
+        middleName: { type: string, nullable: true, description: Optional middle name. Included in the full legal name on contracts }
         nationality: { type: string, description: Country of citizenship (country name; empty if unknown). Used for contracts }
+        mailingStreetAddress1: { type: string, nullable: true, description: Optional mailing address, when it differs from the residential one (empty = same) }
+        mailingStreetAddress2: { type: string, nullable: true }
+        mailingCity: { type: string, nullable: true }
+        mailingStateProvince: { type: string, nullable: true }
+        mailingZipPostalCode: { type: string, nullable: true }
+        mailingCountry: { type: string, nullable: true, description: Country name }
         roles:
           type: array
           items: { type: string }
@@ -1790,6 +2169,8 @@ components:
         accountId: { type: integer }
         status: { type: string, enum: [pending, approved, rejected] }
         inviteId: { type: integer, nullable: true }
+        managementFeePercent: { type: string, nullable: true, example: "5.00", description: Default management fee (% of the commitment) for the member's investments in this organization }
+        successFeePercent: { type: string, nullable: true, example: "20.00", description: Default success fee (carry %) for the member's investments in this organization }
         account: { $ref: '#/components/schemas/Account' }
 
     Invite:
@@ -1818,9 +2199,10 @@ components:
         preferredReturnPercent: { type: string }
         totalBeingRaised: { type: string }
         minimumInvestment: { type: string }
-        cash: { type: string, description: "DERIVED. = sum(member.totalCalled) − sum(asset.cost). Returned, never stored." }
+        cash: { type: string, description: "DERIVED. = sum(member.totalCalled) − sum(asset.cost) — the sum over its share classes. Returned, never stored." }
         assetValue: { type: string, description: "DERIVED. = sum(asset.currentValue) where asset.currentValue is its latest valuation (or cost if none)." }
         currentValue: { type: string, description: "DERIVED. = cash + assetValue." }
+        classCount: { type: integer, description: "Number of share classes, at least 1. Classes are only shown when there are several. See GET /api/vehicles/{id}/classes." }
         autoDeploy: { type: boolean, description: "When true, every new investment added to the Vehicle is auto-called for its NET capital (totalCalled = committed − managementFee − otherFee) and that net amount is added to the default asset's cost (at original cost, not current value). Fees stay on the member as fees and are not deployed. Requires a default asset; otherwise POST /members returns 400." }
         members:
           type: array
@@ -1834,12 +2216,13 @@ components:
       properties:
         id: { type: integer }
         vehicleId: { type: integer }
+        classId: { type: integer, description: "The share class holding it." }
         companyName: { type: string }
         instrumentType: { type: string, example: "Equity", description: "Equity, Convertible Note, SAFE, Preferred Stock, Common Stock, Warrant, Debt, Other." }
         purchaseDate: { type: string, format: date, nullable: true }
         cost: { type: string, description: "Initial cost paid from Vehicle cash." }
         notes: { type: string }
-        isDefault: { type: boolean, description: "At most one asset per Vehicle can be the default. The default asset receives AutoDeploy capital." }
+        isDefault: { type: boolean, description: "At most one asset per share class can be the default. It receives the AutoDeploy capital of that class's new positions." }
         currentValue: { type: string, description: "DERIVED. = latest VehicleAssetValuation.value (by date), or cost when no valuations exist." }
 
     VehicleAssetValuation:
@@ -1850,6 +2233,30 @@ components:
         date: { type: string, format: date }
         value: { type: string }
         note: { type: string }
+
+    VehicleClassInput:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, maxLength: 100, example: "Class A", description: "Unique within the Vehicle (case-insensitive)." }
+        notes: { type: string }
+
+    VehicleClass:
+      type: object
+      description: A share class of a Vehicle — a segregated pool of positions and assets. Figures are DERIVED from the class's own positions and assets.
+      properties:
+        id: { type: integer }
+        vehicleId: { type: integer }
+        name: { type: string }
+        notes: { type: string }
+        createdAt: { type: string, format: date-time }
+        memberCount: { type: integer, description: "Positions (tranches) in the class." }
+        assetCount: { type: integer }
+        committed: { type: string }
+        totalCalled: { type: string }
+        cash: { type: string, description: "= the class's totalCalled − its assets' cost." }
+        assetValue: { type: string }
+        currentValue: { type: string, description: "= cash + assetValue." }
 
     VehicleCreate:
       type: object
@@ -1864,9 +2271,9 @@ components:
           enum: ["By Commitment", "By Capital Invested", "Custom"]
           example: "By Commitment"
           description: |
-            How ownership % in the Vehicle is calculated:
-            - **By Commitment**: each investor's share = their `committed` divided by the Vehicle's total `committed`.
-            - **By Capital Invested**: each investor's share = `capital` (= `committed` − `managementFee` − `otherFee`) divided by the total of `capital` across all members.
+            How ownership % is calculated, within each share class:
+            - **By Commitment**: each investor's share = their `committed` divided by the class's total `committed`.
+            - **By Capital Invested**: each investor's share = `capital` (= `committed` − `managementFee` − `otherFee`) divided by the total of `capital` across the class's members.
             - **Custom**: ownership is set explicitly per investor via `ownershipPercent`.
         managementFeePercent: { type: string }
         carriedInterestPercent: { type: string }
@@ -1880,6 +2287,8 @@ components:
       properties:
         id: { type: integer }
         vehicleId: { type: integer }
+        classId: { type: integer, description: "The share class of this position." }
+        className: { type: string }
         investorType: { type: string, enum: [account, entity] }
         date: { type: string, format: date, nullable: true }
         committed: { type: string, description: "Total commitment (gross)." }
@@ -1889,11 +2298,11 @@ components:
         totalCalled: { type: string, description: "Capital called from the investor so far." }
         distributed: { type: string, description: "Distributions paid back to the investor." }
         ownershipPercent: { type: string, nullable: true, description: "Explicit ownership % (0–100) used only when the Vehicle's allocationMethod is 'Custom'." }
-        currentValue: { type: string, description: "DERIVED. = ownership share × vehicle.currentValue. Returned on responses; cannot be set." }
+        currentValue: { type: string, description: "DERIVED. = ownership share of its share class × the class's currentValue. Returned on responses; cannot be set." }
         # Derived (NOT stored, computed server-side):
         #   capital              = committed − (managementFee + otherFee)
         #   commitmentRemaining  = capital − totalCalled
-        #   currentValue         = ownership% × vehicle.currentValue
+        #   currentValue         = ownership% × pool currentValue
         account: { $ref: '#/components/schemas/Account', nullable: true }
         entity: { $ref: '#/components/schemas/Entity', nullable: true }
 
@@ -1907,7 +2316,15 @@ components:
         ownershipAllocation: { type: string, enum: [percent, shares] }
         disbursementMethod: { type: string }
         owners: { type: array, items: { type: object } }
-        managers: { type: array, items: { $ref: '#/components/schemas/Account' } }
+        managers:
+          type: array
+          description: Its `manager`-level delegates
+          items:
+            type: object
+            properties:
+              id: { type: integer, description: The delegation id }
+              accountId: { type: integer }
+              account: { $ref: '#/components/schemas/AccountSummary' }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }
 
@@ -1935,6 +2352,39 @@ components:
             name: { type: string }
             entityType: { type: string }
         via: { $ref: '#/components/schemas/AccountSummary' }
+
+    Delegation:
+      type: object
+      properties:
+        id: { type: integer }
+        principalAccountId: { type: integer, nullable: true }
+        principalEntityId: { type: integer, nullable: true, description: Exactly one of principalAccountId / principalEntityId is set }
+        delegateAccountId: { type: integer }
+        level: { type: string, enum: [observer, manager] }
+        notes: { type: string }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        principal: { $ref: '#/components/schemas/AccountSummary' }
+        principalEntity:
+          type: object
+          nullable: true
+          properties:
+            id: { type: integer }
+            name: { type: string }
+            entityType: { type: string }
+        delegate: { $ref: '#/components/schemas/AccountSummary' }
+
+    Relationship:
+      type: object
+      description: '"<fromAccount> is the <description> of <toAccount>".'
+      properties:
+        id: { type: integer }
+        fromAccountId: { type: integer }
+        toAccountId: { type: integer }
+        description: { type: string, example: wife }
+        createdAt: { type: string, format: date-time }
+        fromAccount: { $ref: '#/components/schemas/AccountSummary' }
+        toAccount: { $ref: '#/components/schemas/AccountSummary' }
 
     AccountSummary:
       type: object

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import { Link } from "wouter";
+import { Link, useSearch } from "wouter";
 import { Trans, useTranslation } from "react-i18next";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -13,7 +13,9 @@ import { LanguageSwitcher } from "@/components/language-switcher";
 import { useLocalePath, useLocale } from "@/i18n/hooks";
 
 export default function ForgotPassword() {
-  const [email, setEmail] = useState("");
+  // Prefilled by links such as the invite page's "email already exists" notice.
+  const search = useSearch();
+  const [email, setEmail] = useState(() => new URLSearchParams(search).get("email") ?? "");
   const [sent, setSent] = useState(false);
   const { t } = useTranslation();
   const lp = useLocalePath();

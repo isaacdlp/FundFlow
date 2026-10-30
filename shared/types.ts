@@ -23,6 +23,9 @@ export interface MemberInfo {
   accountId: number;
   status: string;
   inviteId: number | null;
+  /** Default terms (percent) for this member's investments in the organization; null = none. */
+  managementFeePercent: string | null;
+  successFeePercent: string | null;
   createdAt: string;
   account: {
     id: number;
@@ -117,7 +120,25 @@ export interface VehicleInfo {
   manager?: { id: number; email: string; firstName: string; lastName: string } | null;
   signatory?: { id: number; email: string; firstName: string; lastName: string } | null;
   memberCount: number;
+  /** Number of share classes (always ≥ 1; the UI only shows them when there are several). */
+  classCount: number;
   organization?: { id: number; name: string; slug: string } | null;
+  cash: string;
+  assetValue: string;
+  currentValue: string;
+}
+
+/** A share class of a Vehicle: a segregated pool of investors and assets. */
+export interface VehicleClassInfo {
+  id: number;
+  vehicleId: number;
+  name: string;
+  notes: string | null;
+  createdAt: string;
+  memberCount: number;
+  assetCount: number;
+  committed: string;
+  totalCalled: string;
   cash: string;
   assetValue: string;
   currentValue: string;
@@ -126,6 +147,7 @@ export interface VehicleInfo {
 export interface VehicleAssetInfo {
   id: number;
   vehicleId: number;
+  classId: number;
   companyName: string;
   instrumentType: string;
   purchaseDate: string | null;
@@ -148,6 +170,8 @@ export interface VehicleAssetValuationInfo {
 export interface VehicleMemberInfo {
   id: number;
   vehicleId: number;
+  classId: number;
+  className: string;
   accountId: number | null;
   entityId: number | null;
   investorType: "account" | "entity";
@@ -178,6 +202,10 @@ export interface PortfolioInvestment {
   memberId: number;
   vehicleId: number;
   vehicleName: string;
+  classId: number;
+  className: string;
+  /** The Vehicle's number of share classes (classes are only shown when there are several). */
+  vehicleClassCount: number;
   investmentCompanyName: string;
   investmentType: string;
   organizationId: number;
@@ -236,12 +264,15 @@ export interface EntityInfo {
   forFurtherCreditTo: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Manager-level delegates. */
   managers: {
     id: number;
     accountId: number;
     account: { id: number; email: string; firstName: string; lastName: string };
   }[];
   ownerCount: number;
+  /** Only on GET /api/entities/:id — how the caller reaches this entity. */
+  access?: "admin" | DelegationLevel;
 }
 
 export interface EntityOwnerInfo {
@@ -256,18 +287,11 @@ export interface EntityOwnerInfo {
   ownerEntity?: { id: number; name: string; entityType: string } | null;
 }
 
-export interface EntityManagerInfo {
-  id: number;
-  entityId: number;
-  accountId: number;
-  createdAt: string;
-  account: { id: number; email: string; firstName: string; lastName: string };
-}
-
 export interface AccountWithRoles {
   id: number;
   email: string;
   firstName: string;
+  middleName: string | null;
   lastName: string;
   phone: string | null;
   birthdate: string | null;
@@ -279,11 +303,19 @@ export interface AccountWithRoles {
   city: string | null;
   stateProvince: string | null;
   zipPostalCode: string | null;
+  mailingStreetAddress1: string | null;
+  mailingStreetAddress2: string | null;
+  mailingCountry: string | null;
+  mailingCity: string | null;
+  mailingStateProvince: string | null;
+  mailingZipPostalCode: string | null;
   language: string;
   profileComplete: boolean | null;
   createdAt: string;
   updatedAt: string;
   roles: Role[];
+  /** Only on GET /api/accounts/:id — how the caller reaches this account. */
+  access?: "admin" | "self" | DelegationLevel;
 }
 
 export interface IntroductionInfo {
@@ -310,6 +342,41 @@ export interface AccountIntroductionsInfo {
     introducedAccountIds: number[];
     introducedEntityIds: number[];
   };
+}
+
+export type DelegationLevel = "observer" | "manager";
+
+/** The principal is an account or an entity (exactly one); the delegate is always an account. */
+export interface DelegationInfo {
+  id: number;
+  principalAccountId: number | null;
+  principalEntityId: number | null;
+  delegateAccountId: number;
+  level: DelegationLevel;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+  principal: { id: number; email: string; firstName: string; lastName: string } | null;
+  principalEntity: { id: number; name: string; entityType: string } | null;
+  delegate: { id: number; email: string; firstName: string; lastName: string } | null;
+}
+
+export interface AccountDelegationsInfo {
+  /** Accounts and entities that delegated to this one (it acts for them). */
+  delegatedIn: DelegationInfo[];
+  /** Accounts this one delegated to (they act for it). */
+  delegatedOut: DelegationInfo[];
+}
+
+/** "<fromAccount> is the <description> of <toAccount>". */
+export interface RelationshipInfo {
+  id: number;
+  fromAccountId: number;
+  toAccountId: number;
+  description: string;
+  createdAt: string;
+  fromAccount: { id: number; email: string; firstName: string; lastName: string } | null;
+  toAccount: { id: number; email: string; firstName: string; lastName: string } | null;
 }
 
 export type IncentiveType = "management_fee" | "success_fee";

@@ -29,6 +29,7 @@ export default function CreateAccount() {
   const { toast } = useToast();
   const [formData, setFormData] = useState({
     firstName: "",
+    middleName: "",
     lastName: "",
     email: "",
     password: "",
@@ -143,7 +144,7 @@ export default function CreateAccount() {
               <h2 className="text-lg font-semibold">{t("createAccount.personalInfo")}</h2>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="firstName">{t("common.firstName")} *</Label>
                   <Input
@@ -152,6 +153,15 @@ export default function CreateAccount() {
                     onChange={(e) => updateField("firstName", e.target.value)}
                     required
                     data-testid="input-first-name"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="middleName">{t("common.middleName")}</Label>
+                  <Input
+                    id="middleName"
+                    value={formData.middleName}
+                    onChange={(e) => updateField("middleName", e.target.value)}
+                    data-testid="input-middle-name"
                   />
                 </div>
                 <div className="space-y-2">

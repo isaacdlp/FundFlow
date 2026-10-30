@@ -215,6 +215,32 @@ describe("Organization members", () => {
       expect(res.body.status).toBe("rejected");
     });
 
+    it("organizer sets a member's default fees; blank clears one", async () => {
+      const agent = await loginAs(app, mockStorage, fixtures.organizerAccount);
+      mockStorage.getOrganizationIdsAsOrganizer.mockResolvedValue([orgA.id]);
+      mockStorage.updateMemberFees.mockResolvedValue(fixtures.member({ managementFeePercent: "5.00", successFeePercent: null }));
+      const res = await agent
+        .patch(`/api/organizations/${orgA.id}/members/2`)
+        .send({ managementFeePercent: "5", successFeePercent: null });
+      expect(res.status).toBe(200);
+      expect(mockStorage.updateMemberFees).toHaveBeenCalledWith(orgA.id, 2, { managementFeePercent: "5.00", successFeePercent: null });
+      expect(mockStorage.updateMemberStatus).not.toHaveBeenCalled();
+    });
+
+    it("rejects fees outside 0–100 and an empty update", async () => {
+      const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
+      for (const body of [{ managementFeePercent: 101 }, { successFeePercent: -1 }, { successFeePercent: "abc" }, {}]) {
+        expect((await agent.patch(`/api/organizations/${orgA.id}/members/2`).send(body)).status).toBe(400);
+      }
+      expect(mockStorage.updateMemberFees).not.toHaveBeenCalled();
+    });
+
+    it("plain members can't change fees", async () => {
+      const agent = await loginAs(app, mockStorage, fixtures.memberAccount);
+      const res = await agent.patch(`/api/organizations/${orgA.id}/members/2`).send({ managementFeePercent: 1 });
+      expect(res.status).toBe(403);
+    });
+
     it("returns 404 when member missing", async () => {
       const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
       mockStorage.updateMemberStatus.mockResolvedValue(undefined);

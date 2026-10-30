@@ -39,6 +39,7 @@ import {
   LOCALES,
   DEFAULT_LOCALE,
   getLocaleFromPath,
+  localizeBarePath,
   type Locale,
 } from "@/i18n/routes";
 import { useLocalePath, useLocale } from "@/i18n/hooks";
@@ -194,9 +195,7 @@ function LocalePrefixGuard({ children }: { children: React.ReactNode }) {
       }
     }
 
-    const search = window.location.search;
-    const newPath = path === "/" ? `/${target}` : `/${target}${path}`;
-    window.history.replaceState({}, "", newPath + search);
+    window.history.replaceState({}, "", localizeBarePath(path + window.location.search, target));
     if (i18n.language !== target) i18n.changeLanguage(target);
     window.dispatchEvent(new PopStateEvent("popstate"));
   }, [i18n, user, isLoading]);

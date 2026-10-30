@@ -3,7 +3,7 @@ import { useRoute, Link, useLocation, useSearch } from "wouter";
 import { useTranslation } from "react-i18next";
 import { useLocalePath, useLocale } from "@/i18n/hooks";
 import { ROUTE_PATTERNS } from "@/i18n/routes";
-import type { EntityInfo, EntityOwnerInfo, EntityManagerInfo, AccountWithRoles, IntroductionInfo } from "@shared/types";
+import type { EntityInfo, EntityOwnerInfo, AccountWithRoles, IntroductionInfo } from "@shared/types";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
 import {
@@ -27,6 +27,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CountrySelect } from "@/components/country-select";
+import { SearchPicker, type SearchPickerOption } from "@/components/search-picker";
+import { EntityDelegations } from "@/components/account-delegations";
 import {
   Select,
   SelectContent,
@@ -51,7 +53,7 @@ const ENTITY_TYPES = [
 ];
 const CURRENCIES = ["USD ($)", "EUR (\u20ac)", "GBP (\u00a3)", "CHF", "JPY (\u00a5)", "CAD ($)", "AUD ($)"];
 
-function OwnersTab({ entityId }: { entityId: string }) {
+function OwnersSection({ entityId, canEdit }: { entityId: string; canEdit: boolean }) {
   const { t } = useTranslation();
   const { toast } = useToast();
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -65,10 +67,12 @@ function OwnersTab({ entityId }: { entityId: string }) {
 
   const { data: accountsList } = useQuery<AccountWithRoles[]>({
     queryKey: ["/api/accounts"],
+    enabled: canEdit,
   });
 
   const { data: entitiesList } = useQuery<EntityInfo[]>({
     queryKey: ["/api/entities"],
+    enabled: canEdit,
   });
 
   const addMutation = useMutation({
@@ -113,7 +117,10 @@ function OwnersTab({ entityId }: { entityId: string }) {
     },
   });
 
-  const otherEntities = entitiesList?.filter(e => String(e.id) !== entityId) || [];
+  const ownerOptions: SearchPickerOption[] = ownerType === "account"
+    ? (accountsList ?? []).map(a => ({ value: String(a.id), label: `${a.firstName} ${a.lastName}`, detail: a.email }))
+    : (entitiesList ?? []).filter(e => String(e.id) !== entityId).map(e => ({ value: String(e.id), label: e.name, detail: e.entityType }));
+  const selectedOwnerLabel = ownerOptions.find(o => o.value === selectedOwnerId)?.label;
 
   if (isLoading) return <Skeleton className="h-64 w-full" />;
 
@@ -121,12 +128,12 @@ function OwnersTab({ entityId }: { entityId: string }) {
     <Card>
       <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0">
         <div>
-          <h2 className="text-lg font-semibold">{t("entityDetail.ownersTitle")}</h2>
+          <h3 className="text-lg font-semibold">{t("entityDetail.ownersTitle")}</h3>
           <p className="text-sm text-muted-foreground mt-1">
             {t("entityDetail.ownersDescription")}
           </p>
         </div>
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        {canEdit && <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
             <Button data-testid="button-add-owner">
               <Plus className="h-4 w-4 mr-2" />
@@ -154,26 +161,15 @@ function OwnersTab({ entityId }: { entityId: string }) {
 
               <div className="space-y-2">
                 <Label>{t("entityDetail.owner")}</Label>
-                <Select value={selectedOwnerId} onValueChange={setSelectedOwnerId}>
-                  <SelectTrigger data-testid="select-owner">
-                    <SelectValue placeholder={ownerType === "account" ? t("entityDetail.selectAccountPlaceholder") : t("entityDetail.selectEntityPlaceholder")} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {ownerType === "account" ? (
-                      accountsList?.map(a => (
-                        <SelectItem key={a.id} value={String(a.id)}>
-                          {a.firstName} {a.lastName} ({a.email})
-                        </SelectItem>
-                      ))
-                    ) : (
-                      otherEntities.map(e => (
-                        <SelectItem key={e.id} value={String(e.id)}>
-                          {e.name} ({e.entityType})
-                        </SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
+                <SearchPicker
+                  options={ownerOptions}
+                  onSelect={setSelectedOwnerId}
+                  selectedLabel={selectedOwnerLabel}
+                  placeholder={ownerType === "account" ? t("entityDetail.selectAccountPlaceholder") : t("entityDetail.selectEntityPlaceholder")}
+                  searchPlaceholder={ownerType === "account" ? t("introductions.searchPeople") : t("introductions.searchIntroduced")}
+                  className="w-full"
+                  data-testid="select-owner"
+                />
               </div>
 
               <div className="space-y-2">
@@ -203,7 +199,7 @@ function OwnersTab({ entityId }: { entityId: string }) {
               </div>
             </div>
           </DialogContent>
-        </Dialog>
+        </Dialog>}
       </CardHeader>
       <CardContent>
         {owners && owners.length > 0 ? (
@@ -239,15 +235,17 @@ function OwnersTab({ entityId }: { entityId: string }) {
                 <div className="text-right mr-2">
                   <Badge variant="secondary">{parseFloat(owner.ownershipPercent || "0")}%</Badge>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => removeMutation.mutate(owner.id)}
-                  disabled={removeMutation.isPending}
-                  data-testid={`button-remove-owner-${owner.id}`}
-                >
-                  <Trash2 className="h-4 w-4 text-destructive" />
-                </Button>
+                {canEdit && (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => removeMutation.mutate(owner.id)}
+                    disabled={removeMutation.isPending}
+                    data-testid={`button-remove-owner-${owner.id}`}
+                  >
+                    <Trash2 className="h-4 w-4 text-destructive" />
+                  </Button>
+                )}
               </div>
             ))}
           </div>
@@ -256,98 +254,6 @@ function OwnersTab({ entityId }: { entityId: string }) {
             <Users className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
             <p className="text-muted-foreground">{t("entityDetail.noOwnersAdded")}</p>
           </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
-
-function ManagersSection({ entityId, editing }: { entityId: string; editing: boolean }) {
-  const { t } = useTranslation();
-  const { toast } = useToast();
-
-  const { data: managers } = useQuery<EntityManagerInfo[]>({
-    queryKey: ["/api/entities", entityId, "managers"],
-  });
-
-  const { data: accountsList } = useQuery<AccountWithRoles[]>({
-    queryKey: ["/api/accounts"],
-  });
-
-  const addMutation = useMutation({
-    mutationFn: async (accountId: number) => {
-      const res = await apiRequest("POST", `/api/entities/${entityId}/managers`, { accountId });
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/entities", entityId, "managers"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/entities", entityId] });
-      // Managers pass their introducers on to the entity.
-      queryClient.invalidateQueries({ predicate: q => q.queryKey.includes("introductions") });
-      toast({ title: t("entityDetail.managerAdded") });
-    },
-    onError: (error: Error) => {
-      toast({ title: t("entityDetail.managerAddFailed"), description: error.message, variant: "destructive" });
-    },
-  });
-
-  const removeMutation = useMutation({
-    mutationFn: async (accountId: number) => {
-      const res = await apiRequest("DELETE", `/api/entities/${entityId}/managers/${accountId}`);
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/entities", entityId, "managers"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/entities", entityId] });
-      // Managers pass their introducers on to the entity.
-      queryClient.invalidateQueries({ predicate: q => q.queryKey.includes("introductions") });
-      toast({ title: t("entityDetail.managerRemoved") });
-    },
-    onError: (error: Error) => {
-      toast({ title: t("entityDetail.managerRemoveFailed"), description: error.message, variant: "destructive" });
-    },
-  });
-
-  const availableAccounts = accountsList?.filter(a => !managers?.some(m => m.accountId === a.id)) || [];
-
-  return (
-    <Card>
-      <CardHeader>
-        <h2 className="text-lg font-semibold">{t("createEntity.administration")}</h2>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="space-y-2">
-          <Label>{t("createEntity.managers")}</Label>
-          {editing && (
-            <Select onValueChange={v => addMutation.mutate(parseInt(v))}>
-              <SelectTrigger data-testid="select-add-manager">
-                <SelectValue placeholder={t("entityDetail.addManagerPlaceholder")} />
-              </SelectTrigger>
-              <SelectContent>
-                {availableAccounts.map(a => (
-                  <SelectItem key={a.id} value={String(a.id)}>
-                    {a.firstName} {a.lastName} ({a.email})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-        </div>
-        {managers && managers.length > 0 ? (
-          <div className="flex flex-wrap gap-2">
-            {managers.map(m => (
-              <div key={m.id} className="flex items-center gap-1 px-2 py-1 rounded-md border bg-muted text-sm" data-testid={`manager-chip-${m.accountId}`}>
-                <span>{m.account.firstName} {m.account.lastName}</span>
-                {editing && (
-                  <button onClick={() => removeMutation.mutate(m.accountId)} className="ml-1 hover:text-destructive" data-testid={`button-remove-manager-${m.accountId}`}>
-                    <XIcon className="h-3 w-3" />
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="text-sm text-muted-foreground">{t("entityDetail.noManagersAssigned")}</p>
         )}
       </CardContent>
     </Card>
@@ -365,14 +271,14 @@ function IntroducersSection({ entityId }: { entityId: string }) {
   return (
     <Card>
       <CardHeader>
-        <h2 className="text-lg font-semibold">{t("introductions.introducedByTitle")}</h2>
+        <h3 className="text-lg font-semibold">{t("introductions.introducedByTitle")}</h3>
         <p className="text-sm text-muted-foreground">{t("introductions.entityHint")}</p>
       </CardHeader>
       <CardContent>
         {intros && intros.length > 0 ? (
           <div className="flex flex-wrap gap-2">
             {intros.map(i => (
-              <Link key={i.id} href={`${lp("accountDetail", { id: i.introducerAccountId })}?tab=introductions`}>
+              <Link key={i.id} href={`${lp("accountDetail", { id: i.introducerAccountId })}?tab=connections`}>
                 <div className="flex items-center gap-2 px-2 py-1 rounded-md border bg-muted text-sm cursor-pointer" data-testid={`introducer-chip-${i.introducerAccountId}`}>
                   <span>{i.introducer ? `${i.introducer.firstName} ${i.introducer.lastName}` : "—"}</span>
                   {i.via && (
@@ -402,7 +308,9 @@ export default function EntityDetail() {
   const { isAdmin } = useAuth();
   const [location, navigate] = useLocation();
   const search = useSearch();
-  const activeTab = new URLSearchParams(search).get("tab") ?? "overview";
+  const requestedTab = new URLSearchParams(search).get("tab") ?? "overview";
+  // Owners moved into Connections; keep old ?tab=owners links working.
+  const activeTab = requestedTab === "owners" ? "connections" : requestedTab;
   const [editing, setEditing] = useState(false);
 
   const { data: entity, isLoading } = useQuery<EntityInfo>({
@@ -524,6 +432,9 @@ export default function EntityDetail() {
     );
   }
 
+  // Observers only look; admins and managers change the entity.
+  const canEdit = entity.access !== "observer";
+
   return (
     <div className="p-6 space-y-6">
       <Link href={lp("entities")}>
@@ -543,6 +454,11 @@ export default function EntityDetail() {
           <div className="flex gap-2 mt-1 flex-wrap">
             <Badge variant="secondary">{entity.entityType}</Badge>
             <Badge variant="outline">{t("entityDetail.ownersCount", { count: entity.ownerCount })}</Badge>
+            {(entity.access === "observer" || entity.access === "manager") && (
+              <Badge variant="outline" data-testid="badge-delegated-access">
+                {t("delegations.yourAccess", { level: t(`delegations.levels.${entity.access}`) })}
+              </Badge>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -585,12 +501,12 @@ export default function EntityDetail() {
       <Tabs value={activeTab} onValueChange={(t) => navigate(`${location}?tab=${t}`, { replace: true })}>
         <TabsList>
           <TabsTrigger value="overview" data-testid="tab-overview">{t("entityDetail.tabOverview")}</TabsTrigger>
-          <TabsTrigger value="owners" data-testid="tab-owners">{t("entityDetail.tabOwners")}</TabsTrigger>
+          <TabsTrigger value="connections" data-testid="tab-connections">{t("introductions.tab")}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="mt-6 space-y-6">
           <div className="flex justify-end">
-            {!editing ? (
+            {!canEdit ? null : !editing ? (
               <Button variant="outline" size="sm" onClick={() => setEditing(true)} data-testid="button-edit">
                 <Pencil className="h-3.5 w-3.5 mr-1.5" />
                 {t("common.edit")}
@@ -665,10 +581,6 @@ export default function EntityDetail() {
               </div>
             </CardContent>
           </Card>
-
-          <ManagersSection entityId={entityId!} editing={editing} />
-
-          {isAdmin && <IntroducersSection entityId={entityId!} />}
 
           <Card>
             <CardHeader>
@@ -765,8 +677,21 @@ export default function EntityDetail() {
           </Card>
         </TabsContent>
 
-        <TabsContent value="owners" className="mt-6">
-          <OwnersTab entityId={entityId!} />
+        <TabsContent value="connections" className="mt-6 space-y-10">
+          <section className="space-y-4" data-testid="section-delegation">
+            <h2 className="text-xl font-semibold">{t("delegations.section")}</h2>
+            <EntityDelegations entityId={entity.id} canEdit={canEdit} />
+          </section>
+          <section className="space-y-4" data-testid="section-owners">
+            <h2 className="text-xl font-semibold">{t("entityDetail.tabOwners")}</h2>
+            <OwnersSection entityId={entityId!} canEdit={canEdit} />
+          </section>
+          {isAdmin && (
+            <section className="space-y-4" data-testid="section-introductions">
+              <h2 className="text-xl font-semibold">{t("introductions.section")}</h2>
+              <IntroducersSection entityId={entityId!} />
+            </section>
+          )}
         </TabsContent>
       </Tabs>
     </div>

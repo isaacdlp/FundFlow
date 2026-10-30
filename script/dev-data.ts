@@ -88,21 +88,25 @@ async function runSeed() {
       async addOrganizer(organizationId, accountId) {
         await tx.insert(schema.organizationOrganizers).values({ organizationId, accountId });
       },
-      async addMember(organizationId, accountId, status) {
-        await tx.insert(schema.organizationMembers).values({ organizationId, accountId, status });
+      async addMember(organizationId, accountId, status, fees) {
+        await tx.insert(schema.organizationMembers).values({ organizationId, accountId, status, ...fees });
       },
       async insertEntity(fields) {
         const [row] = await tx.insert(schema.entities).values(fields as any).returning({ id: schema.entities.id });
         return row.id;
       },
-      async addEntityManager(entityId, accountId) {
-        await tx.insert(schema.entityManagers).values({ entityId, accountId });
+      async addEntityDelegation(entityId, { accountId, level, notes }) {
+        await tx.insert(schema.delegations).values({ principalEntityId: entityId, delegateAccountId: accountId, level, notes: notes ?? "" });
       },
       async addEntityOwner(entityId, owner) {
         await tx.insert(schema.entityOwners).values({ entityId, ...owner });
       },
       async insertVehicle(fields) {
         const [row] = await tx.insert(schema.vehicles).values(fields as any).returning({ id: schema.vehicles.id });
+        return row.id;
+      },
+      async insertVehicleClass(vehicleId, cls) {
+        const [row] = await tx.insert(schema.vehicleClasses).values({ vehicleId, ...cls }).returning({ id: schema.vehicleClasses.id });
         return row.id;
       },
       async insertVehicleMember(vehicleId, member) {

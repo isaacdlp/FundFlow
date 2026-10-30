@@ -2,6 +2,7 @@ import express, { type Express } from "express";
 import session from "express-session";
 import { createServer } from "http";
 import { registerRoutes } from "../../../server/routes";
+import { errorHandler } from "../../../server/error-handler";
 
 declare module "express-session" {
   interface SessionData {
@@ -32,5 +33,6 @@ export async function createTestApp(): Promise<Express> {
   );
 
   await registerRoutes(httpServer, app);
+  app.use(errorHandler);
   return app;
 }

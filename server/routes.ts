@@ -4,21 +4,37 @@ import { readFileSync } from "fs";
 import path from "path";
 import yaml from "js-yaml";
 import { storage } from "./storage";
-import { insertAccountSchema, updateAccountSchema, insertOrganizationSchema, updateOrganizationSchema, insertVehicleSchema, updateVehicleSchema, insertEntitySchema, updateEntitySchema, createApiTokenSchema, createIntroductionSchema, updateIntroductionSchema, createPromoterSchema, updatePromoterSchema, createIncentiveSchema, updateIncentiveSchema, createPromoterContractSchema, updateConcordSettingsSchema, ACCOUNT_SETUP_TTL_MS } from "@shared/schema";
+import { insertAccountSchema, updateAccountSchema, insertOrganizationSchema, updateOrganizationSchema, insertVehicleSchema, updateVehicleSchema, insertEntitySchema, createEntitySchema, updateEntitySchema, createApiTokenSchema, createIntroductionSchema, updateIntroductionSchema, createDelegationSchema, updateDelegationSchema, createRelationshipSchema, updateRelationshipSchema, updateMemberSchema, insertVehicleClassSchema, updateVehicleClassSchema, createPromoterSchema, updatePromoterSchema, createIncentiveSchema, updateIncentiveSchema, createPromoterContractSchema, updateConcordSettingsSchema, ACCOUNT_SETUP_TTL_MS } from "@shared/schema";
 import { ConcordError, ConcordNotConfiguredError, getConcordClient } from "./concord";
 import {
   buildPromoterContractDraft, concordConfigFrom, concordSettingsInfo, getConcordSettings, getContractTemplate,
   getOurSigner, serializeContract, updateConcordSettings,
 } from "./contracts";
 import { findIntroductionConflict, unavailableIntroductions, type IntroductionProposal } from "./introductions";
+import { accessToAccount, accessToEntity, actingAccountIds, delegatedEntityIdsOf, ownedEntityIdsOf, vehicleIdsOf } from "./access";
 import { isLocale } from "@shared/i18n";
+import { investorFeeDefaults, managementFeeAmount, type MemberFeeTerms } from "@shared/fees";
+import { resolveClassId, showsClasses } from "@shared/vehicle-classes";
 import { ZodError } from "zod";
 import { fromZodError } from "zod-validation-error";
 import type { AccountWithRoles } from "./storage";
-import { sendPasswordResetEmail, sendWelcomeEmail, sendAccountSetupEmail } from "./email";
+import type { Account, Delegation } from "@shared/schema";
+import { sendPasswordResetEmail, sendWelcomeEmail, sendAccountSetupEmail, sendRegistrationEmail } from "./email";
 import { generateApiToken, hashApiToken, parseBearerToken } from "./api-tokens";
 import { registerDocumentRoutes } from "./documents";
 import { registerCurrencyRoutes } from "./currency";
+
+/**
+ * A unique-constraint violation (e.g. a taken email). Drizzle wraps driver
+ * errors ("Failed query: …"), so look for Postgres' code on the cause too.
+ */
+function isUniqueViolation(e: unknown): boolean {
+  for (let err: any = e; err; err = err.cause) {
+    if (err.code === "23505") return true;
+    if (typeof err.message === "string" && /unique|duplicate/i.test(err.message)) return true;
+  }
+  return false;
+}
 
 function stripPasswordHash(account: any) {
   const { passwordHash, ...rest } = account;
@@ -30,6 +46,8 @@ function stripPasswordHash(account: any) {
  * bearer-token-authenticated request. Bearer auth populates `req.apiAccountId`
  * via the `bearerAuth` middleware mounted at the top of the route stack.
  */
+const ACCOUNT_EXISTS_MESSAGE = "An account with this email already exists. Please sign in instead.";
+
 function getAuthAccountId(req: Request): number | undefined {
   return req.session.impersonatedAccountId ?? req.session.accountId ?? (req as any).apiAccountId;
 }
@@ -269,24 +287,27 @@ export async function registerRoutes(
     if (invite.used) return res.status(410).json({ message: "This invite has already been used" });
 
     let accountId: number;
+    let newAccount: Account | undefined;
 
     // Either create a new account from the body, or accept for the logged-in
     // account. A client-supplied `accountId` is never trusted.
     const authAccountId = getAuthAccountId(req);
     if (req.body.email && req.body.password && req.body.firstName && req.body.lastName) {
+      if (await storage.getAccountByEmail(req.body.email)) {
+        return res.status(409).json({ message: ACCOUNT_EXISTS_MESSAGE });
+      }
       try {
-        const newAccount = await storage.createAccount({
+        newAccount = await storage.createAccount({
           email: req.body.email,
           password: req.body.password,
           firstName: req.body.firstName,
           lastName: req.body.lastName,
-          language: "en",
+          language: isLocale(req.body.language) ? req.body.language : "en",
         });
         accountId = newAccount.id;
       } catch (e) {
-        const err = e as Error;
-        if (err.message?.includes("unique") || err.message?.includes("duplicate")) {
-          return res.status(409).json({ message: "An account with this email already exists. Please sign in instead." });
+        if (isUniqueViolation(e)) {
+          return res.status(409).json({ message: ACCOUNT_EXISTS_MESSAGE });
         }
         throw e;
       }
@@ -296,9 +317,18 @@ export async function registerRoutes(
       return res.status(400).json({ message: "Sign in, or provide new account details (email, password, firstName, lastName)" });
     }
 
-    await storage.useInvite(req.params.token, accountId);
+    // Burn the invite only once the membership exists, so a failure leaves the link usable.
     const member = await storage.createMemberRequest(invite.organizationId, accountId, invite.id);
-    res.json({ member, message: "Invite accepted. You are now a member of this organization." });
+    await storage.useInvite(req.params.token, accountId);
+
+    // Only a brand-new account gets a welcome email; a failed send doesn't undo the sign-up.
+    let welcomeEmail: "sent" | "failed" | undefined;
+    if (newAccount) {
+      const org = await storage.getOrganization(invite.organizationId);
+      const sent = await sendRegistrationEmail(newAccount.email, newAccount.firstName, org?.name ?? "", newAccount.language);
+      welcomeEmail = sent ? "sent" : "failed";
+    }
+    res.json({ member, welcomeEmail, message: "Invite accepted. You are now a member of this organization." });
   });
 
   // Without `accountId` (or with the caller's own id): request membership for
@@ -380,8 +410,7 @@ export async function registerRoutes(
       if (e instanceof ZodError) {
         return res.status(400).json({ message: fromZodError(e).message });
       }
-      const err = e as Error;
-      if (err.message?.includes("unique") || err.message?.includes("duplicate")) {
+      if (isUniqueViolation(e)) {
         return res.status(409).json({ message: "An account with this email already exists" });
       }
       throw e;
@@ -506,7 +535,10 @@ export async function registerRoutes(
       return res.json(accountsList.map(stripPasswordHash));
     }
 
-    return res.json([stripPasswordHash(me)]);
+    // Their own account, plus the accounts that delegated to them.
+    const ids = await actingAccountIds(me.id);
+    const visible = await Promise.all(ids.map(id => id === me.id ? me : storage.getAccount(id)));
+    return res.json(visible.filter(a => !!a).map(stripPasswordHash));
   });
 
   app.get("/api/accounts/:id", async (req, res) => {
@@ -515,13 +547,14 @@ export async function registerRoutes(
     const me = await storage.getAccount(getAuthAccountId(req)!);
     if (!me) return res.status(401).json({ message: "Account not found" });
 
-    if (!isAdmin(me) && me.id !== id) {
+    const access = isAdmin(me) ? "admin" : await accessToAccount(me.id, id);
+    if (!access) {
       return res.status(403).json({ message: "Access denied" });
     }
 
     const account = await storage.getAccount(id);
     if (!account) return res.status(404).json({ message: "Account not found" });
-    res.json(stripPasswordHash(account));
+    res.json({ ...stripPasswordHash(account), access });
   });
 
   app.patch("/api/accounts/:id", async (req, res) => {
@@ -530,8 +563,12 @@ export async function registerRoutes(
     const me = await storage.getAccount(getAuthAccountId(req)!);
     if (!me) return res.status(401).json({ message: "Account not found" });
 
-    if (!isAdmin(me) && me.id !== id) {
-      return res.status(403).json({ message: "Access denied" });
+    // Their own account, or one that made them a manager-level delegate.
+    if (!isAdmin(me)) {
+      const access = await accessToAccount(me.id, id);
+      if (access !== "self" && access !== "manager") {
+        return res.status(403).json({ message: "Access denied" });
+      }
     }
 
     const setPassword = req.body.password as string | undefined;
@@ -569,8 +606,7 @@ export async function registerRoutes(
       if (e instanceof ZodError) {
         return res.status(400).json({ message: fromZodError(e).message });
       }
-      const err = e as Error;
-      if (err.message?.includes("unique") || err.message?.includes("duplicate")) {
+      if (isUniqueViolation(e)) {
         return res.status(409).json({ message: "An account with this email already exists" });
       }
       throw e;
@@ -660,6 +696,138 @@ export async function registerRoutes(
     }
     await storage.deleteIntroduction(id);
     res.json({ message: "Introduction removed" });
+  });
+
+  // ──── Delegations ────────────────────────────────────────────────────────
+  // An account's delegations are admin-only; an entity's can also be changed
+  // by its managers. Entities keep at least one manager.
+  app.get("/api/accounts/:id/delegations", requireAdmin as any, async (req: Request, res: Response) => {
+    const id = parseInt(String(req.params.id));
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    if (!(await storage.getAccount(id))) return res.status(404).json({ message: "Account not found" });
+    res.json(await storage.getDelegationsForAccount(id));
+  });
+
+  async function canChangeDelegationsOf(me: AccountWithRoles, principal: { principalEntityId?: number | null }): Promise<boolean> {
+    if (isAdmin(me)) return true;
+    if (principal.principalEntityId == null) return false;
+    return (await accessToEntity(me.id, principal.principalEntityId)) === "manager";
+  }
+
+  /** Whether removing or downgrading this delegation would leave its entity without a manager. */
+  async function isLastEntityManager(d: Delegation): Promise<boolean> {
+    if (d.principalEntityId === null || d.level !== "manager") return false;
+    const others = await storage.getDelegationsForEntity(d.principalEntityId);
+    return !others.some(o => o.id !== d.id && o.level === "manager");
+  }
+  const LAST_MANAGER = "An entity needs at least one manager — add another manager first";
+
+  app.post("/api/delegations", async (req: Request, res: Response) => {
+    const me = await storage.getAccount(getAuthAccountId(req)!);
+    if (!me) return res.status(401).json({ message: "Account not found" });
+    let data;
+    try {
+      data = createDelegationSchema.parse(req.body);
+    } catch (e) {
+      if (e instanceof ZodError) return res.status(400).json({ message: fromZodError(e).message });
+      throw e;
+    }
+    if (!(await canChangeDelegationsOf(me, data))) return res.status(403).json({ message: "Access denied" });
+    if (data.principalAccountId !== undefined && !(await storage.getAccount(data.principalAccountId))) {
+      return res.status(404).json({ message: "Principal account not found" });
+    }
+    if (data.principalEntityId !== undefined && !(await storage.getEntity(data.principalEntityId))) {
+      return res.status(404).json({ message: "Principal entity not found" });
+    }
+    if (!(await storage.getAccount(data.delegateAccountId))) {
+      return res.status(404).json({ message: "Delegate account not found" });
+    }
+    const created = await storage.createDelegation(data);
+    if (!created) return res.status(409).json({ message: "This principal already delegates to that account" });
+    res.status(201).json(created);
+  });
+
+  app.patch("/api/delegations/:id", async (req: Request, res: Response) => {
+    const id = parseInt(String(req.params.id));
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    const me = await storage.getAccount(getAuthAccountId(req)!);
+    if (!me) return res.status(401).json({ message: "Account not found" });
+    let data;
+    try {
+      data = updateDelegationSchema.parse(req.body);
+    } catch (e) {
+      if (e instanceof ZodError) return res.status(400).json({ message: fromZodError(e).message });
+      throw e;
+    }
+    const existing = await storage.getDelegation(id);
+    if (!existing || !(await canChangeDelegationsOf(me, existing))) {
+      return existing ? res.status(403).json({ message: "Access denied" }) : res.status(404).json({ message: "Delegation not found" });
+    }
+    if (data.level === "observer" && (await isLastEntityManager(existing))) {
+      return res.status(409).json({ message: LAST_MANAGER });
+    }
+    const updated = await storage.updateDelegation(id, data);
+    if (!updated) return res.status(404).json({ message: "Delegation not found" });
+    res.json(updated);
+  });
+
+  app.delete("/api/delegations/:id", async (req: Request, res: Response) => {
+    const id = parseInt(String(req.params.id));
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    const me = await storage.getAccount(getAuthAccountId(req)!);
+    if (!me) return res.status(401).json({ message: "Account not found" });
+    const existing = await storage.getDelegation(id);
+    if (!existing) return res.status(404).json({ message: "Delegation not found" });
+    if (!(await canChangeDelegationsOf(me, existing))) return res.status(403).json({ message: "Access denied" });
+    if (await isLastEntityManager(existing)) return res.status(409).json({ message: LAST_MANAGER });
+    await storage.deleteDelegation(id);
+    res.json({ message: "Delegation removed" });
+  });
+
+  // ──── Relationships (admin-only) ──────────────────────────────────────────
+  app.get("/api/accounts/:id/relationships", requireAdmin as any, async (req: Request, res: Response) => {
+    const id = parseInt(String(req.params.id));
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    if (!(await storage.getAccount(id))) return res.status(404).json({ message: "Account not found" });
+    res.json(await storage.getRelationshipsForAccount(id));
+  });
+
+  app.post("/api/relationships", requireAdmin as any, async (req: Request, res: Response) => {
+    let data;
+    try {
+      data = createRelationshipSchema.parse(req.body);
+    } catch (e) {
+      if (e instanceof ZodError) return res.status(400).json({ message: fromZodError(e).message });
+      throw e;
+    }
+    if (!(await storage.getAccount(data.fromAccountId)) || !(await storage.getAccount(data.toAccountId))) {
+      return res.status(404).json({ message: "Account not found" });
+    }
+    const created = await storage.createRelationship(data);
+    if (!created) return res.status(409).json({ message: "This relationship already exists" });
+    res.status(201).json(created);
+  });
+
+  app.patch("/api/relationships/:id", requireAdmin as any, async (req: Request, res: Response) => {
+    const id = parseInt(String(req.params.id));
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    let data;
+    try {
+      data = updateRelationshipSchema.parse(req.body);
+    } catch (e) {
+      if (e instanceof ZodError) return res.status(400).json({ message: fromZodError(e).message });
+      throw e;
+    }
+    const updated = await storage.updateRelationship(id, data);
+    if (!updated) return res.status(404).json({ message: "Relationship not found" });
+    res.json(updated);
+  });
+
+  app.delete("/api/relationships/:id", requireAdmin as any, async (req: Request, res: Response) => {
+    const id = parseInt(String(req.params.id));
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    if (!(await storage.deleteRelationship(id))) return res.status(404).json({ message: "Relationship not found" });
+    res.json({ message: "Relationship removed" });
   });
 
   // ──── Promoters (admin-only) ─────────────────────────────────────────────
@@ -1062,11 +1230,19 @@ export async function registerRoutes(
       return res.status(403).json({ message: "Only admins or organizers of this organization can manage members" });
     }
 
-    const { status } = req.body;
-    if (!status || !["approved", "rejected"].includes(status)) {
-      return res.status(400).json({ message: "Status must be 'approved' or 'rejected'" });
+    let data;
+    try {
+      data = updateMemberSchema.parse(req.body);
+    } catch (e) {
+      if (e instanceof ZodError) return res.status(400).json({ message: fromZodError(e).message });
+      throw e;
     }
-    const member = await storage.updateMemberStatus(id, accountId, status);
+    const { status, ...fees } = data;
+    let member = status ? await storage.updateMemberStatus(id, accountId, status) : undefined;
+    if (status && !member) return res.status(404).json({ message: "Member not found" });
+    if (fees.managementFeePercent !== undefined || fees.successFeePercent !== undefined) {
+      member = await storage.updateMemberFees(id, accountId, fees);
+    }
     if (!member) return res.status(404).json({ message: "Member not found" });
     res.json(member);
   });
@@ -1117,6 +1293,23 @@ export async function registerRoutes(
     res.status(201).json(invite);
   });
 
+  app.delete("/api/organizations/:id/invites/:inviteId", async (req, res) => {
+    const id = parseInt(req.params.id);
+    const inviteId = parseInt(req.params.inviteId);
+    if (isNaN(id) || isNaN(inviteId)) return res.status(400).json({ message: "Invalid ID" });
+    const me = await storage.getAccount(getAuthAccountId(req)!);
+    if (!me) return res.status(401).json({ message: "Account not found" });
+
+    if (!(await canManageOrg(me, id))) {
+      return res.status(403).json({ message: "Only admins or organizers of this organization can delete invites" });
+    }
+
+    if (!(await storage.deleteInvite(id, inviteId))) {
+      return res.status(404).json({ message: "Invite not found" });
+    }
+    res.json({ message: "Invite deleted" });
+  });
+
   app.get("/api/vehicles", async (req, res) => {
     const me = await storage.getAccount(getAuthAccountId(req)!);
     if (!me) return res.status(401).json({ message: "Account not found" });
@@ -1127,7 +1320,7 @@ export async function registerRoutes(
     }
 
     const [vehicleIds, organizerOrgIds, allVehicles] = await Promise.all([
-      storage.getVehicleIdsForAccount(me.id),
+      actingAccountIds(me.id).then(vehicleIdsOf),
       storage.getOrganizationIdsAsOrganizer(me.id),
       storage.getAllVehicles(),
     ]);
@@ -1164,7 +1357,7 @@ export async function registerRoutes(
     if (!me) return res.status(401).json({ message: "Account not found" });
 
     if (!isAdmin(me)) {
-      const vehicleIds = await storage.getVehicleIdsForAccount(me.id);
+      const vehicleIds = await vehicleIdsOf(await actingAccountIds(me.id));
       if (!vehicleIds.includes(id)) {
         return res.status(403).json({ message: "Access denied" });
       }
@@ -1210,11 +1403,9 @@ export async function registerRoutes(
     const me = await storage.getAccount(getAuthAccountId(req)!);
     if (!me) return res.status(401).json({ message: "Account not found" });
 
-    if (!isAdmin(me)) {
-      const vehicleIds = await storage.getVehicleIdsForAccount(me.id);
-      if (!vehicleIds.includes(id)) {
-        return res.status(403).json({ message: "Access denied" });
-      }
+    // Investing in a Vehicle only grants read access.
+    if (!(await canManageVehicle(me, id))) {
+      return res.status(403).json({ message: "Only admins or organizers of this organization can edit Vehicles" });
     }
 
     try {
@@ -1249,20 +1440,133 @@ export async function registerRoutes(
       return res.json(members);
     }
 
-    const vehicleIds = await storage.getVehicleIdsForAccount(me.id);
-    if (!vehicleIds.includes(id)) {
-      return res.status(403).json({ message: "Access denied" });
-    }
-    const [ownedEntityIds, managedEntityIds] = await Promise.all([
-      storage.getEntityIdsOwnedByAccount(me.id),
-      storage.getEntityIdsForAccount(me.id),
-    ]);
-    const allEntityIds = new Set([...ownedEntityIds, ...managedEntityIds]);
-    const visible = members.filter(m =>
-      m.accountId === me.id || (m.entityId !== null && allEntityIds.has(m.entityId))
-    );
+    const visible = await ownPositions(me, id, members);
+    if (!visible) return res.status(403).json({ message: "Access denied" });
     res.json(visible);
   });
+
+  /**
+   * The positions in a Vehicle a non-manager sees: their own and those of the
+   * accounts that delegated to them (directly or through entities). Undefined
+   * when they have no access to the Vehicle at all.
+   */
+  async function ownPositions<M extends { accountId: number | null; entityId: number | null }>(
+    me: AccountWithRoles, vehicleId: number, members: M[],
+  ): Promise<M[] | undefined> {
+    const accountIds = await actingAccountIds(me.id);
+    const vehicleIds = await vehicleIdsOf(accountIds);
+    if (!vehicleIds.includes(vehicleId)) return undefined;
+    const [ownedEntityIds, managedEntityIds] = await Promise.all([
+      ownedEntityIdsOf(accountIds),
+      delegatedEntityIdsOf(accountIds),
+    ]);
+    const allEntityIds = new Set([...ownedEntityIds, ...managedEntityIds]);
+    return members.filter(m =>
+      (m.accountId !== null && accountIds.includes(m.accountId)) || (m.entityId !== null && allEntityIds.has(m.entityId))
+    );
+  }
+
+  /**
+   * The share classes of a Vehicle the caller may see — classes are
+   * segregated, so investors only see those they hold positions in ("all" for
+   * admins and the organization's organizers). Undefined when they have no access.
+   */
+  async function visibleClassIds(me: AccountWithRoles, vehicleId: number): Promise<"all" | Set<number> | undefined> {
+    if (await canManageVehicle(me, vehicleId)) return "all";
+    const positions = await ownPositions(me, vehicleId, await storage.getVehicleMembers(vehicleId));
+    if (!positions) return undefined;
+    return new Set(positions.map(p => p.classId));
+  }
+
+  /** Validates a class name, refusing one another class of the Vehicle already uses. */
+  async function checkClassName(vehicleId: number, name: string | undefined, classId?: number): Promise<string | null> {
+    if (name === undefined) return null;
+    const classes = await storage.getVehicleClasses(vehicleId);
+    const taken = classes.some(c => c.id !== classId && c.name.trim().toLowerCase() === name.toLowerCase());
+    return taken ? `This Vehicle already has a class named "${name}"` : null;
+  }
+
+  // === Vehicle share classes ===
+  app.get("/api/vehicles/:id/classes", async (req, res) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    const me = await storage.getAccount(getAuthAccountId(req)!);
+    if (!me) return res.status(401).json({ message: "Account not found" });
+    const visible = await visibleClassIds(me, id);
+    if (!visible) return res.status(403).json({ message: "Access denied" });
+    const classes = await storage.getVehicleClasses(id);
+    res.json(visible === "all" ? classes : classes.filter(c => visible.has(c.id)));
+  });
+
+  app.post("/api/vehicles/:id/classes", async (req, res) => {
+    const id = parseInt(req.params.id);
+    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
+    const me = await storage.getAccount(getAuthAccountId(req)!);
+    if (!me) return res.status(401).json({ message: "Account not found" });
+    if (!(await canManageVehicle(me, id))) {
+      return res.status(403).json({ message: "Only admins or organization organizers can manage share classes" });
+    }
+    const vehicle = await storage.getVehicle(id);
+    if (!vehicle) return res.status(404).json({ message: "Vehicle not found" });
+    try {
+      const data = insertVehicleClassSchema.parse(req.body);
+      const conflict = await checkClassName(id, data.name);
+      if (conflict) return res.status(409).json({ message: conflict });
+      const created = await storage.createVehicleClass(id, data);
+      res.status(201).json(created);
+    } catch (e) {
+      if (e instanceof ZodError) return res.status(400).json({ message: fromZodError(e).message });
+      throw e;
+    }
+  });
+
+  app.patch("/api/vehicles/:id/classes/:classId", async (req, res) => {
+    const id = parseInt(req.params.id);
+    const classId = parseInt(req.params.classId);
+    if (isNaN(id) || isNaN(classId)) return res.status(400).json({ message: "Invalid ID" });
+    const me = await storage.getAccount(getAuthAccountId(req)!);
+    if (!me) return res.status(401).json({ message: "Account not found" });
+    if (!(await canManageVehicle(me, id))) {
+      return res.status(403).json({ message: "Only admins or organization organizers can manage share classes" });
+    }
+    try {
+      const data = updateVehicleClassSchema.parse(req.body);
+      const conflict = await checkClassName(id, data.name, classId);
+      if (conflict) return res.status(409).json({ message: conflict });
+      const updated = await storage.updateVehicleClass(id, classId, data);
+      if (!updated) return res.status(404).json({ message: "Share class not found" });
+      res.json(updated);
+    } catch (e) {
+      if (e instanceof ZodError) return res.status(400).json({ message: fromZodError(e).message });
+      throw e;
+    }
+  });
+
+  app.delete("/api/vehicles/:id/classes/:classId", async (req, res) => {
+    const id = parseInt(req.params.id);
+    const classId = parseInt(req.params.classId);
+    if (isNaN(id) || isNaN(classId)) return res.status(400).json({ message: "Invalid ID" });
+    const me = await storage.getAccount(getAuthAccountId(req)!);
+    if (!me) return res.status(401).json({ message: "Account not found" });
+    if (!(await canManageVehicle(me, id))) {
+      return res.status(403).json({ message: "Only admins or organization organizers can manage share classes" });
+    }
+    const result = await storage.deleteVehicleClass(id, classId);
+    if (result === "not_found") return res.status(404).json({ message: "Share class not found" });
+    if (result === "last_class") {
+      return res.status(409).json({ message: "A Vehicle always keeps at least one share class" });
+    }
+    if (result === "in_use") {
+      return res.status(409).json({ message: "Move or remove this class's investments and assets before deleting it" });
+    }
+    res.json({ message: "Share class deleted" });
+  });
+
+  /** The class a position or asset goes into, from the request's classId (see resolveClassId). */
+  async function classIdFor(vehicleId: number, requested: unknown) {
+    const classes = await storage.getVehicleClasses(vehicleId);
+    return { ...resolveClassId(classes.map(c => c.id), requested), classCount: classes.length };
+  }
 
   function validateInvestmentFields(body: any): { ok: true; data: { committed?: string; managementFee?: string; otherFee?: string; carry?: string; totalCalled?: string; distributed?: string; ownershipPercent?: string | null; date?: string | null } } | { ok: false; error: string } {
     const out: any = {};
@@ -1330,15 +1634,24 @@ export async function registerRoutes(
     const vehicle = await storage.getVehicle(id);
     if (!vehicle) return res.status(404).json({ message: "Vehicle not found" });
 
+    const cls = await classIdFor(id, req.body.classId);
+    if (!cls.ok) return res.status(400).json({ message: cls.error });
+
     if (vehicle.autoDeploy) {
       const assets = await storage.getVehicleAssets(id);
-      const hasDefault = assets.some(a => a.isDefault);
+      const hasDefault = assets.some(a => a.isDefault && a.classId === cls.classId);
       if (!hasDefault) {
-        return res.status(400).json({ message: "AutoDeploy is enabled but the Vehicle has no default asset. Mark an asset as default before adding investors." });
+        return res.status(400).json({
+          message: !showsClasses(cls.classCount)
+            ? "AutoDeploy is enabled but the Vehicle has no default asset. Mark an asset as default before adding investors."
+            : "AutoDeploy is enabled but this share class has no default asset. Mark one of its assets as default before adding investors.",
+        });
       }
     }
 
     let investor: { accountId: number } | { entityId: number };
+    // The organization memberships whose default fees apply to this investor.
+    let memberships: MemberFeeTerms[];
     if (hasAccount) {
       const aid = parseInt(accountId);
       if (!Number.isInteger(aid) || aid <= 0) return res.status(400).json({ message: "Invalid accountId" });
@@ -1349,15 +1662,29 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Account must be an approved member of the Vehicle's organization" });
       }
       investor = { accountId: aid };
+      memberships = [orgMembership];
     } else {
       const eid = parseInt(entityId);
       if (!Number.isInteger(eid) || eid <= 0) return res.status(400).json({ message: "Invalid entityId" });
       const ent = await storage.getEntity(eid);
       if (!ent) return res.status(404).json({ message: "Entity not found" });
       investor = { entityId: eid };
+      // An entity takes the defaults of its managers in the organization.
+      const managerships = await Promise.all(ent.managers.map(m => storage.getMember(vehicle.organizationId, m.accountId)));
+      memberships = managerships.filter((m): m is NonNullable<typeof m> => !!m);
     }
 
-    const member = await storage.addVehicleMember(id, investor, validation.data);
+    // Fees the investment doesn't state come from the investor's defaults.
+    const values = { ...validation.data, classId: cls.classId };
+    const defaults = investorFeeDefaults(memberships);
+    if (values.managementFee === undefined && defaults.managementFeePercent !== null) {
+      values.managementFee = managementFeeAmount(parseFloat(values.committed ?? "0"), defaults.managementFeePercent);
+    }
+    if (values.carry === undefined && defaults.successFeePercent !== null) {
+      values.carry = defaults.successFeePercent.toFixed(2);
+    }
+
+    const member = await storage.addVehicleMember(id, investor, values);
     res.status(201).json(member);
   });
 
@@ -1375,7 +1702,15 @@ export async function registerRoutes(
     const validation = validateInvestmentFields(req.body);
     if (!validation.ok) return res.status(400).json({ message: validation.error });
 
-    const member = await storage.updateVehicleMemberById(id, memberId, validation.data);
+    // Moving a position to another class (an omitted classId leaves it where it is).
+    const updates: Parameters<typeof storage.updateVehicleMemberById>[2] = { ...validation.data };
+    if (req.body.classId !== undefined) {
+      const cls = await classIdFor(id, req.body.classId);
+      if (!cls.ok) return res.status(400).json({ message: cls.error });
+      updates.classId = cls.classId;
+    }
+
+    const member = await storage.updateVehicleMemberById(id, memberId, updates);
     if (!member) return res.status(404).json({ message: "Vehicle member not found" });
     res.json(member);
   });
@@ -1386,12 +1721,10 @@ export async function registerRoutes(
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
     const me = await storage.getAccount(getAuthAccountId(req)!);
     if (!me) return res.status(401).json({ message: "Account not found" });
-    if (!isAdmin(me)) {
-      const vehicleIds = await storage.getVehicleIdsForAccount(me.id);
-      if (!vehicleIds.includes(id)) return res.status(403).json({ message: "Access denied" });
-    }
+    const visible = await visibleClassIds(me, id);
+    if (!visible) return res.status(403).json({ message: "Access denied" });
     const assets = await storage.getVehicleAssets(id);
-    res.json(assets);
+    res.json(visible === "all" ? assets : assets.filter(a => visible.has(a.classId)));
   });
 
   function validateAssetFields(body: any, requireCompany: boolean): { ok: true; data: any } | { ok: false; error: string } {
@@ -1440,7 +1773,9 @@ export async function registerRoutes(
     if (!vehicle) return res.status(404).json({ message: "Vehicle not found" });
     const v = validateAssetFields(req.body, true);
     if (!v.ok) return res.status(400).json({ message: v.error });
-    const asset = await storage.createVehicleAsset(id, v.data);
+    const cls = await classIdFor(id, req.body.classId);
+    if (!cls.ok) return res.status(400).json({ message: cls.error });
+    const asset = await storage.createVehicleAsset(id, { ...v.data, classId: cls.classId });
     res.status(201).json(asset);
   });
 
@@ -1455,6 +1790,11 @@ export async function registerRoutes(
     }
     const v = validateAssetFields(req.body, false);
     if (!v.ok) return res.status(400).json({ message: v.error });
+    if (req.body.classId !== undefined) {
+      const cls = await classIdFor(id, req.body.classId);
+      if (!cls.ok) return res.status(400).json({ message: cls.error });
+      v.data.classId = cls.classId;
+    }
     const asset = await storage.updateVehicleAsset(id, assetId, v.data);
     if (!asset) return res.status(404).json({ message: "Asset not found" });
     res.json(asset);
@@ -1480,12 +1820,13 @@ export async function registerRoutes(
     if (isNaN(id) || isNaN(assetId)) return res.status(400).json({ message: "Invalid ID" });
     const me = await storage.getAccount(getAuthAccountId(req)!);
     if (!me) return res.status(401).json({ message: "Account not found" });
-    if (!isAdmin(me)) {
-      const vehicleIds = await storage.getVehicleIdsForAccount(me.id);
-      if (!vehicleIds.includes(id)) return res.status(403).json({ message: "Access denied" });
-    }
+    const visible = await visibleClassIds(me, id);
+    if (!visible) return res.status(403).json({ message: "Access denied" });
     const asset = await storage.getVehicleAsset(id, assetId);
     if (!asset) return res.status(404).json({ message: "Asset not found" });
+    if (visible !== "all" && !visible.has(asset.classId)) {
+      return res.status(403).json({ message: "Access denied" });
+    }
     const vals = await storage.getAssetValuations(assetId);
     res.json(vals);
   });
@@ -1556,7 +1897,7 @@ export async function registerRoutes(
 
     if (accountIdQ !== null) {
       if (isNaN(accountIdQ)) return res.status(400).json({ message: "Invalid accountId" });
-      if (!isAdmin(me) && me.id !== accountIdQ) {
+      if (!isAdmin(me) && !(await accessToAccount(me.id, accountIdQ))) {
         return res.status(403).json({ message: "Access denied" });
       }
       const ownedEntities = await storage.getEntityIdsOwnedByAccount(accountIdQ);
@@ -1567,8 +1908,9 @@ export async function registerRoutes(
     if (entityIdQ !== null) {
       if (isNaN(entityIdQ)) return res.status(400).json({ message: "Invalid entityId" });
       if (!isAdmin(me)) {
-        const ownedEntities = await storage.getEntityIdsOwnedByAccount(me.id);
-        const managedEntities = await storage.getEntityIdsForAccount(me.id);
+        const accountIds = await actingAccountIds(me.id);
+        const ownedEntities = await ownedEntityIdsOf(accountIds);
+        const managedEntities = await delegatedEntityIdsOf(accountIds);
         if (!ownedEntities.includes(entityIdQ) && !managedEntities.includes(entityIdQ)) {
           return res.status(403).json({ message: "Access denied" });
         }
@@ -1600,7 +1942,7 @@ export async function registerRoutes(
       return res.json(entitiesList);
     }
 
-    const entityIds = await storage.getEntityIdsForAccount(me.id);
+    const entityIds = await delegatedEntityIdsOf(await actingAccountIds(me.id));
     const allEntities = await storage.getAllEntities(search);
     return res.json(allEntities.filter(e => entityIds.includes(e.id)));
   });
@@ -1611,22 +1953,29 @@ export async function registerRoutes(
     const me = await storage.getAccount(getAuthAccountId(req)!);
     if (!me) return res.status(401).json({ message: "Account not found" });
 
-    if (!isAdmin(me)) {
-      const entityIds = await storage.getEntityIdsForAccount(me.id);
-      if (!entityIds.includes(id)) {
-        return res.status(403).json({ message: "Access denied" });
-      }
+    const access = isAdmin(me) ? "admin" : await accessToEntity(me.id, id);
+    if (!access) {
+      return res.status(403).json({ message: "Access denied" });
     }
 
     const entity = await storage.getEntity(id);
     if (!entity) return res.status(404).json({ message: "Entity not found" });
-    res.json(entity);
+    res.json({ ...entity, access });
   });
 
   app.post("/api/entities", async (req, res) => {
+    const me = await storage.getAccount(getAuthAccountId(req)!);
+    if (!me) return res.status(401).json({ message: "Account not found" });
     try {
-      const data = insertEntitySchema.parse(req.body);
-      const entity = await storage.createEntity(data);
+      const { managerAccountIds, ...data } = createEntitySchema.parse(req.body);
+      // Otherwise they'd create an entity they can't reach.
+      if (!isAdmin(me) && !managerAccountIds.includes(me.id)) {
+        return res.status(400).json({ message: "You must be one of the entity's managers" });
+      }
+      for (const accountId of managerAccountIds) {
+        if (!(await storage.getAccount(accountId))) return res.status(404).json({ message: `Account ${accountId} not found` });
+      }
+      const entity = await storage.createEntity(data, managerAccountIds);
       res.status(201).json(entity);
     } catch (e) {
       if (e instanceof ZodError) {
@@ -1643,7 +1992,7 @@ export async function registerRoutes(
     if (!me) return res.status(401).json({ message: "Account not found" });
 
     if (!isAdmin(me)) {
-      const entityIds = await storage.getEntityIdsForAccount(me.id);
+      const entityIds = await delegatedEntityIdsOf(await actingAccountIds(me.id, "write"), "write");
       if (!entityIds.includes(id)) {
         return res.status(403).json({ message: "Access denied" });
       }
@@ -1677,7 +2026,7 @@ export async function registerRoutes(
     if (!me) return res.status(401).json({ message: "Account not found" });
 
     if (!isAdmin(me)) {
-      const entityIds = await storage.getEntityIdsForAccount(me.id);
+      const entityIds = await delegatedEntityIdsOf(await actingAccountIds(me.id));
       if (!entityIds.includes(id)) {
         return res.status(403).json({ message: "Access denied" });
       }
@@ -1694,7 +2043,7 @@ export async function registerRoutes(
     if (!me) return res.status(401).json({ message: "Account not found" });
 
     if (!isAdmin(me)) {
-      const entityIds = await storage.getEntityIdsForAccount(me.id);
+      const entityIds = await delegatedEntityIdsOf(await actingAccountIds(me.id, "write"), "write");
       if (!entityIds.includes(id)) {
         return res.status(403).json({ message: "Access denied" });
       }
@@ -1732,7 +2081,7 @@ export async function registerRoutes(
     if (!me) return res.status(401).json({ message: "Account not found" });
 
     if (!isAdmin(me)) {
-      const entityIds = await storage.getEntityIdsForAccount(me.id);
+      const entityIds = await delegatedEntityIdsOf(await actingAccountIds(me.id, "write"), "write");
       if (!entityIds.includes(id)) {
         return res.status(403).json({ message: "Access denied" });
       }
@@ -1743,59 +2092,19 @@ export async function registerRoutes(
     res.json({ message: "Owner removed" });
   });
 
-  app.get("/api/entities/:id/managers", async (req, res) => {
+  // An entity's delegations: anyone who can read the entity can list them;
+  // they're changed through /api/delegations.
+  app.get("/api/entities/:id/delegations", async (req, res) => {
     const id = parseInt(req.params.id);
     if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
     const me = await storage.getAccount(getAuthAccountId(req)!);
     if (!me) return res.status(401).json({ message: "Account not found" });
 
-    if (!isAdmin(me)) {
-      const entityIds = await storage.getEntityIdsForAccount(me.id);
-      if (!entityIds.includes(id)) {
-        return res.status(403).json({ message: "Access denied" });
-      }
+    if (!isAdmin(me) && !(await accessToEntity(me.id, id))) {
+      return res.status(403).json({ message: "Access denied" });
     }
-
-    const managers = await storage.getEntityManagers(id);
-    res.json(managers);
-  });
-
-  app.post("/api/entities/:id/managers", async (req, res) => {
-    const id = parseInt(req.params.id);
-    if (isNaN(id)) return res.status(400).json({ message: "Invalid ID" });
-    const me = await storage.getAccount(getAuthAccountId(req)!);
-    if (!me) return res.status(401).json({ message: "Account not found" });
-
-    if (!isAdmin(me)) {
-      const entityIds = await storage.getEntityIdsForAccount(me.id);
-      if (!entityIds.includes(id)) {
-        return res.status(403).json({ message: "Access denied" });
-      }
-    }
-
-    const { accountId } = req.body;
-    if (!accountId) return res.status(400).json({ message: "accountId is required" });
-    const manager = await storage.addEntityManager(id, accountId);
-    res.json(manager);
-  });
-
-  app.delete("/api/entities/:id/managers/:accountId", async (req, res) => {
-    const id = parseInt(req.params.id);
-    const accountId = parseInt(req.params.accountId);
-    if (isNaN(id) || isNaN(accountId)) return res.status(400).json({ message: "Invalid ID" });
-    const me = await storage.getAccount(getAuthAccountId(req)!);
-    if (!me) return res.status(401).json({ message: "Account not found" });
-
-    if (!isAdmin(me)) {
-      const entityIds = await storage.getEntityIdsForAccount(me.id);
-      if (!entityIds.includes(id)) {
-        return res.status(403).json({ message: "Access denied" });
-      }
-    }
-
-    const removed = await storage.removeEntityManager(id, accountId);
-    if (!removed) return res.status(404).json({ message: "Manager not found" });
-    res.json({ message: "Manager removed" });
+    if (!(await storage.getEntity(id))) return res.status(404).json({ message: "Entity not found" });
+    res.json(await storage.getDelegationsForEntity(id));
   });
 
   registerDocumentRoutes(app);

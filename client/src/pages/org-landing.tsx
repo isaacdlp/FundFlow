@@ -1,7 +1,7 @@
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useRoute, useSearch } from "wouter";
 import { useTranslation } from "react-i18next";
-import { useLocale } from "@/i18n/hooks";
+import { useLocale, useLocaleFullPath } from "@/i18n/hooks";
 import { ROUTE_PATTERNS } from "@/i18n/routes";
 import type { OrganizationPublic } from "@shared/types";
 import { apiRequest } from "@/lib/queryClient";
@@ -11,7 +11,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
-import { Building2, Globe, MapPin, CheckCircle2, Clock } from "lucide-react";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Building2, Globe, MapPin, CheckCircle2, Clock, AlertCircle } from "lucide-react";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -19,6 +20,7 @@ type FlowMode = "choose" | "signup" | "signin" | "success";
 
 export default function OrgLanding() {
   const locale = useLocale();
+  const localePath = useLocaleFullPath();
   const { t } = useTranslation();
   const [, params] = useRoute(ROUTE_PATTERNS.orgLanding[locale]);
   const slug = params?.slug;
@@ -30,6 +32,10 @@ export default function OrgLanding() {
   const [mode, setMode] = useState<FlowMode>("choose");
   const [successMessage, setSuccessMessage] = useState("");
   const [successStatus, setSuccessStatus] = useState<"approved" | "pending">("pending");
+  // Signing in on this page starts a session; signing up doesn't.
+  const [signedIn, setSignedIn] = useState(false);
+  // The email a sign-up was refused for because it already has an account.
+  const [existingEmail, setExistingEmail] = useState<string | null>(null);
 
   const [signupForm, setSignupForm] = useState({ firstName: "", lastName: "", email: "", password: "" });
   const [signinForm, setSigninForm] = useState({ email: "", password: "" });
@@ -53,7 +59,7 @@ export default function OrgLanding() {
     mutationFn: async () => {
       // New accounts can only be created through a valid invite; account
       // creation via POST /api/accounts is admin-only.
-      const res = await apiRequest("POST", `/api/invites/${inviteToken}/accept`, signupForm);
+      const res = await apiRequest("POST", `/api/invites/${inviteToken}/accept`, { ...signupForm, language: locale });
       return res.json();
     },
     onSuccess: () => {
@@ -63,14 +69,13 @@ export default function OrgLanding() {
           ? t("landing.successInviteApproved")
           : t("landing.successPendingNew")
       );
+      setSignedIn(false);
       setMode("success");
     },
     onError: (error: Error) => {
-      const msg = error.message || "";
-      if (msg.includes("409") || msg.includes("already exists")) {
-        toast({ title: t("landing.errorAccountExistsTitle"), description: t("landing.errorAccountExistsDescription"), variant: "destructive" });
-        setMode("signin");
-        setSigninForm({ email: signupForm.email, password: "" });
+      // apiRequest errors read "<status>: <body>".
+      if (error.message.startsWith("409")) {
+        setExistingEmail(signupForm.email);
         return;
       }
       toast({ title: t("landing.errorTitle"), description: error.message, variant: "destructive" });
@@ -97,6 +102,7 @@ export default function OrgLanding() {
           ? t("landing.successInviteApprovedExisting")
           : t("landing.successPendingExisting")
       );
+      setSignedIn(true);
       setMode("success");
     },
     onError: (error: Error) => {
@@ -198,6 +204,12 @@ export default function OrgLanding() {
                 {successStatus === "approved" ? t("landing.successAccessGranted") : t("landing.successRequestSubmitted")}
               </h2>
               <p className="text-muted-foreground" data-testid="text-success-message">{successMessage}</p>
+              {/* A full page load, so the app picks up the session (or shows the login page). */}
+              <Button asChild className="mt-6" data-testid="link-success-portal">
+                <a href={localePath("dashboard")}>
+                  {signedIn ? t("landing.goToPortal") : t("landing.goToSignIn")}
+                </a>
+              </Button>
             </CardContent>
           </Card>
         )}
@@ -271,6 +283,33 @@ export default function OrgLanding() {
                   data-testid="input-signup-password"
                 />
               </div>
+
+              {existingEmail !== null && existingEmail === signupForm.email && (
+                <Alert variant="destructive" data-testid="alert-account-exists">
+                  <AlertCircle className="h-4 w-4" />
+                  <AlertTitle>{t("landing.errorAccountExistsTitle")}</AlertTitle>
+                  <AlertDescription className="space-y-3">
+                    <p>{t("landing.errorAccountExistsDescription")}</p>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        size="sm"
+                        onClick={() => {
+                          setSigninForm({ email: existingEmail, password: "" });
+                          setMode("signin");
+                        }}
+                        data-testid="button-account-exists-signin"
+                      >
+                        {t("landing.signInInstead")}
+                      </Button>
+                      <Button size="sm" variant="outline" asChild data-testid="link-account-exists-recover">
+                        <a href={`${localePath("forgotPassword")}?email=${encodeURIComponent(existingEmail)}`}>
+                          {t("landing.recoverPassword")}
+                        </a>
+                      </Button>
+                    </div>
+                  </AlertDescription>
+                </Alert>
+              )}
 
               <Separator />
 

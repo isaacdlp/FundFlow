@@ -29,14 +29,93 @@ import { useSort } from "@/hooks/use-sort";
 import { SortableTableHead } from "@/components/sortable-table-head";
 import { usePagination } from "@/hooks/use-pagination";
 import { ListPagination } from "@/components/list-pagination";
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
 
-function MembersTab({ orgId, canEdit }: { orgId: string; canEdit: boolean }) {
+const memberName = (m: MemberInfo) => `${m.account.firstName} ${m.account.lastName}`;
+const feeOf = (v: string | null) => (v === null ? null : parseFloat(v));
+const formatFee = (v: string | null) => (v === null ? "—" : `${parseFloat(v)}%`);
+
+/** Edits a member's default fees in the organization (blank = no default). */
+function MemberFeesDialog({ orgId, member, onClose }: { orgId: string; member: MemberInfo | null; onClose: () => void }) {
+  const { t } = useTranslation();
+  const { toast } = useToast();
+  const [managementFee, setManagementFee] = useState("");
+  const [successFee, setSuccessFee] = useState("");
+
+  useEffect(() => {
+    if (member) {
+      setManagementFee(member.managementFeePercent === null ? "" : String(parseFloat(member.managementFeePercent)));
+      setSuccessFee(member.successFeePercent === null ? "" : String(parseFloat(member.successFeePercent)));
+    }
+  }, [member]);
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest("PATCH", `/api/organizations/${orgId}/members/${member!.accountId}`, {
+        managementFeePercent: managementFee.trim() === "" ? null : managementFee.trim(),
+        successFeePercent: successFee.trim() === "" ? null : successFee.trim(),
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/organizations", orgId, "members"] });
+      toast({ title: t("organizationDetail.memberFeesSaved") });
+      onClose();
+    },
+    onError: (error: Error) => {
+      toast({ title: t("organizationDetail.memberUpdateFailed"), description: error.message, variant: "destructive" });
+    },
+  });
+
+  return (
+    <Dialog open={member !== null} onOpenChange={open => { if (!open) onClose(); }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{t("organizationDetail.memberFeesTitle")}</DialogTitle>
+          <DialogDescription>{member && memberName(member)}</DialogDescription>
+        </DialogHeader>
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="member-management-fee">{t("organizationDetail.managementFeePercent")}</Label>
+            <Input id="member-management-fee" type="number" step="0.01" min="0" max="100" value={managementFee}
+              onChange={e => setManagementFee(e.target.value)} placeholder="—" data-testid="input-member-management-fee" />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="member-success-fee">{t("organizationDetail.successFeePercent")}</Label>
+            <Input id="member-success-fee" type="number" step="0.01" min="0" max="100" value={successFee}
+              onChange={e => setSuccessFee(e.target.value)} placeholder="—" data-testid="input-member-success-fee" />
+          </div>
+        </div>
+        <p className="text-xs text-muted-foreground">{t("organizationDetail.memberFeesHint")}</p>
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose}>{t("common.cancel")}</Button>
+          <Button onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending} data-testid="button-save-member-fees">
+            {saveMutation.isPending ? t("common.saving") : t("common.save")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+export function MembersTab({ orgId, canEdit }: { orgId: string; canEdit: boolean }) {
   const { toast } = useToast();
   const { t } = useTranslation();
+  const lp = useLocalePath();
 
   const { data: members, isLoading } = useQuery<MemberInfo[]>({
     queryKey: ["/api/organizations", orgId, "members"],
   });
+  const [editingFees, setEditingFees] = useState<MemberInfo | null>(null);
+  const approvedMembers = members?.filter(m => m.status === "approved");
+  const approvedSort = useSort(approvedMembers, {
+    name: memberName,
+    email: m => m.account.email,
+    managementFee: m => feeOf(m.managementFeePercent),
+    successFee: m => feeOf(m.successFeePercent),
+  });
+  const approvedPages = usePagination(approvedSort.sorted, approvedSort.sort);
 
   const updateStatusMutation = useMutation({
     mutationFn: async ({ accountId, status }: { accountId: number; status: string }) => {
@@ -135,30 +214,52 @@ function MembersTab({ orgId, canEdit }: { orgId: string; canEdit: boolean }) {
         </CardHeader>
         <CardContent>
           {approved.length > 0 ? (
-            <div className="space-y-3">
-              {approved.map(member => (
-                <div key={member.id} className="flex items-center gap-3 p-3 rounded-md border" data-testid={`member-approved-${member.accountId}`}>
-                  <div className="h-10 w-10 rounded-full bg-green-100 dark:bg-green-900 flex items-center justify-center text-green-700 dark:text-green-300 text-sm font-semibold flex-shrink-0">
-                    {member.account.firstName[0]}{member.account.lastName[0]}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{member.account.firstName} {member.account.lastName}</p>
-                    <p className="text-xs text-muted-foreground truncate">{member.account.email}</p>
-                  </div>
-                  {member.inviteId && <Badge variant="outline" className="text-xs">{t("organizationDetail.viaInvite")}</Badge>}
-                  {canEdit && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => removeMutation.mutate(member.accountId)}
-                      disabled={removeMutation.isPending}
-                      data-testid={`button-remove-member-${member.accountId}`}
-                    >
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
-                  )}
-                </div>
-              ))}
+            <div className="rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <SortableTableHead control={approvedSort} column="name">{t("common.name")}</SortableTableHead>
+                    <SortableTableHead control={approvedSort} column="email">{t("common.email")}</SortableTableHead>
+                    <SortableTableHead control={approvedSort} column="managementFee" className="text-right">{t("organizationDetail.managementFee")}</SortableTableHead>
+                    <SortableTableHead control={approvedSort} column="successFee" className="text-right">{t("organizationDetail.successFee")}</SortableTableHead>
+                    {canEdit && <TableHead className="w-[100px]" />}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {approvedPages.items.map(member => (
+                    <TableRow key={member.id} data-testid={`member-approved-${member.accountId}`}>
+                      <TableCell>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <Link href={lp("accountDetail", { id: member.accountId })} className="text-sm font-medium hover:underline">{memberName(member)}</Link>
+                          {member.inviteId && <Badge variant="outline" className="text-xs">{t("organizationDetail.viaInvite")}</Badge>}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{member.account.email}</TableCell>
+                      <TableCell className="text-right text-sm" data-testid={`text-member-management-fee-${member.accountId}`}>{formatFee(member.managementFeePercent)}</TableCell>
+                      <TableCell className="text-right text-sm" data-testid={`text-member-success-fee-${member.accountId}`}>{formatFee(member.successFeePercent)}</TableCell>
+                      {canEdit && (
+                        <TableCell>
+                          <div className="flex gap-1 justify-end">
+                            <Button variant="ghost" size="icon" onClick={() => setEditingFees(member)} data-testid={`button-edit-member-fees-${member.accountId}`}>
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              onClick={() => removeMutation.mutate(member.accountId)}
+                              disabled={removeMutation.isPending}
+                              data-testid={`button-remove-member-${member.accountId}`}
+                            >
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                      )}
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              <ListPagination control={approvedPages.control} className="border-t" />
             </div>
           ) : (
             <p className="text-sm text-muted-foreground text-center py-6">{t("organizationDetail.noApprovedMembers")}</p>
@@ -220,6 +321,8 @@ function MembersTab({ orgId, canEdit }: { orgId: string; canEdit: boolean }) {
           </CardContent>
         </Card>
       )}
+
+      <MemberFeesDialog orgId={orgId} member={editingFees} onClose={() => setEditingFees(null)} />
     </div>
   );
 }
@@ -368,6 +471,19 @@ function InvitesTab({ orgId, slug, canEdit }: { orgId: string; slug: string; can
     },
   });
 
+  const deleteInviteMutation = useMutation({
+    mutationFn: async (inviteId: number) => {
+      await apiRequest("DELETE", `/api/organizations/${orgId}/invites/${inviteId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/organizations", orgId, "invites"] });
+      toast({ title: t("organizationDetail.inviteDeleted") });
+    },
+    onError: (error: Error) => {
+      toast({ title: t("organizationDetail.inviteDeleteFailed"), description: error.message, variant: "destructive" });
+    },
+  });
+
   const copyInviteUrl = (token: string) => {
     const url = `${window.location.origin}/org/${slug}?invite=${token}`;
     navigator.clipboard.writeText(url);
@@ -459,6 +575,19 @@ function InvitesTab({ orgId, slug, canEdit }: { orgId: string; slug: string; can
                     >
                       <Copy className="h-3.5 w-3.5 mr-1.5" />
                       {t("organizationDetail.copyLink")}
+                    </Button>
+                  )}
+                  {canEdit && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => deleteInviteMutation.mutate(invite.id)}
+                      disabled={deleteInviteMutation.isPending}
+                      title={t("organizationDetail.deleteInvite")}
+                      aria-label={t("organizationDetail.deleteInvite")}
+                      data-testid={`button-delete-invite-${invite.id}`}
+                    >
+                      <Trash2 className="h-4 w-4 text-destructive" />
                     </Button>
                   )}
                 </div>

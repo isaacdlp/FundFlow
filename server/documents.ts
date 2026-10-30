@@ -6,6 +6,7 @@ import { existsSync, mkdirSync } from "fs";
 import crypto from "crypto";
 import { eq, and, or, inArray, desc } from "drizzle-orm";
 import { db, storage } from "./storage";
+import { actingAccountIds, delegatedEntityIdsOf, ownedEntityIdsOf } from "./access";
 import {
   documents, appSettings, accounts, entities,
   type Document,
@@ -97,10 +98,12 @@ async function visibleDocsForAccount(accountId: number): Promise<Document[]> {
   if (isAdminAccount(acc.roles)) {
     return db.select().from(documents).orderBy(desc(documents.createdAt));
   }
-  const ownedEntityIds = await storage.getEntityIdsOwnedByAccount(accountId);
-  const managedEntityIds = await storage.getEntityIdsForAccount(accountId);
-  const entityIds = Array.from(new Set([...ownedEntityIds, ...managedEntityIds]));
-  const conds: any[] = [eq(documents.accountId, accountId)];
+  // Their own documents and those of the accounts that delegated to them.
+  const accountIds = await actingAccountIds(accountId);
+  const ownedEntityIds = await ownedEntityIdsOf(accountIds);
+  const delegatedEntityIds = await delegatedEntityIdsOf(accountIds);
+  const entityIds = Array.from(new Set([...ownedEntityIds, ...delegatedEntityIds]));
+  const conds: any[] = [inArray(documents.accountId, accountIds)];
   if (entityIds.length > 0) conds.push(inArray(documents.entityId, entityIds));
   return db.select().from(documents).where(or(...conds)).orderBy(desc(documents.createdAt));
 }

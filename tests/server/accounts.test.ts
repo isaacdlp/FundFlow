@@ -289,6 +289,26 @@ describe("/api/accounts", () => {
       expect(res.body.firstName).toBe("Updated");
     });
 
+    it("saves the middle name and mailing address", async () => {
+      const agent = await loginAs(app, mockStorage, fixtures.memberAccount);
+      mockStorage.updateAccount.mockResolvedValue(fixtures.memberAccount);
+      const fields = {
+        middleName: "Eusebio",
+        mailingStreetAddress1: "Apartado 12",
+        mailingStreetAddress2: "",
+        mailingCity: "Luarca",
+        mailingStateProvince: "Asturias",
+        mailingZipPostalCode: "33700",
+        mailingCountry: "Spain",
+      };
+      const res = await agent.patch(`/api/accounts/${fixtures.memberAccount.id}`).send(fields);
+      expect(res.status).toBe(200);
+      expect(mockStorage.updateAccount).toHaveBeenCalledWith(
+        fixtures.memberAccount.id,
+        expect.objectContaining(fields),
+      );
+    });
+
     it("clearing the birthdate sends null, not an empty string", async () => {
       const agent = await loginAs(app, mockStorage, fixtures.memberAccount);
       mockStorage.updateAccount.mockResolvedValue(fixtures.memberAccount);

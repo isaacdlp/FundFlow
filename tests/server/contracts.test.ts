@@ -76,6 +76,13 @@ describe("promoter contract drafts", () => {
     });
   });
 
+  it("uses the full legal name, middle name included", () => {
+    const account = { ...promoterAccount, middleName: "Augusta" };
+    const draft = buildPromoterContractDraft(account as any, [], "us@example.com", true);
+    expect(draft.variables.Beneficiary).toBe("Ada Augusta Lovelace");
+    expect(draft.title).toBe("Promoter Agreement for Ada Augusta Lovelace");
+  });
+
   it("lists every incentive in Detail of Fees, management fee first, in capitals", () => {
     const incentives = [
       { id: 2, promoterId: 3, type: "success_fee", percent: "10.00" },

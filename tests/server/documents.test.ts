@@ -163,7 +163,7 @@ describe("/api/documents", () => {
       expect(res.status).toBe(200);
       expect(res.body).toHaveLength(1);
       expect(mockStorage.getEntityIdsOwnedByAccount).toHaveBeenCalledWith(2);
-      expect(mockStorage.getEntityIdsForAccount).toHaveBeenCalledWith(2);
+      expect(mockStorage.getEntityIdsForAccount).toHaveBeenCalledWith(2, "observer");
     });
   });
 

@@ -5,9 +5,13 @@ import { loginAs } from "./setup/auth-helper";
 
 const mockStorage = makeMockStorage();
 vi.mock("../../server/storage", () => ({ storage: mockStorage }));
-vi.mock("../../server/email", () => ({ sendPasswordResetEmail: vi.fn() }));
+vi.mock("../../server/email", () => ({
+  sendPasswordResetEmail: vi.fn(),
+  sendRegistrationEmail: vi.fn().mockResolvedValue(true),
+}));
 
 const { createTestApp } = await import("./setup/test-app");
+const { sendRegistrationEmail } = await import("../../server/email");
 
 describe("Invites", () => {
   let app: Awaited<ReturnType<typeof createTestApp>>;
@@ -15,6 +19,7 @@ describe("Invites", () => {
 
   beforeEach(async () => {
     Object.assign(mockStorage, makeMockStorage());
+    vi.mocked(sendRegistrationEmail).mockClear().mockResolvedValue(true);
     app = await createTestApp();
   });
 
@@ -155,6 +160,89 @@ describe("Invites", () => {
       expect(res.status).toBe(200);
       expect(mockStorage.useInvite).toHaveBeenCalled();
     });
+
+    it("sends the new account a welcome email in their language, without the password", async () => {
+      mockStorage.getInviteByToken.mockResolvedValue(fixtures.invite());
+      mockStorage.getOrganization.mockResolvedValue({ ...orgA, name: "Acme Capital" });
+      mockStorage.createAccount.mockImplementation(async (data: any) => ({
+        ...fixtures.memberAccount, id: 50, email: data.email, firstName: data.firstName, language: data.language,
+      }));
+      mockStorage.createMemberRequest.mockResolvedValue(fixtures.member({ accountId: 50 }));
+      const res = await request(app)
+        .post("/api/invites/test-invite-token/accept")
+        .send({ email: "new@test.local", password: "secret123", firstName: "New", lastName: "User", language: "es" });
+      expect(res.status).toBe(200);
+      expect(res.body.welcomeEmail).toBe("sent");
+      expect(mockStorage.createAccount).toHaveBeenCalledWith(expect.objectContaining({ language: "es" }));
+      expect(sendRegistrationEmail).toHaveBeenCalledWith("new@test.local", "New", "Acme Capital", "es");
+    });
+
+    it("ignores an unknown language and still accepts when the welcome email fails", async () => {
+      vi.mocked(sendRegistrationEmail).mockResolvedValue(false);
+      mockStorage.getInviteByToken.mockResolvedValue(fixtures.invite());
+      mockStorage.getOrganization.mockResolvedValue(orgA);
+      mockStorage.createAccount.mockImplementation(async (data: any) => ({ ...fixtures.memberAccount, id: 50, language: data.language }));
+      mockStorage.createMemberRequest.mockResolvedValue(fixtures.member({ accountId: 50 }));
+      const res = await request(app)
+        .post("/api/invites/test-invite-token/accept")
+        .send({ email: "new@test.local", password: "secret123", firstName: "New", lastName: "User", language: "xx" });
+      expect(res.status).toBe(200);
+      expect(res.body.welcomeEmail).toBe("failed");
+      expect(mockStorage.createAccount).toHaveBeenCalledWith(expect.objectContaining({ language: "en" }));
+      expect(mockStorage.useInvite).toHaveBeenCalled();
+    });
+
+    it("409s before creating anything when the email already has an account", async () => {
+      mockStorage.getInviteByToken.mockResolvedValue(fixtures.invite());
+      mockStorage.getAccountByEmail.mockResolvedValue(fixtures.memberAccount);
+      const res = await request(app)
+        .post("/api/invites/test-invite-token/accept")
+        .send({ email: fixtures.memberAccount.email, password: "secret123", firstName: "Ex", lastName: "Ists" });
+      expect(res.status).toBe(409);
+      expect(res.body.message).toMatch(/already exists/);
+      expect(mockStorage.createAccount).not.toHaveBeenCalled();
+      expect(mockStorage.useInvite).not.toHaveBeenCalled();
+    });
+
+    it("409s (not 500) when the insert hits the unique email constraint, as Drizzle wraps it", async () => {
+      mockStorage.getInviteByToken.mockResolvedValue(fixtures.invite());
+      const wrapped = new Error('Failed query: insert into "accounts" ... params: ...');
+      (wrapped as any).cause = Object.assign(new Error("boom"), { code: "23505" });
+      mockStorage.createAccount.mockRejectedValue(wrapped);
+      const res = await request(app)
+        .post("/api/invites/test-invite-token/accept")
+        .send({ email: "race@test.local", password: "secret123", firstName: "Ra", lastName: "Ce" });
+      expect(res.status).toBe(409);
+      expect(res.body.message).not.toMatch(/Failed query/);
+    });
+
+    it("sends no welcome email when an existing account accepts", async () => {
+      const agent = await loginAs(app, mockStorage, fixtures.memberAccount);
+      mockStorage.getInviteByToken.mockResolvedValue(fixtures.invite());
+      mockStorage.createMemberRequest.mockResolvedValue(fixtures.member());
+      const res = await agent.post("/api/invites/test-invite-token/accept").send({});
+      expect(res.status).toBe(200);
+      expect(res.body.welcomeEmail).toBeUndefined();
+      expect(sendRegistrationEmail).not.toHaveBeenCalled();
+    });
+
+    it("leaves the invite usable when creating the membership fails", async () => {
+      const agent = await loginAs(app, mockStorage, fixtures.memberAccount);
+      mockStorage.getInviteByToken.mockResolvedValue(fixtures.invite());
+      mockStorage.createMemberRequest.mockRejectedValue(new Error("Failed to create membership"));
+      const res = await agent.post("/api/invites/test-invite-token/accept").send({});
+      expect(res.status).toBe(500);
+      expect(mockStorage.useInvite).not.toHaveBeenCalled();
+    });
+
+    it("viewing an invite does not use it up", async () => {
+      mockStorage.getInviteByToken.mockResolvedValue(fixtures.invite());
+      mockStorage.getOrganization.mockResolvedValue(orgA);
+      await request(app).get("/api/invites/test-invite-token");
+      const again = await request(app).get("/api/invites/test-invite-token");
+      expect(again.status).toBe(200);
+      expect(mockStorage.useInvite).not.toHaveBeenCalled();
+    });
   });
 
   describe("GET /api/organizations/:id/invites (auth)", () => {
@@ -191,6 +279,37 @@ describe("Invites", () => {
       const res = await agent.post(`/api/organizations/${orgA.id}/invites`);
       expect(res.status).toBe(201);
       expect(res.body.token).toBeTruthy();
+    });
+  });
+
+  describe("DELETE /api/organizations/:id/invites/:inviteId (auth)", () => {
+    it("a plain member gets 403 and nothing is deleted", async () => {
+      const agent = await loginAs(app, mockStorage, fixtures.memberAccount);
+      mockStorage.getOrganizationIdsAsOrganizer.mockResolvedValue([]);
+      const res = await agent.delete(`/api/organizations/${orgA.id}/invites/50`);
+      expect(res.status).toBe(403);
+      expect(mockStorage.deleteInvite).not.toHaveBeenCalled();
+    });
+
+    it("organizer can delete an invite of their organization", async () => {
+      const agent = await loginAs(app, mockStorage, fixtures.organizerAccount);
+      mockStorage.getOrganizationIdsAsOrganizer.mockResolvedValue([orgA.id]);
+      const res = await agent.delete(`/api/organizations/${orgA.id}/invites/50`);
+      expect(res.status).toBe(200);
+      expect(mockStorage.deleteInvite).toHaveBeenCalledWith(orgA.id, 50);
+    });
+
+    it("returns 404 when the invite isn't in that organization", async () => {
+      const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
+      mockStorage.deleteInvite.mockResolvedValue(false);
+      const res = await agent.delete(`/api/organizations/${orgA.id}/invites/999`);
+      expect(res.status).toBe(404);
+    });
+
+    it("returns 400 for a non-numeric invite id", async () => {
+      const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
+      const res = await agent.delete(`/api/organizations/${orgA.id}/invites/abc`);
+      expect(res.status).toBe(400);
     });
   });
 });

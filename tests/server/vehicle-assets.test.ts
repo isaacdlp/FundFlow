@@ -190,7 +190,7 @@ describe("Vehicle assets", () => {
       const agent = await loginAs(app, mockStorage, fixtures.adminAccount);
       mockStorage.getVehicle.mockResolvedValue({ ...vehicleWithCash, autoDeploy: true });
       mockStorage.getVehicleAssets.mockResolvedValue([
-        { id: 1, vehicleId: vehicle.id, companyName: "X", instrumentType: "Equity", cost: "0", isDefault: true, currentValue: "0" },
+        { id: 1, vehicleId: vehicle.id, classId: 1, companyName: "X", instrumentType: "Equity", cost: "0", isDefault: true, currentValue: "0" },
       ]);
       mockStorage.getAccount.mockResolvedValue(fixtures.adminAccount);
       mockStorage.getMember.mockResolvedValue({ status: "approved" });
