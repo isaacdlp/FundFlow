@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { useLocalePath, useLocale } from "@/i18n/hooks";
 import { fmtMoney } from "@/lib/format";
 import { ROUTE_PATTERNS } from "@/i18n/routes";
-import type { VehicleInfo, VehicleMemberInfo, MemberInfo, OrganizerAccount, EntityInfo, VehicleAssetInfo, VehicleAssetValuationInfo, VehicleClassInfo, CurrencyInfo } from "@shared/types";
+import type { EntityMemberInfo, VehicleInfo, VehicleMemberInfo, MemberInfo, OrganizerAccount, EntityInfo, VehicleAssetInfo, VehicleAssetValuationInfo, VehicleClassInfo, CurrencyInfo } from "@shared/types";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -27,7 +27,7 @@ import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useOrgPermissions } from "@/hooks/use-org-permissions";
 import { SearchPicker, type SearchPickerOption } from "@/components/search-picker";
-import { investorFeeDefaults, managementFeeAmount } from "@shared/fees";
+import { entityFeeDefaults, investorFeeDefaults, managementFeeAmount } from "@shared/fees";
 import { useAuth } from "@/hooks/use-auth";
 import { memberShares, showsClasses } from "@shared/vehicle-classes";
 import { VehicleClassesTab, ClassSelect } from "@/components/vehicle-classes";
@@ -92,18 +92,23 @@ function VehicleMembersTab({ vehicleId, orgId, canEdit, allocationMethod, curren
     queryKey: ["/api/entities"],
   });
 
+  const { data: entityMembers } = useQuery<EntityMemberInfo[]>({
+    queryKey: ["/api/organizations", String(orgId), "entity-members"],
+    enabled: canEdit,
+  });
+
   const approvedOrgMembers = orgMembers?.filter(m => m.status === "approved") || [];
   // Investors can hold multiple positions ("tranches") in the same Vehicle — do not filter out existing members.
   const accountOptions: SearchPickerOption[] = approvedOrgMembers.map(m => (
-    { value: String(m.accountId), label: `${m.account.firstName} ${m.account.lastName}`, detail: m.account.email }));
+    { value: String(m.accountId), label: `${m.account.firstName} ${m.account.lastName}`, detail: m.account.email ?? undefined }));
   const entityOptions: SearchPickerOption[] = (entitiesList ?? []).map(e => ({ value: String(e.id), label: e.name, detail: e.entityType }));
 
   // Default fees: the member's own, or for an entity the lowest of its managers' in the organization.
   const selectedEntity = entitiesList?.find(e => String(e.id) === selectedEntityId);
-  const investorMemberships = investorType === "account"
-    ? (selectedAccountId ? approvedOrgMembers.filter(m => String(m.accountId) === selectedAccountId) : null)
-    : (selectedEntity ? (orgMembers ?? []).filter(m => selectedEntity.managers.some(x => x.accountId === m.accountId)) : null);
-  const feeDefaults = investorMemberships ? investorFeeDefaults(investorMemberships) : null;
+  const selectedEntityMember = entityMembers?.find(m => String(m.entityId) === selectedEntityId);
+  const feeDefaults = investorType === "account"
+    ? (selectedAccountId ? investorFeeDefaults(approvedOrgMembers.filter(m => String(m.accountId) === selectedAccountId)) : null)
+    : (selectedEntity ? entityFeeDefaults(selectedEntityMember, (orgMembers ?? []).filter(m => selectedEntity.managers.some(x => x.accountId === m.accountId))) : null);
   const defaultManagementPercent = feeDefaults?.managementFeePercent ?? null;
   const defaultSuccessPercent = feeDefaults?.successFeePercent ?? null;
   useEffect(() => {

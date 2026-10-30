@@ -5,14 +5,14 @@
  *
  * IDs in the snapshot are the source instance's IDs and are only used as
  * references between records; the importer assigns fresh IDs locally.
- * Tax IDs and bank account/routing numbers are blanked on export.
+ * Tax IDs, bank account/routing numbers, KYC links, notes and tax form links are blanked on export.
  */
 
 import { DEFAULT_CLASS_NAME } from "@shared/vehicle-classes";
 
 export interface DevAccount {
   ref: number;
-  email: string;
+  email: string | null;
   firstName: string;
   // Optional: snapshots taken before these fields existed don't have them.
   middleName?: string | null;
@@ -44,7 +44,7 @@ export interface DevEntity {
   delegations?: DevEntityDelegation[];
   /** Snapshots taken before delegations: every listed account is a manager. */
   managers?: number[];
-  owners: { ownerType: string; accountRef: number | null; entityRef: number | null; ownershipPercent: string | null }[];
+  owners: { ownerType: string; accountRef: number | null; entityRef: number | null; ownerName?: string | null; ownershipPercent: string | null }[];
 }
 
 export interface DevMember {
@@ -119,8 +119,9 @@ export const DEFAULT_DEV_VEHICLES = ["Kapital", "Kushki", "Modelia"];
 
 // Fields never copied out of the source instance (beyond passwordHash, which
 // the API never returns anyway).
-const SENSITIVE_FIELDS = ["taxId", "bankAccountNumber", "bankRoutingNumber"];
-const SERVER_FIELDS = ["id", "createdAt", "updatedAt"];
+const SENSITIVE_FIELDS = ["taxId", "bankAccountNumber", "bankRoutingNumber", "kycUrl", "notes", "taxFormUrl"];
+// Includes ids of rows that aren't remapped on seed.
+const SERVER_FIELDS = ["id", "createdAt", "updatedAt", "taxFormDocumentId", "signatoryAccountId", "disregardedToEntityId"];
 
 function pick(obj: Record<string, any>, omit: string[]): Record<string, unknown> {
   const out: Record<string, unknown> = {};
@@ -245,6 +246,7 @@ export async function exportDevData(
         ownerType: o.ownerType,
         accountRef: o.ownerAccountId ?? null,
         entityRef: o.ownerEntityId ?? null,
+        ownerName: o.ownerName ?? null,
         ownershipPercent: o.ownershipPercent,
       })),
     });
@@ -303,7 +305,7 @@ export interface DevDataSink {
   addMember(organizationId: number, accountId: number, status: string, fees: { managementFeePercent: string | null; successFeePercent: string | null }): Promise<void>;
   insertEntity(fields: Record<string, unknown>): Promise<number>;
   addEntityDelegation(entityId: number, delegation: { accountId: number; level: string; notes: string | null }): Promise<void>;
-  addEntityOwner(entityId: number, owner: { ownerType: string; ownerAccountId: number | null; ownerEntityId: number | null; ownershipPercent: string | null }): Promise<void>;
+  addEntityOwner(entityId: number, owner: { ownerType: string; ownerAccountId: number | null; ownerEntityId: number | null; ownerName?: string | null; ownershipPercent: string | null }): Promise<void>;
   insertVehicle(fields: Record<string, unknown>): Promise<number>;
   insertVehicleClass(vehicleId: number, cls: { name: string; notes: string | null }): Promise<number>;
   insertVehicleMember(vehicleId: number, member: Omit<DevVehicleMember, "accountRef" | "entityRef" | "classRef"> & { accountId: number | null; entityId: number | null; classId: number }): Promise<void>;
@@ -324,7 +326,7 @@ export async function importDevData(data: DevDataset, sink: DevDataSink): Promis
 
   const accountIds = new Map<number, number>();
   for (const { ref, isAdmin, ...account } of data.accounts) {
-    const existing = await sink.findAccountByEmail(account.email);
+    const existing = account.email ? await sink.findAccountByEmail(account.email) : undefined;
     if (existing !== undefined) {
       accountIds.set(ref, existing);
       result.accountsReused++;
@@ -372,6 +374,7 @@ export async function importDevData(data: DevDataset, sink: DevDataSink): Promis
         ownerType: o.ownerType,
         ownerAccountId: account(o.accountRef),
         ownerEntityId: entity(o.entityRef),
+        ownerName: o.ownerName ?? null,
         ownershipPercent: o.ownershipPercent,
       });
     }

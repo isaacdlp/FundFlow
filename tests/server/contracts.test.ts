@@ -59,7 +59,7 @@ const contract = (overrides: Record<string, any> = {}) => ({
 
 describe("promoter contract drafts", () => {
   it("prefills the contract in English, and the invitation in the promoter's language", () => {
-    const draft = buildPromoterContractDraft(promoterAccount as any, promoter().incentives as any, "us@example.com", true);
+    const draft = buildPromoterContractDraft(promoterAccount as any, promoter().incentives as any, "us@example.com", true, promoterAccount.email);
     expect(draft.title).toBe("Promoter Agreement for Ada Lovelace");
     expect(draft.subject).toBe("Acuerdo de Promotor para Ada Lovelace");
     expect(draft.message).toBe("Por favor, revisa y firma el acuerdo adjunto.");
@@ -78,7 +78,7 @@ describe("promoter contract drafts", () => {
 
   it("uses the full legal name, middle name included", () => {
     const account = { ...promoterAccount, middleName: "Augusta" };
-    const draft = buildPromoterContractDraft(account as any, [], "us@example.com", true);
+    const draft = buildPromoterContractDraft(account as any, [], "us@example.com", true, account.email);
     expect(draft.variables.Beneficiary).toBe("Ada Augusta Lovelace");
     expect(draft.title).toBe("Promoter Agreement for Ada Augusta Lovelace");
   });
@@ -93,7 +93,7 @@ describe("promoter contract drafts", () => {
   });
 
   it("doesn't list the same person twice as signer", () => {
-    const draft = buildPromoterContractDraft(promoterAccount as any, [], "ADA@example.com", true);
+    const draft = buildPromoterContractDraft(promoterAccount as any, [], "ADA@example.com", true, promoterAccount.email);
     expect(draft.signers).toEqual(["ada@example.com"]);
   });
 

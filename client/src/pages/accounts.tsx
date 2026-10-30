@@ -53,7 +53,7 @@ export default function Accounts() {
     if (!search) return true;
     const q = normalizeSearch(search);
     return normalizeSearch(`${account.firstName} ${account.lastName}`).includes(q) ||
-      normalizeSearch(account.email).includes(q);
+      normalizeSearch(account.email ?? "").includes(q);
   });
   const sort = useSort(filtered, {
     name: (a) => `${a.firstName} ${a.lastName}`,
@@ -121,7 +121,7 @@ export default function Accounts() {
                             </div>
                           </Link>
                         </TableCell>
-                        <TableCell className="text-muted-foreground">{account.email}</TableCell>
+                        <TableCell className="text-muted-foreground">{account.email ?? t("profile.managedAccount")}</TableCell>
                         <TableCell>
                           <div className="flex gap-1 flex-wrap">
                             {account.roles.map((role) => (

@@ -85,7 +85,7 @@ export function AccountRelationships({ account }: { account: Person }) {
   // An account may already be linked in one direction and still get the reverse one (wife / husband).
   const options: SearchPickerOption[] = (accountsList ?? [])
     .filter(a => a.id !== account.id)
-    .map(a => ({ value: String(a.id), label: personName(a), detail: a.email }));
+    .map(a => ({ value: String(a.id), label: personName(a), detail: a.email ?? undefined }));
 
   const onPick = (value: string) => {
     const other = accountsList?.find(a => a.id === parseInt(value));

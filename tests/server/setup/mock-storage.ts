@@ -107,6 +107,12 @@ export function makeMockStorage(overrides: Partial<Record<string, any>> = {}) {
     // Entity owners
     getEntityOwners: vi.fn().mockResolvedValue([]),
     addEntityOwner: vi.fn(),
+    getEntityMembers: vi.fn().mockResolvedValue([]),
+    getEntityMember: vi.fn().mockResolvedValue(undefined),
+    saveEntityMember: vi.fn(),
+    removeEntityMember: vi.fn(),
+    linkEntityOwnerToAccount: vi.fn(),
+    getDocumentOwner: vi.fn(),
     removeEntityOwner: vi.fn().mockResolvedValue(true),
 
     // Introductions

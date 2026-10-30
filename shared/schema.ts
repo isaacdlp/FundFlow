@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, serial, text, varchar, date, boolean, timestamp, integer, uniqueIndex, numeric, check, unique } from "drizzle-orm/pg-core";
+import { pgTable, serial, text, varchar, date, boolean, timestamp, integer, uniqueIndex, numeric, check, unique, type AnyPgColumn } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -25,6 +25,9 @@ function randomCode(length: number): string {
 export const ACCOUNT_CODE_PATTERN = /^[A-Z0-9]{8}$/;
 export const generateAccountCode = () => randomCode(8);
 
+// An entity's "Account ID": same format as an account's, they share the sheet's namespace.
+export const generateEntityCode = () => randomCode(8);
+
 // The user-facing Vehicle "Code": 4 random characters from A-Z and 0-9.
 export const VEHICLE_CODE_PATTERN = /^[A-Z0-9]{4}$/;
 export const generateVehicleCode = () => randomCode(4);
@@ -38,7 +41,8 @@ export const accounts = pgTable("accounts", {
   id: serial("id").primaryKey(),
   // Null for accounts that predate it. Not unique yet: existing users get theirs first.
   code: varchar("code", { length: 8 }).$defaultFn(generateAccountCode),
-  email: varchar("email", { length: 255 }).notNull().unique(),
+  // Null = a managed account: no login, everything happens through its manager-level delegates.
+  email: varchar("email", { length: 255 }).unique(),
   passwordHash: text("password_hash").notNull(),
   firstName: varchar("first_name", { length: 100 }).notNull(),
   middleName: varchar("middle_name", { length: 100 }).default(""),
@@ -62,6 +66,27 @@ export const accounts = pgTable("accounts", {
   mailingStateProvince: varchar("mailing_state_province", { length: 100 }).default(""),
   mailingZipPostalCode: varchar("mailing_zip_postal_code", { length: 20 }).default(""),
   language: varchar("language", { length: 10 }).default("en").notNull(),
+  idExpiration: date("id_expiration"),
+  taxCountry: varchar("tax_country", { length: 100 }).default(""),
+  // Credentials: raw codes for now, named options come later.
+  accreditation: varchar("accreditation", { length: 20 }).default(""),
+  qualification: varchar("qualification", { length: 20 }).default(""),
+  // Admin-only: never returned to anyone else (see ADMIN_ONLY_PROFILE_FIELDS).
+  kycUrl: text("kyc_url").default(""),
+  notes: text("notes").default(""),
+  // The tax form: its Concord agreement, status, and the signed copy in Documents.
+  taxFormUrl: text("tax_form_url").default(""),
+  taxFormStatus: varchar("tax_form_status", { length: 30 }).default(""),
+  taxFormDocumentId: integer("tax_form_document_id").references((): AnyPgColumn => documents.id, { onDelete: "set null" }),
+  bankName: varchar("bank_name", { length: 255 }).default(""),
+  bankAddress: text("bank_address").default(""),
+  bankCountry: varchar("bank_country", { length: 100 }).default(""),
+  bankCurrency: varchar("bank_currency", { length: 10 }).default(""),
+  bankRoutingNumber: varchar("bank_routing_number", { length: 50 }).default(""),
+  bankSwiftCode: varchar("bank_swift_code", { length: 20 }).default(""),
+  bankAccountNumber: varchar("bank_account_number", { length: 50 }).default(""),
+  bankAccountName: varchar("bank_account_name", { length: 255 }).default(""),
+  xeStatus: varchar("xe_status", { length: 10 }).default(""),
   profileComplete: boolean("profile_complete").default(false),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -109,9 +134,27 @@ export const organizationMembers = pgTable("organization_members", {
   // shared/fees.ts). Null = no default.
   managementFeePercent: numeric("management_fee_percent", { precision: 5, scale: 2 }),
   successFeePercent: numeric("success_fee_percent", { precision: 5, scale: 2 }),
+  // Whether the organization mails this member; has no effect on login or access.
+  active: boolean("active").notNull().default(true),
+  memberSince: date("member_since"),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
   uniqueIndex("org_member_unique").on(table.organizationId, table.accountId),
+]);
+
+// An entity's membership of an organization. Grants nobody any access: that
+// comes from delegations. Its fees take priority over its managers' (shared/fees.ts).
+export const organizationEntityMembers = pgTable("organization_entity_members", {
+  id: serial("id").primaryKey(),
+  organizationId: integer("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  entityId: integer("entity_id").notNull().references(() => entities.id, { onDelete: "cascade" }),
+  managementFeePercent: numeric("management_fee_percent", { precision: 5, scale: 2 }),
+  successFeePercent: numeric("success_fee_percent", { precision: 5, scale: 2 }),
+  active: boolean("active").notNull().default(true),
+  memberSince: date("member_since"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("org_entity_member_unique").on(table.organizationId, table.entityId),
 ]);
 
 export const organizationInvites = pgTable("organization_invites", {
@@ -175,6 +218,8 @@ export const vehicles = pgTable("vehicles", {
 
 export const entities = pgTable("entities", {
   id: serial("id").primaryKey(),
+  // Null for entities that predate it. Not unique yet: existing entities get theirs first.
+  code: varchar("code", { length: 8 }).$defaultFn(generateEntityCode),
   name: varchar("name", { length: 255 }).notNull(),
   entityType: varchar("entity_type", { length: 50 }).notNull().default("LLC"),
   dateEstablished: date("date_established"),
@@ -187,6 +232,36 @@ export const entities = pgTable("entities", {
   city: varchar("city", { length: 100 }).default(""),
   stateProvince: varchar("state_province", { length: 100 }).default(""),
   zipPostalCode: varchar("zip_postal_code", { length: 20 }).default(""),
+  // Optional postal address, when it differs from the one above (empty = same).
+  mailingStreetAddress1: varchar("mailing_street_address_1", { length: 255 }).default(""),
+  mailingStreetAddress2: varchar("mailing_street_address_2", { length: 255 }).default(""),
+  mailingCountry: varchar("mailing_country", { length: 100 }).default(""),
+  mailingCity: varchar("mailing_city", { length: 100 }).default(""),
+  mailingStateProvince: varchar("mailing_state_province", { length: 100 }).default(""),
+  mailingZipPostalCode: varchar("mailing_zip_postal_code", { length: 20 }).default(""),
+  phone: varchar("phone", { length: 50 }).default(""),
+  website: varchar("website", { length: 255 }).default(""),
+  // Country the entity is formed in (its "nationality").
+  jurisdiction: varchar("jurisdiction", { length: 100 }).default(""),
+  taxCountry: varchar("tax_country", { length: 100 }).default(""),
+  taxType: varchar("tax_type", { length: 10 }).default(""),
+  fatcaType: varchar("fatca_type", { length: 50 }).default(""),
+  signatoryAccountId: integer("signatory_account_id").references(() => accounts.id, { onDelete: "set null" }),
+  signatoryTitle: varchar("signatory_title", { length: 100 }).default(""),
+  disregardedToEntityId: integer("disregarded_to_entity_id").references((): AnyPgColumn => entities.id, { onDelete: "set null" }),
+  idExpiration: date("id_expiration"),
+  // Credentials: raw codes for now, named options come later.
+  accreditation: varchar("accreditation", { length: 20 }).default(""),
+  qualification: varchar("qualification", { length: 20 }).default(""),
+  // Admin-only: never returned to anyone else (see ADMIN_ONLY_PROFILE_FIELDS).
+  kycUrl: text("kyc_url").default(""),
+  // The tax form: its Concord agreement, status, and the signed copy in Documents.
+  taxFormUrl: text("tax_form_url").default(""),
+  taxFormStatus: varchar("tax_form_status", { length: 30 }).default(""),
+  taxFormDocumentId: integer("tax_form_document_id").references((): AnyPgColumn => documents.id, { onDelete: "set null" }),
+  bankCountry: varchar("bank_country", { length: 100 }).default(""),
+  bankCurrency: varchar("bank_currency", { length: 10 }).default(""),
+  xeStatus: varchar("xe_status", { length: 10 }).default(""),
   disbursementMethod: varchar("disbursement_method", { length: 20 }).default("wire_transfer"),
   bankName: varchar("bank_name", { length: 255 }).default(""),
   bankAddress: text("bank_address").default(""),
@@ -205,9 +280,14 @@ export const entityOwners = pgTable("entity_owners", {
   ownerType: varchar("owner_type", { length: 20 }).notNull().default("account"),
   ownerAccountId: integer("owner_account_id").references(() => accounts.id, { onDelete: "cascade" }),
   ownerEntityId: integer("owner_entity_id").references(() => entities.id, { onDelete: "cascade" }),
+  // ownerType "person": a minority owner known only by name (see MAX_NAMED_OWNER_PERCENT).
+  ownerName: varchar("owner_name", { length: 255 }),
   ownershipPercent: numeric("ownership_percent", { precision: 7, scale: 4 }).default("0"),
   createdAt: timestamp("created_at").defaultNow(),
 });
+
+// Above this, an owner must be a registered account or entity, not just a name.
+export const MAX_NAMED_OWNER_PERCENT = 25;
 
 // Who introduced whom. Exactly one of introducedAccountId / introducedEntityId
 // is set. Rows with `viaAccountId` are inherited entity introductions: the
@@ -467,6 +547,24 @@ const optionalDate = z.preprocess(
   z.string().nullable().optional(),
 );
 
+// Blank or missing = a managed account; forms send "".
+const optionalEmail = z.preprocess(
+  (v) => (typeof v === "string" && v.trim() === "" ? null : v),
+  z.string().trim().max(255).nullable().optional(),
+);
+
+// Changed by admins only; silently stripped for everyone else.
+export const ADMIN_ONLY_ACCOUNT_WRITES = [
+  "code", "accreditation", "qualification", "kycUrl", "notes", "idExpiration", "taxCountry",
+  "taxFormUrl", "taxFormStatus", "taxFormDocumentId", "xeStatus",
+] as const;
+export const ADMIN_ONLY_ENTITY_WRITES = [
+  "code", "accreditation", "qualification", "kycUrl", "idExpiration", "taxCountry",
+  "taxFormUrl", "taxFormStatus", "taxFormDocumentId", "xeStatus",
+] as const;
+// Removed from what anyone but an admin receives.
+export const ADMIN_ONLY_PROFILE_FIELDS = ["kycUrl", "notes", "taxFormUrl"] as const;
+
 export const insertAccountSchema = createInsertSchema(accounts).omit({
   id: true,
   code: true,
@@ -474,6 +572,11 @@ export const insertAccountSchema = createInsertSchema(accounts).omit({
   createdAt: true,
   updatedAt: true,
 }).extend({
+  email: optionalEmail,
+  // Required when there's no email: a managed account must have someone acting for it.
+  managerAccountIds: z.array(z.number().int().positive())
+    .transform(ids => Array.from(new Set(ids))).optional(),
+  idExpiration: optionalDate,
   // Optional: when omitted the account gets an unusable password and the user
   // sets their own via an account-setup link (see POST /api/accounts).
   password: z.string().min(1).optional(),
@@ -489,9 +592,11 @@ export const updateAccountSchema = createInsertSchema(accounts).omit({
   updatedAt: true,
 }).partial().extend({
   code: z.string().trim().toUpperCase().regex(ACCOUNT_CODE_PATTERN, "Account ID must be 8 letters or digits").optional(),
+  email: optionalEmail,
   roles: z.array(z.string()).optional(),
   language: z.enum(["en", "es", "fr"]).optional(),
   birthdate: optionalDate,
+  idExpiration: optionalDate,
 });
 
 export const insertOrganizationSchema = createInsertSchema(organizations).omit({
@@ -542,8 +647,11 @@ export const updateVehicleClassSchema = insertVehicleClassSchema.partial();
 
 export const insertEntitySchema = createInsertSchema(entities).omit({
   id: true,
+  code: true,
   createdAt: true,
   updatedAt: true,
+}).extend({
+  idExpiration: optionalDate,
 });
 
 // A fee percentage as stored (numeric(5,2)): accepts 5 or "5"; null clears it.
@@ -560,8 +668,19 @@ export const updateMemberSchema = z.object({
   status: z.enum(["approved", "rejected"]).optional(),
   managementFeePercent: feePercent,
   successFeePercent: feePercent,
-}).refine(d => d.status !== undefined || d.managementFeePercent !== undefined || d.successFeePercent !== undefined, {
-  message: "Provide status, managementFeePercent and/or successFeePercent",
+  active: z.boolean().optional(),
+  memberSince: optionalDate,
+}).refine(d => d.status !== undefined || d.managementFeePercent !== undefined || d.successFeePercent !== undefined
+  || d.active !== undefined || d.memberSince !== undefined, {
+  message: "Provide status, managementFeePercent, successFeePercent, active and/or memberSince",
+});
+
+// An entity's terms in an organization; what's omitted keeps its value.
+export const entityMemberSchema = z.object({
+  managementFeePercent: feePercent,
+  successFeePercent: feePercent,
+  active: z.boolean().optional(),
+  memberSince: optionalDate,
 });
 
 // An entity can't act by itself: it's created with at least one manager.
@@ -575,7 +694,10 @@ export const updateEntitySchema = createInsertSchema(entities).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
-}).partial();
+}).partial().extend({
+  code: z.string().trim().toUpperCase().regex(ACCOUNT_CODE_PATTERN, "Account ID must be 8 letters or digits").optional(),
+  idExpiration: optionalDate,
+});
 
 export type Role = typeof roles.$inferSelect;
 export type Account = typeof accounts.$inferSelect;
@@ -583,6 +705,7 @@ export type AccountRole = typeof accountRoles.$inferSelect;
 export type Organization = typeof organizations.$inferSelect;
 export type OrganizationOrganizer = typeof organizationOrganizers.$inferSelect;
 export type OrganizationMember = typeof organizationMembers.$inferSelect;
+export type OrganizationEntityMember = typeof organizationEntityMembers.$inferSelect;
 export type OrganizationInvite = typeof organizationInvites.$inferSelect;
 export type Vehicle = typeof vehicles.$inferSelect;
 export type VehicleClass = typeof vehicleClasses.$inferSelect;

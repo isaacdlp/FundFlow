@@ -25,6 +25,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { BanksTab, CredentialsTab } from "@/components/profile-tabs";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CountrySelect } from "@/components/country-select";
 import { SearchPicker, type SearchPickerOption } from "@/components/search-picker";
@@ -46,12 +47,47 @@ import {
 import { ArrowLeft, Pencil, Save, X as XIcon, Plus, Trash2, Building, Users, Briefcase } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { MAX_NAMED_OWNER_PERCENT } from "@shared/schema";
 
 const ENTITY_TYPES = [
-  "LLC", "LP", "LLP", "Non-Profit", "C-Corp", "S-Corp",
-  "Trust", "IRA", "ROTH IRA", "Disregarded Entity", "Other",
+  "LLC", "LP", "LLP", "Non-Profit", "Corporation", "C-Corp", "S-Corp",
+  "Trust", "IRA", "ROTH IRA", "Plan", "Disregarded Entity", "Other",
 ];
 const CURRENCIES = ["USD ($)", "EUR (\u20ac)", "GBP (\u00a3)", "CHF", "JPY (\u00a5)", "CAD ($)", "AUD ($)"];
+
+const NONE = "none";
+
+function entityToForm(entity: EntityInfo): Record<string, string> {
+  return {
+    code: entity.code || "",
+    name: entity.name || "",
+    entityType: entity.entityType || "LLC",
+    dateEstablished: entity.dateEstablished || "",
+    currency: entity.currency || "USD ($)",
+    taxId: entity.taxId || "",
+    taxType: entity.taxType || "",
+    fatcaType: entity.fatcaType || "",
+    jurisdiction: entity.jurisdiction || "",
+    phone: entity.phone || "",
+    website: entity.website || "",
+    signatoryAccountId: entity.signatoryAccountId ? String(entity.signatoryAccountId) : NONE,
+    signatoryTitle: entity.signatoryTitle || "",
+    disregardedToEntityId: entity.disregardedToEntityId ? String(entity.disregardedToEntityId) : NONE,
+    ownershipAllocation: entity.ownershipAllocation || "percent",
+    country: entity.country || "",
+    streetAddress: entity.streetAddress || "",
+    streetAddress2: entity.streetAddress2 || "",
+    city: entity.city || "",
+    stateProvince: entity.stateProvince || "",
+    zipPostalCode: entity.zipPostalCode || "",
+    mailingStreetAddress1: entity.mailingStreetAddress1 || "",
+    mailingStreetAddress2: entity.mailingStreetAddress2 || "",
+    mailingCountry: entity.mailingCountry || "",
+    mailingCity: entity.mailingCity || "",
+    mailingStateProvince: entity.mailingStateProvince || "",
+    mailingZipPostalCode: entity.mailingZipPostalCode || "",
+  };
+}
 
 function OwnersSection({ entityId, canEdit }: { entityId: string; canEdit: boolean }) {
   const { t } = useTranslation();
@@ -59,6 +95,9 @@ function OwnersSection({ entityId, canEdit }: { entityId: string; canEdit: boole
   const [dialogOpen, setDialogOpen] = useState(false);
   const [ownerType, setOwnerType] = useState("account");
   const [selectedOwnerId, setSelectedOwnerId] = useState("");
+  const [ownerName, setOwnerName] = useState("");
+  const { isAdmin } = useAuth();
+  const [linking, setLinking] = useState<number | null>(null);
   const [ownershipPercent, setOwnershipPercent] = useState("0");
 
   const { data: owners, isLoading } = useQuery<EntityOwnerInfo[]>({
@@ -81,7 +120,9 @@ function OwnersSection({ entityId, canEdit }: { entityId: string; canEdit: boole
         ownerType,
         ownershipPercent,
       };
-      if (ownerType === "account") {
+      if (ownerType === "person") {
+        payload.ownerName = ownerName;
+      } else if (ownerType === "account") {
         payload.ownerAccountId = parseInt(selectedOwnerId);
       } else {
         payload.ownerEntityId = parseInt(selectedOwnerId);
@@ -94,11 +135,27 @@ function OwnersSection({ entityId, canEdit }: { entityId: string; canEdit: boole
       queryClient.invalidateQueries({ queryKey: ["/api/entities", entityId] });
       setDialogOpen(false);
       setSelectedOwnerId("");
+      setOwnerName("");
       setOwnershipPercent("0");
       toast({ title: t("entityDetail.ownerAdded") });
     },
     onError: (error: Error) => {
       toast({ title: t("entityDetail.ownerAddFailed"), description: error.message, variant: "destructive" });
+    },
+  });
+
+  const linkMutation = useMutation({
+    mutationFn: async ({ ownerId, accountId }: { ownerId: number; accountId: number }) => {
+      const res = await apiRequest("PATCH", `/api/entities/${entityId}/owners/${ownerId}`, { ownerAccountId: accountId });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/entities", entityId, "owners"] });
+      setLinking(null);
+      toast({ title: t("profile.ownerLinked") });
+    },
+    onError: (error: Error) => {
+      toast({ title: t("profile.ownerLinkFailed"), description: error.message, variant: "destructive" });
     },
   });
 
@@ -118,9 +175,12 @@ function OwnersSection({ entityId, canEdit }: { entityId: string; canEdit: boole
   });
 
   const ownerOptions: SearchPickerOption[] = ownerType === "account"
-    ? (accountsList ?? []).map(a => ({ value: String(a.id), label: `${a.firstName} ${a.lastName}`, detail: a.email }))
+    ? (accountsList ?? []).map(a => ({ value: String(a.id), label: `${a.firstName} ${a.lastName}`, detail: a.email ?? undefined }))
     : (entitiesList ?? []).filter(e => String(e.id) !== entityId).map(e => ({ value: String(e.id), label: e.name, detail: e.entityType }));
   const selectedOwnerLabel = ownerOptions.find(o => o.value === selectedOwnerId)?.label;
+
+  const ownerAccountOptions: SearchPickerOption[] = (accountsList ?? []).map(a => (
+    { value: String(a.id), label: `${a.firstName} ${a.lastName}`, detail: a.email ?? undefined }));
 
   if (isLoading) return <Skeleton className="h-64 w-full" />;
 
@@ -156,9 +216,20 @@ function OwnersSection({ entityId, canEdit }: { entityId: string; canEdit: boole
                     <RadioGroupItem value="entity" id="owner-entity" data-testid="radio-owner-entity" />
                     <Label htmlFor="owner-entity" className="font-normal">{t("entityDetail.ownerEntityOption")}</Label>
                   </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="person" id="owner-person" data-testid="radio-owner-person" />
+                    <Label htmlFor="owner-person" className="font-normal">{t("profile.ownerNameOnly")}</Label>
+                  </div>
                 </RadioGroup>
               </div>
 
+              {ownerType === "person" ? (
+              <div className="space-y-2">
+                <Label htmlFor="ownerName">{t("common.name")}</Label>
+                <Input id="ownerName" value={ownerName} onChange={e => setOwnerName(e.target.value)} data-testid="input-owner-name" />
+                <p className="text-xs text-muted-foreground">{t("profile.ownerNameLimit", { percent: MAX_NAMED_OWNER_PERCENT })}</p>
+              </div>
+              ) : (
               <div className="space-y-2">
                 <Label>{t("entityDetail.owner")}</Label>
                 <SearchPicker
@@ -171,6 +242,7 @@ function OwnersSection({ entityId, canEdit }: { entityId: string; canEdit: boole
                   data-testid="select-owner"
                 />
               </div>
+              )}
 
               <div className="space-y-2">
                 <Label htmlFor="ownershipPercent">{t("entityDetail.ownershipOverride")}</Label>
@@ -191,7 +263,7 @@ function OwnersSection({ entityId, canEdit }: { entityId: string; canEdit: boole
                 <Button variant="outline" onClick={() => setDialogOpen(false)} data-testid="button-close-dialog">{t("common.close")}</Button>
                 <Button
                   onClick={() => addMutation.mutate()}
-                  disabled={!selectedOwnerId || addMutation.isPending}
+                  disabled={(ownerType === "person" ? !ownerName.trim() || parseFloat(ownershipPercent) > MAX_NAMED_OWNER_PERCENT : !selectedOwnerId) || addMutation.isPending}
                   data-testid="button-confirm-add-owner"
                 >
                   {addMutation.isPending ? t("entityDetail.adding") : t("entityDetail.addOwner")}
@@ -207,7 +279,9 @@ function OwnersSection({ entityId, canEdit }: { entityId: string; canEdit: boole
             {owners.map(owner => (
               <div key={owner.id} className="flex items-center gap-3 p-3 rounded-md border" data-testid={`owner-row-${owner.id}`}>
                 <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary flex-shrink-0">
-                  {owner.ownerType === "account" ? (
+                  {owner.ownerType === "person" ? (
+                    <Users className="h-4 w-4" />
+                  ) : owner.ownerType === "account" ? (
                     <span className="text-sm font-semibold">
                       {owner.ownerAccount ? `${owner.ownerAccount.firstName[0]}${owner.ownerAccount.lastName[0]}` : "?"}
                     </span>
@@ -216,7 +290,22 @@ function OwnersSection({ entityId, canEdit }: { entityId: string; canEdit: boole
                   )}
                 </div>
                 <div className="flex-1 min-w-0">
-                  {owner.ownerType === "account" && owner.ownerAccount ? (
+                  {owner.ownerType === "person" ? (
+                    <>
+                      <p className="text-sm font-medium truncate" data-testid={`text-owner-name-${owner.id}`}>{owner.ownerName}</p>
+                      <p className="text-xs text-muted-foreground truncate">{t("profile.ownerNotRegistered")}</p>
+                      {isAdmin && linking === owner.id && (
+                        <SearchPicker
+                          options={ownerAccountOptions}
+                          onSelect={v => linkMutation.mutate({ ownerId: owner.id, accountId: parseInt(v) })}
+                          placeholder={t("entityDetail.selectAccountPlaceholder")}
+                          searchPlaceholder={t("introductions.searchPeople")}
+                          className="w-full mt-2"
+                          data-testid={`select-link-owner-${owner.id}`}
+                        />
+                      )}
+                    </>
+                  ) : owner.ownerType === "account" && owner.ownerAccount ? (
                     <>
                       <p className="text-sm font-medium truncate">
                         {owner.ownerAccount.firstName} {owner.ownerAccount.lastName}
@@ -235,6 +324,11 @@ function OwnersSection({ entityId, canEdit }: { entityId: string; canEdit: boole
                 <div className="text-right mr-2">
                   <Badge variant="secondary">{parseFloat(owner.ownershipPercent || "0")}%</Badge>
                 </div>
+                {isAdmin && owner.ownerType === "person" && (
+                  <Button variant="outline" size="sm" onClick={() => setLinking(linking === owner.id ? null : owner.id)} data-testid={`button-link-owner-${owner.id}`}>
+                    {t("profile.linkToAccount")}
+                  </Button>
+                )}
                 {canEdit && (
                   <Button
                     variant="ghost"
@@ -319,31 +413,11 @@ export default function EntityDetail() {
   });
 
   const [formData, setFormData] = useState<Record<string, string>>({});
+  const { data: otherEntities } = useQuery<EntityInfo[]>({ queryKey: ["/api/entities"], enabled: editing });
 
   useEffect(() => {
     if (entity) {
-      setFormData({
-        name: entity.name || "",
-        entityType: entity.entityType || "LLC",
-        dateEstablished: entity.dateEstablished || "",
-        currency: entity.currency || "USD ($)",
-        taxId: entity.taxId || "",
-        ownershipAllocation: entity.ownershipAllocation || "percent",
-        country: entity.country || "",
-        streetAddress: entity.streetAddress || "",
-        streetAddress2: entity.streetAddress2 || "",
-        city: entity.city || "",
-        stateProvince: entity.stateProvince || "",
-        zipPostalCode: entity.zipPostalCode || "",
-        disbursementMethod: entity.disbursementMethod || "wire_transfer",
-        bankName: entity.bankName || "",
-        bankAddress: entity.bankAddress || "",
-        bankRoutingNumber: entity.bankRoutingNumber || "",
-        bankSwiftCode: entity.bankSwiftCode || "",
-        bankAccountNumber: entity.bankAccountNumber || "",
-        bankAccountName: entity.bankAccountName || "",
-        forFurtherCreditTo: entity.forFurtherCreditTo || "",
-      });
+      setFormData(entityToForm(entity));
     }
   }, [entity]);
 
@@ -379,33 +453,15 @@ export default function EntityDetail() {
   const handleSave = () => {
     const payload: Record<string, unknown> = { ...formData };
     if (!payload.dateEstablished) payload.dateEstablished = null;
+    if (!payload.code) delete payload.code;
+    payload.signatoryAccountId = formData.signatoryAccountId === NONE ? null : parseInt(formData.signatoryAccountId, 10);
+    payload.disregardedToEntityId = formData.disregardedToEntityId === NONE ? null : parseInt(formData.disregardedToEntityId, 10);
     updateMutation.mutate(payload);
   };
 
   const handleCancel = () => {
     if (entity) {
-      setFormData({
-        name: entity.name || "",
-        entityType: entity.entityType || "LLC",
-        dateEstablished: entity.dateEstablished || "",
-        currency: entity.currency || "USD ($)",
-        taxId: entity.taxId || "",
-        ownershipAllocation: entity.ownershipAllocation || "percent",
-        country: entity.country || "",
-        streetAddress: entity.streetAddress || "",
-        streetAddress2: entity.streetAddress2 || "",
-        city: entity.city || "",
-        stateProvince: entity.stateProvince || "",
-        zipPostalCode: entity.zipPostalCode || "",
-        disbursementMethod: entity.disbursementMethod || "wire_transfer",
-        bankName: entity.bankName || "",
-        bankAddress: entity.bankAddress || "",
-        bankRoutingNumber: entity.bankRoutingNumber || "",
-        bankSwiftCode: entity.bankSwiftCode || "",
-        bankAccountNumber: entity.bankAccountNumber || "",
-        bankAccountName: entity.bankAccountName || "",
-        forFurtherCreditTo: entity.forFurtherCreditTo || "",
-      });
+      setFormData(entityToForm(entity));
     }
     setEditing(false);
   };
@@ -502,6 +558,8 @@ export default function EntityDetail() {
         <TabsList>
           <TabsTrigger value="overview" data-testid="tab-overview">{t("entityDetail.tabOverview")}</TabsTrigger>
           <TabsTrigger value="connections" data-testid="tab-connections">{t("introductions.tab")}</TabsTrigger>
+          <TabsTrigger value="credentials" data-testid="tab-credentials">{t("profile.credentials")}</TabsTrigger>
+          <TabsTrigger value="banks" data-testid="tab-banks">{t("profile.banks")}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="mt-6 space-y-6">
@@ -563,8 +621,70 @@ export default function EntityDetail() {
                 </Select>
               </div>
               <div className="space-y-2">
+                <Label>{t("profile.accountId")}</Label>
+                <Input value={formData.code || ""} onChange={e => updateField("code", e.target.value.toUpperCase())} disabled={!editing || !isAdmin} maxLength={8} data-testid="input-entity-code" />
+              </div>
+              <div className="space-y-2">
                 <Label>{t("createEntity.taxId")}</Label>
                 <Input value={formData.taxId || ""} onChange={e => updateField("taxId", e.target.value)} disabled={!editing} data-testid="input-tax-id" />
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>{t("profile.taxType")}</Label>
+                  <Input value={formData.taxType || ""} onChange={e => updateField("taxType", e.target.value)} disabled={!editing} data-testid="input-tax-type" />
+                </div>
+                <div className="space-y-2">
+                  <Label>{t("profile.fatcaType")}</Label>
+                  <Input value={formData.fatcaType || ""} onChange={e => updateField("fatcaType", e.target.value)} disabled={!editing} data-testid="input-fatca-type" />
+                </div>
+                <div className="space-y-2">
+                  <Label>{t("profile.jurisdiction")}</Label>
+                  <CountrySelect value={formData.jurisdiction || ""} onValueChange={val => updateField("jurisdiction", val)} disabled={!editing} data-testid="input-jurisdiction" />
+                </div>
+                <div className="space-y-2">
+                  <Label>{t("common.phone")}</Label>
+                  <Input value={formData.phone || ""} onChange={e => updateField("phone", e.target.value)} disabled={!editing} data-testid="input-entity-phone" />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>{t("profile.website")}</Label>
+                <Input value={formData.website || ""} onChange={e => updateField("website", e.target.value)} disabled={!editing} data-testid="input-website" />
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>{t("profile.signatory")}</Label>
+                  <Select value={formData.signatoryAccountId || NONE} onValueChange={v => updateField("signatoryAccountId", v)} disabled={!editing}>
+                    <SelectTrigger data-testid="select-signatory"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={NONE}>{t("profile.none")}</SelectItem>
+                      {entity.managers.map(m => (
+                        <SelectItem key={m.accountId} value={String(m.accountId)}>{m.account.firstName} {m.account.lastName}</SelectItem>
+                      ))}
+                      {entity.signatory && !entity.managers.some(m => m.accountId === entity.signatory!.id) && (
+                        <SelectItem value={String(entity.signatory.id)}>{entity.signatory.firstName} {entity.signatory.lastName}</SelectItem>
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>{t("profile.signatoryTitle")}</Label>
+                  <Input value={formData.signatoryTitle || ""} onChange={e => updateField("signatoryTitle", e.target.value)} disabled={!editing} data-testid="input-signatory-title" />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>{t("profile.disregardedTo")}</Label>
+                <Select value={formData.disregardedToEntityId || NONE} onValueChange={v => updateField("disregardedToEntityId", v)} disabled={!editing}>
+                  <SelectTrigger data-testid="select-disregarded-to"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NONE}>{t("profile.none")}</SelectItem>
+                    {(otherEntities ?? []).filter(e => e.id !== entity.id).map(e => (
+                      <SelectItem key={e.id} value={String(e.id)}>{e.name}</SelectItem>
+                    ))}
+                    {!otherEntities && entity.disregardedToEntityId && (
+                      <SelectItem value={String(entity.disregardedToEntityId)}>#{entity.disregardedToEntityId}</SelectItem>
+                    )}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-2">
                 <Label>{t("entityDetail.ownershipAllocation")}</Label>
@@ -618,63 +738,28 @@ export default function EntityDetail() {
                 <Label>{t("createEntity.zipPostalCode")}</Label>
                 <Input value={formData.zipPostalCode || ""} onChange={e => updateField("zipPostalCode", e.target.value)} disabled={!editing} data-testid="input-zip" />
               </div>
+              <h3 className="font-medium pt-2">{t("profile.mailingAddress")}</h3>
+              <div className="space-y-2">
+                <Label>{t("common.country")}</Label>
+                <CountrySelect value={formData.mailingCountry || ""} onValueChange={val => updateField("mailingCountry", val)} disabled={!editing} data-testid="input-mailing-country" />
+              </div>
+              {([["mailingStreetAddress1", "createEntity.street"], ["mailingStreetAddress2", "createEntity.streetContinued"], ["mailingCity", "common.city"], ["mailingStateProvince", "common.state"], ["mailingZipPostalCode", "createEntity.zipPostalCode"]] as const).map(([field, label]) => (
+                <div key={field} className="space-y-2">
+                  <Label>{t(label)}</Label>
+                  <Input value={formData[field] || ""} onChange={e => updateField(field, e.target.value)} disabled={!editing} data-testid={`input-${field}`} />
+                </div>
+              ))}
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <h2 className="text-lg font-semibold">{t("createEntity.disbursementPreference")}</h2>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <Label>{t("entityDetail.disbursementMethod")}</Label>
-                <RadioGroup value={formData.disbursementMethod || "wire_transfer"} onValueChange={v => updateField("disbursementMethod", v)} className="flex gap-4" disabled={!editing}>
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="wire_transfer" id="detail-wire" disabled={!editing} />
-                    <Label htmlFor="detail-wire" className="font-normal">{t("createEntity.wireTransfer")}</Label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="check" id="detail-check" disabled={!editing} />
-                    <Label htmlFor="detail-check" className="font-normal">{t("createEntity.check")}</Label>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <RadioGroupItem value="other" id="detail-other" disabled={!editing} />
-                    <Label htmlFor="detail-other" className="font-normal">{t("createEntity.other")}</Label>
-                  </div>
-                </RadioGroup>
-              </div>
-              <div className="space-y-2">
-                <Label>{t("createEntity.bankName")}</Label>
-                <Input value={formData.bankName || ""} onChange={e => updateField("bankName", e.target.value)} disabled={!editing} data-testid="input-bank-name" />
-              </div>
-              <div className="space-y-2">
-                <Label>{t("createEntity.bankAddress")}</Label>
-                <Textarea value={formData.bankAddress || ""} onChange={e => updateField("bankAddress", e.target.value)} disabled={!editing} data-testid="input-bank-address" />
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>{t("createEntity.bankRoutingNumber")}</Label>
-                  <Input value={formData.bankRoutingNumber || ""} onChange={e => updateField("bankRoutingNumber", e.target.value)} disabled={!editing} data-testid="input-routing" />
-                </div>
-                <div className="space-y-2">
-                  <Label>{t("createEntity.bankSwiftCode")}</Label>
-                  <Input value={formData.bankSwiftCode || ""} onChange={e => updateField("bankSwiftCode", e.target.value)} disabled={!editing} data-testid="input-swift" />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label>{t("createEntity.bankAccountNumber")}</Label>
-                <Input value={formData.bankAccountNumber || ""} onChange={e => updateField("bankAccountNumber", e.target.value)} disabled={!editing} data-testid="input-account-number" />
-              </div>
-              <div className="space-y-2">
-                <Label>{t("createEntity.bankAccountName")}</Label>
-                <Input value={formData.bankAccountName || ""} onChange={e => updateField("bankAccountName", e.target.value)} disabled={!editing} data-testid="input-account-name" />
-              </div>
-              <div className="space-y-2">
-                <Label>{t("createEntity.forFurtherCreditTo")}</Label>
-                <Input value={formData.forFurtherCreditTo || ""} onChange={e => updateField("forFurtherCreditTo", e.target.value)} disabled={!editing} data-testid="input-ffc" />
-              </div>
-            </CardContent>
-          </Card>
+        </TabsContent>
+
+        <TabsContent value="credentials" className="mt-6">
+          <CredentialsTab kind="entity" profile={entity} isAdmin={isAdmin} />
+        </TabsContent>
+
+        <TabsContent value="banks" className="mt-6">
+          <BanksTab kind="entity" profile={entity} canEdit={canEdit} isAdmin={isAdmin} />
         </TabsContent>
 
         <TabsContent value="connections" className="mt-6 space-y-10">

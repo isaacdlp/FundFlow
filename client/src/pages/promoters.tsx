@@ -47,7 +47,7 @@ function AddPromoterDialog({ open, onOpenChange, promoters }: {
   const { data: accountsList } = useQuery<AccountWithRoles[]>({ queryKey: ["/api/accounts"], enabled: open });
   const options = (accountsList ?? [])
     .filter(a => !promoters.some(c => c.accountId === a.id))
-    .map(a => ({ value: String(a.id), label: personName(a), detail: a.email }));
+    .map(a => ({ value: String(a.id), label: personName(a), detail: a.email ?? undefined }));
   const selected = accountsList?.find(a => a.id === accountId);
 
   const reset = () => {

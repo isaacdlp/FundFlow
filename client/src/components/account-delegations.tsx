@@ -152,7 +152,7 @@ export function AccountDelegations({ accountId }: { accountId: number }) {
   const delegatedOut = data?.delegatedOut ?? [];
   const accountOptions = (exclude: number[]): SearchPickerOption[] => (accountsList ?? [])
     .filter(a => a.id !== accountId && !exclude.includes(a.id))
-    .map(a => ({ value: `account-${a.id}`, label: personName(a), detail: a.email, group: t("introductions.account") }));
+    .map(a => ({ value: `account-${a.id}`, label: personName(a), detail: a.email ?? undefined, group: t("introductions.account") }));
   const findAccount = (id: number) => accountsList?.find(a => a.id === id);
 
   // Accounts and entities share one search; values are prefixed to tell them apart.
@@ -244,7 +244,7 @@ export function EntityDelegations({ entityId, canEdit }: { entityId: number; can
 
   const options: SearchPickerOption[] = (accountsList ?? [])
     .filter(a => !rows.some(d => d.delegateAccountId === a.id))
-    .map(a => ({ value: String(a.id), label: personName(a), detail: a.email }));
+    .map(a => ({ value: String(a.id), label: personName(a), detail: a.email ?? undefined }));
   const hasManager = rows.some(d => d.level === "manager");
 
   return (

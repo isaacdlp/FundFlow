@@ -127,11 +127,11 @@ export function AccountIntroductions({ accountId }: { accountId: number }) {
     !unavailable?.introducedEntityIds.includes(e.id));
 
   const introducerPickerOptions: SearchPickerOption[] = introducerOptions.map(a => (
-    { value: String(a.id), label: personName(a), detail: a.email }));
+    { value: String(a.id), label: personName(a), detail: a.email ?? undefined }));
   // Accounts and entities share one search; values are prefixed to tell them apart.
   const introducedPickerOptions: SearchPickerOption[] = [
     ...accountTargetOptions.map(a => (
-      { value: `account-${a.id}`, label: personName(a), detail: a.email, group: t("introductions.account") })),
+      { value: `account-${a.id}`, label: personName(a), detail: a.email ?? undefined, group: t("introductions.account") })),
     ...entityTargetOptions.map(e => (
       { value: `entity-${e.id}`, label: e.name, detail: e.entityType, group: t("introductions.entity") })),
   ];

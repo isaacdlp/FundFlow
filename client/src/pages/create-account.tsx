@@ -1,4 +1,4 @@
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { useTranslation } from "react-i18next";
 import { useLocalePath } from "@/i18n/hooks";
@@ -16,6 +16,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { CountrySelect } from "@/components/country-select";
+import { SearchPicker } from "@/components/search-picker";
+import type { AccountWithRoles } from "@shared/types";
 import { ArrowLeft, Save } from "lucide-react";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
@@ -49,7 +51,7 @@ export default function CreateAccount() {
   const [sendWelcomeEmail, setSendWelcomeEmail] = useState(true);
 
   const createMutation = useMutation({
-    mutationFn: async (data: typeof formData) => {
+    mutationFn: async (data: typeof formData & { managerAccountIds?: number[] }) => {
       // An empty password is omitted so the server sends an account-setup link instead.
       const { password, ...rest } = data;
       const res = await apiRequest("POST", "/api/accounts", {
@@ -100,9 +102,12 @@ export default function CreateAccount() {
     }));
   };
 
+  const [managerId, setManagerId] = useState("");
+  const { data: managerOptions } = useQuery<AccountWithRoles[]>({ queryKey: ["/api/accounts"] });
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.email || !formData.firstName || !formData.lastName) {
+    if (!formData.firstName || !formData.lastName || (!formData.email && !managerId)) {
       toast({
         title: t("createAccount.missingRequiredTitle"),
         description: t("createAccount.missingRequiredDescription"),
@@ -110,7 +115,7 @@ export default function CreateAccount() {
       });
       return;
     }
-    if (!formData.password && !sendWelcomeEmail) {
+    if (formData.email && !formData.password && !sendWelcomeEmail) {
       toast({
         title: t("createAccount.passwordOrWelcomeEmailTitle"),
         description: t("createAccount.passwordOrWelcomeEmailDescription"),
@@ -118,7 +123,7 @@ export default function CreateAccount() {
       });
       return;
     }
-    createMutation.mutate(formData);
+    createMutation.mutate(formData.email ? formData : { ...formData, password: "", email: "", managerAccountIds: [parseInt(managerId, 10)] });
   };
 
   return (
@@ -207,15 +212,29 @@ export default function CreateAccount() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="email">{t("common.email")} *</Label>
+                  <Label htmlFor="email">{t("common.email")}</Label>
                   <Input
                     id="email"
                     type="email"
                     value={formData.email}
                     onChange={(e) => updateField("email", e.target.value)}
-                    required
                     data-testid="input-email"
                   />
+                  {!formData.email && (
+                    <div className="space-y-2 pt-2" data-testid="section-managed-manager">
+                      <p className="text-xs text-muted-foreground">{t("profile.noEmailMeansManaged")}</p>
+                      <Label>{t("profile.manager")} *</Label>
+                      <SearchPicker
+                        options={(managerOptions ?? []).filter(a => a.email).map(a => ({ value: String(a.id), label: `${a.firstName} ${a.lastName}`, detail: a.email ?? undefined }))}
+                        onSelect={setManagerId}
+                        selectedLabel={(() => { const m = managerOptions?.find(a => String(a.id) === managerId); return m ? `${m.firstName} ${m.lastName}` : undefined; })()}
+                        placeholder={t("entityDetail.selectAccountPlaceholder")}
+                        searchPlaceholder={t("introductions.searchPeople")}
+                        className="w-full"
+                        data-testid="select-manager"
+                      />
+                    </div>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="phone">{t("common.phone")}</Label>

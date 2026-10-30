@@ -1156,6 +1156,52 @@ paths:
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { description: Organization or account not found }
 
+  /api/organizations/{id}/entity-members:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+    get:
+      tags: [Organization Members]
+      summary: List the organization's entity members
+      description: Admin, or an organizer of this organization. Entity membership grants nobody access.
+      responses:
+        '200': { description: Entity members, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/EntityMember' } } } } }
+        '403': { $ref: '#/components/responses/Forbidden' }
+
+  /api/organizations/{id}/entity-members/{entityId}:
+    parameters:
+      - { name: id, in: path, required: true, schema: { type: integer } }
+      - { name: entityId, in: path, required: true, schema: { type: integer } }
+    put:
+      tags: [Organization Members]
+      summary: Add an entity to the organization, or change its terms
+      description: |
+        Admin, or an organizer of this organization. What's omitted keeps its value.
+        The fees apply to the entity's new investments in this organization's Vehicles;
+        a fee left null falls back to the lowest of its managers'.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                managementFeePercent: { oneOf: [{ type: number }, { type: string }], nullable: true }
+                successFeePercent: { oneOf: [{ type: number }, { type: string }], nullable: true }
+                active: { type: boolean }
+                memberSince: { type: string, format: date, nullable: true }
+      responses:
+        '200': { description: Saved, content: { application/json: { schema: { $ref: '#/components/schemas/EntityMember' } } } }
+        '400': { description: Invalid fee or date }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Organization Members]
+      summary: Remove an entity from the organization
+      responses:
+        '200': { description: Removed }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
   /api/organizations/{id}/members/{accountId}:
     parameters:
       - { name: id, in: path, required: true, schema: { type: integer } }
@@ -1165,8 +1211,8 @@ paths:
       summary: Approve / reject a membership, and set the member's default fees
       description: |
         Admin, or an organizer of this organization. Approved membership alone
-        is not enough (403). Send `status` and/or the member's default fees —
-        at least one.
+        is not enough (403). Send `status`, the member's default fees, `active` and/or
+        `memberSince` — at least one.
 
         The default fees apply to the member's new investments in this
         organization's Vehicles (and to those of entities they manage) when
@@ -1181,6 +1227,8 @@ paths:
                 status: { type: string, enum: [approved, rejected], description: "Server only accepts approved or rejected (pending is the initial state set by the request endpoint)." }
                 managementFeePercent: { oneOf: [{ type: number }, { type: string }], nullable: true, description: "Default management fee, 0–100 (% of the commitment). null clears it." }
                 successFeePercent: { oneOf: [{ type: number }, { type: string }], nullable: true, description: "Default success fee (carry), 0–100. null clears it." }
+                active: { type: boolean, description: Whether the organization mails this member. No effect on login or access. }
+                memberSince: { type: string, format: date, nullable: true }
       responses:
         '200': { description: Updated, content: { application/json: { schema: { $ref: '#/components/schemas/Member' } } } }
         '400': { description: 'Invalid status or fee, or nothing to update' }
@@ -1651,16 +1699,37 @@ paths:
               type: object
               required: [ownerType, ownershipPercent]
               properties:
-                ownerType: { type: string, enum: [account, entity] }
+                ownerType: { type: string, enum: [account, entity, person] }
                 ownerAccountId: { type: integer, nullable: true }
                 ownerEntityId: { type: integer, nullable: true }
+                ownerName:
+                  type: string
+                  description: Required when `ownerType=person`, a minority owner known only by name (at most 25%, or 400).
                 ownershipPercent: { type: string }
-      responses: { '201': { description: Added } }
+      responses:
+        '201': { description: Added }
+        '400': { description: Invalid owner, or a name-only owner above 25% }
 
   /api/entities/{id}/owners/{ownerId}:
     parameters:
       - { name: id, in: path, required: true, schema: { type: integer } }
       - { name: ownerId, in: path, required: true, schema: { type: integer } }
+    patch:
+      tags: [Entities]
+      summary: Link a name-only owner to their account, keeping the percentage (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ownerAccountId]
+              properties:
+                ownerAccountId: { type: integer }
+      responses:
+        '200': { description: Linked }
+        '400': { description: Missing ownerAccountId }
+        '404': { description: Account or name-only owner not found }
     delete:
       tags: [Entities]
       summary: Remove an owner
@@ -2045,13 +2114,46 @@ components:
         name: { type: string, example: admin }
         description: { type: string, nullable: true }
 
+    EntityMember:
+      type: object
+      properties:
+        id: { type: integer }
+        organizationId: { type: integer }
+        entityId: { type: integer }
+        managementFeePercent: { type: string, nullable: true }
+        successFeePercent: { type: string, nullable: true }
+        active: { type: boolean }
+        memberSince: { type: string, format: date, nullable: true }
+        entity: { type: object, properties: { id: { type: integer }, name: { type: string }, entityType: { type: string } } }
     Account:
       type: object
       description: User account. `passwordHash` is NEVER included in API responses.
       properties:
+        accreditation: { type: string, description: Raw code. Changed by admins only. }
+        qualification: { type: string, description: Raw code. Changed by admins only. }
+        taxCountry: { type: string, description: Changed by admins only. }
+        idExpiration: { type: string, format: date, nullable: true, description: Changed by admins only. }
+        kycUrl: { type: string, description: Admins only, omitted for everyone else. }
+        taxFormUrl: { type: string, description: The Concord agreement. Admins only, omitted for everyone else. }
+        taxFormStatus: { type: string, description: Changed by admins only. }
+        taxFormDocumentId: { type: integer, nullable: true, description: The signed copy; must be a document of this profile (400). Changed by admins only. }
+        bankName: { type: string }
+        bankAddress: { type: string }
+        bankCountry: { type: string }
+        bankCurrency: { type: string }
+        bankRoutingNumber: { type: string }
+        bankSwiftCode: { type: string }
+        bankAccountNumber: { type: string }
+        bankAccountName: { type: string }
+        xeStatus: { type: string, description: Changed by admins only. }
+        notes: { type: string, description: Admins only, omitted for everyone else. }
+        managedBy:
+          type: array
+          description: Only on GET /api/accounts/{id} of a managed account.
+          items: { type: object, properties: { id: { type: integer }, firstName: { type: string }, lastName: { type: string } } }
         id: { type: integer }
         code: { type: string, nullable: true, example: K7Q2M9XA, description: The user-facing Account ID. 8 random characters (A-Z and 0-9) generated when the account is created and ignored in the create body. Null for accounts that predate it. Not guaranteed unique yet }
-        email: { type: string, format: email }
+        email: { type: string, format: email, nullable: true, description: Null for a managed account (no login; its managers act for it). }
         firstName: { type: string }
         lastName: { type: string }
         middleName: { type: string, nullable: true, description: Optional middle name. Included in the full legal name on contracts }
@@ -2069,9 +2171,19 @@ components:
 
     AccountCreate:
       type: object
-      required: [email, firstName, lastName]
+      required: [firstName, lastName]
       properties:
-        email: { type: string, format: email }
+        email:
+          type: string
+          format: email
+          nullable: true
+          description: >
+            Blank or omitted creates a managed account (no login, no welcome email, no
+            password): `managerAccountIds` is then required (400) and they must be able to log in.
+        managerAccountIds:
+          type: array
+          items: { type: integer }
+          description: Manager-level delegates for a managed account.
         password:
           type: string
           minLength: 1
@@ -2323,6 +2435,38 @@ components:
     Entity:
       type: object
       properties:
+        accreditation: { type: string, description: Raw code. Changed by admins only. }
+        qualification: { type: string, description: Raw code. Changed by admins only. }
+        taxCountry: { type: string, description: Changed by admins only. }
+        idExpiration: { type: string, format: date, nullable: true, description: Changed by admins only. }
+        kycUrl: { type: string, description: Admins only, omitted for everyone else. }
+        taxFormUrl: { type: string, description: The Concord agreement. Admins only, omitted for everyone else. }
+        taxFormStatus: { type: string, description: Changed by admins only. }
+        taxFormDocumentId: { type: integer, nullable: true, description: The signed copy; must be a document of this profile (400). Changed by admins only. }
+        bankName: { type: string }
+        bankAddress: { type: string }
+        bankCountry: { type: string }
+        bankCurrency: { type: string }
+        bankRoutingNumber: { type: string }
+        bankSwiftCode: { type: string }
+        bankAccountNumber: { type: string }
+        bankAccountName: { type: string }
+        xeStatus: { type: string, description: Changed by admins only. }
+        code: { type: string, nullable: true, description: 8-character Account ID. Changed by admins only. }
+        phone: { type: string }
+        website: { type: string }
+        jurisdiction: { type: string }
+        taxType: { type: string }
+        fatcaType: { type: string }
+        signatoryAccountId: { type: integer, nullable: true }
+        signatoryTitle: { type: string }
+        disregardedToEntityId: { type: integer, nullable: true }
+        mailingStreetAddress1: { type: string }
+        mailingStreetAddress2: { type: string }
+        mailingCountry: { type: string }
+        mailingCity: { type: string }
+        mailingStateProvince: { type: string }
+        mailingZipPostalCode: { type: string }
         id: { type: integer }
         name: { type: string }
         entityType: { type: string, example: LLC }

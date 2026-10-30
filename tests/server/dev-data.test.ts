@@ -131,7 +131,7 @@ describe("importDevData", () => {
     expect(log).toContainEqual(["member", orgId, idFor("lp1@example.com"), "approved", { managementFeePercent: "5.00", successFeePercent: "20.00" }]);
 
     const [trust, holdCo] = log.filter(l => l[0] === "entity").map(l => l[1]);
-    expect(log).toContainEqual(["entityOwner", trust, { ownerType: "entity", ownerAccountId: null, ownerEntityId: holdCo, ownershipPercent: "100.0000" }]);
+    expect(log).toContainEqual(["entityOwner", trust, { ownerType: "entity", ownerAccountId: null, ownerEntityId: holdCo, ownerName: null, ownershipPercent: "100.0000" }]);
     expect(log).toContainEqual(["entityDelegation", trust, { accountId: idFor("trustee@example.com"), level: "manager", notes: "trustee" }]);
 
     const vehicleInsert = log.find(l => l[0] === "vehicle")!;

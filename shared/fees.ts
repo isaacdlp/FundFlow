@@ -34,6 +34,19 @@ export function investorFeeDefaults(memberships: MemberFeeTerms[]): FeeDefaults 
   };
 }
 
+/**
+ * Defaults for an entity: its own terms in the organization, fee by fee, and
+ * otherwise the lowest of its managers'.
+ */
+export function entityFeeDefaults(own: MemberFeeTerms | null | undefined, managers: MemberFeeTerms[]): FeeDefaults {
+  const fromManagers = investorFeeDefaults(managers);
+  const ownTerms = investorFeeDefaults(own ? [own] : []);
+  return {
+    managementFeePercent: ownTerms.managementFeePercent ?? fromManagers.managementFeePercent,
+    successFeePercent: ownTerms.successFeePercent ?? fromManagers.successFeePercent,
+  };
+}
+
 /** The management fee amount for a commitment, rounded to cents. */
 export function managementFeeAmount(committed: number, percent: number): string {
   return (Math.round(committed * percent) / 100).toFixed(2);

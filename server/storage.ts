@@ -1,10 +1,10 @@
 import { eq, ilike, or, sql, and, lt, inArray, desc } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
-import {
+import { documents,
   accounts, roles, accountRoles, organizations, organizationOrganizers,
   organizationMembers, organizationInvites, vehicles, vehicleMembers,
   vehicleAssets, vehicleAssetValuations, vehicleClasses,
-  entities, entityOwners, introductions, delegations, relationships, promoters, promoterIncentives, contracts, passwordResetTokens,
+  entities, entityOwners, organizationEntityMembers, introductions, delegations, relationships, promoters, promoterIncentives, contracts, passwordResetTokens,
   apiTokens, currencies, appSettings, PASSWORD_RESET_TTL_MS, generatePositionCode,
   type Account, type Role, type InsertAccount, type UpdateAccount,
   type Organization, type InsertOrganization, type UpdateOrganization,
@@ -21,6 +21,7 @@ import {
   type InsertEntity, type UpdateEntity,
   type PasswordResetToken,
   type ApiToken, type PublicApiToken,
+  type OrganizationEntityMember
 } from "@shared/schema";
 import crypto from "crypto";
 import bcrypt from "bcrypt";
@@ -69,7 +70,7 @@ export interface OrganizerInfo {
   accountId: number;
   organizationId: number;
   createdAt: Date | null;
-  account: { id: number; email: string; firstName: string; lastName: string };
+  account: { id: number; email: string | null; firstName: string; lastName: string };
 }
 
 export interface OrganizationWithOrganizers extends Organization {
@@ -77,16 +78,16 @@ export interface OrganizationWithOrganizers extends Organization {
 }
 
 export interface MemberWithAccount extends OrganizationMember {
-  account: { id: number; email: string; firstName: string; lastName: string };
+  account: { id: number; email: string | null; firstName: string; lastName: string };
 }
 
 export interface InviteWithAccount extends OrganizationInvite {
-  usedByAccount?: { id: number; email: string; firstName: string; lastName: string } | null;
+  usedByAccount?: { id: number; email: string | null; firstName: string; lastName: string } | null;
 }
 
 export interface VehicleWithDetails extends Vehicle {
-  manager?: { id: number; email: string; firstName: string; lastName: string } | null;
-  signatory?: { id: number; email: string; firstName: string; lastName: string } | null;
+  manager?: { id: number; email: string | null; firstName: string; lastName: string } | null;
+  signatory?: { id: number; email: string | null; firstName: string; lastName: string } | null;
   memberCount: number;
   classCount: number;
   organization?: { id: number; name: string; slug: string } | null;
@@ -111,7 +112,7 @@ export type DeleteVehicleClassResult = "deleted" | "not_found" | "in_use" | "las
 export interface VehicleMemberWithAccount extends VehicleMember {
   className: string | null;
   investorType: "account" | "entity";
-  account: { id: number; email: string; firstName: string; lastName: string } | null;
+  account: { id: number; email: string | null; firstName: string; lastName: string } | null;
   entity: { id: number; name: string; entityType: string } | null;
   currentValue: string;
 }
@@ -146,20 +147,21 @@ export interface PortfolioInvestment {
 }
 
 export interface EntityWithDetails extends Entity {
-  managers: { id: number; accountId: number; account: { id: number; email: string; firstName: string; lastName: string } }[];
+  signatory?: { id: number; email: string | null; firstName: string; lastName: string } | null;
+  managers: { id: number; accountId: number; account: { id: number; email: string | null; firstName: string; lastName: string } }[];
   ownerCount: number;
 }
 
 export interface EntityOwnerWithDetails extends EntityOwner {
-  ownerAccount?: { id: number; email: string; firstName: string; lastName: string } | null;
+  ownerAccount?: { id: number; email: string | null; firstName: string; lastName: string } | null;
   ownerEntity?: { id: number; name: string; entityType: string } | null;
 }
 
 export interface IntroductionWithDetails extends Introduction {
-  introducer: { id: number; email: string; firstName: string; lastName: string } | null;
-  introducedAccount: { id: number; email: string; firstName: string; lastName: string } | null;
+  introducer: { id: number; email: string | null; firstName: string; lastName: string } | null;
+  introducedAccount: { id: number; email: string | null; firstName: string; lastName: string } | null;
   introducedEntity: { id: number; name: string; entityType: string } | null;
-  via: { id: number; email: string; firstName: string; lastName: string } | null;
+  via: { id: number; email: string | null; firstName: string; lastName: string } | null;
 }
 
 export interface AccountIntroductions {
@@ -169,7 +171,7 @@ export interface AccountIntroductions {
   introduced: IntroductionWithDetails[];
 }
 
-type AccountSummary = { id: number; email: string; firstName: string; lastName: string };
+type AccountSummary = { id: number; email: string | null; firstName: string; lastName: string };
 
 export interface DelegationWithDetails extends Delegation {
   /** Set when the principal is an account. */
@@ -178,6 +180,15 @@ export interface DelegationWithDetails extends Delegation {
   principalEntity: { id: number; name: string; entityType: string } | null;
   delegate: AccountSummary | null;
 }
+
+export interface MemberTerms {
+  managementFeePercent?: string | null;
+  successFeePercent?: string | null;
+  active?: boolean;
+  memberSince?: string | null;
+}
+export type EntityMemberTerms = MemberTerms;
+export type EntityMemberWithEntity = OrganizationEntityMember & { entity: { id: number; name: string; entityType: string } };
 
 export interface AccountDelegations {
   /** Accounts and entities that delegated to this one (this account acts for them). */
@@ -192,7 +203,7 @@ export interface RelationshipWithDetails extends Relationship {
 }
 
 export interface PromoterWithDetails extends Promoter {
-  account: { id: number; email: string; firstName: string; lastName: string };
+  account: { id: number; email: string | null; firstName: string; lastName: string };
   incentives: PromoterIncentive[];
   /** Introductions made by the promoter's account, inherited entity credit included. */
   introductionCount: number;
@@ -228,7 +239,11 @@ export interface IStorage {
   createMemberRequest(organizationId: number, accountId: number, inviteId?: number, initialStatus?: "pending" | "approved"): Promise<MemberWithAccount>;
   updateMemberStatus(organizationId: number, accountId: number, status: string): Promise<MemberWithAccount | undefined>;
   /** Sets the member's default fee percentages (null clears one; undefined leaves it). */
-  updateMemberFees(organizationId: number, accountId: number, fees: { managementFeePercent?: string | null; successFeePercent?: string | null }): Promise<MemberWithAccount | undefined>;
+  getEntityMembers(organizationId: number): Promise<EntityMemberWithEntity[]>;
+  getEntityMember(organizationId: number, entityId: number): Promise<OrganizationEntityMember | undefined>;
+  saveEntityMember(organizationId: number, entityId: number, terms: EntityMemberTerms): Promise<EntityMemberWithEntity>;
+  removeEntityMember(organizationId: number, entityId: number): Promise<boolean>;
+  updateMemberFees(organizationId: number, accountId: number, fees: MemberTerms): Promise<MemberWithAccount | undefined>;
   removeMember(organizationId: number, accountId: number): Promise<boolean>;
 
   getInvites(organizationId: number): Promise<InviteWithAccount[]>;
@@ -270,7 +285,8 @@ export interface IStorage {
   updateEntity(id: number, data: UpdateEntity): Promise<EntityWithDetails | undefined>;
   deleteEntity(id: number): Promise<boolean>;
   getEntityOwners(entityId: number): Promise<EntityOwnerWithDetails[]>;
-  addEntityOwner(entityId: number, ownerType: string, ownerAccountId: number | null, ownerEntityId: number | null, ownershipPercent: string): Promise<EntityOwnerWithDetails>;
+  addEntityOwner(entityId: number, ownerType: string, ownerAccountId: number | null, ownerEntityId: number | null, ownershipPercent: string, ownerName?: string | null): Promise<EntityOwnerWithDetails>;
+  linkEntityOwnerToAccount(ownerId: number, accountId: number): Promise<EntityOwnerWithDetails | undefined>;
   removeEntityOwner(ownerId: number): Promise<boolean>;
 
   getIntroductionGraph(): Promise<IntroductionGraph>;
@@ -284,6 +300,7 @@ export interface IStorage {
 
   getDelegation(id: number): Promise<Delegation | undefined>;
   getDelegationsForAccount(accountId: number): Promise<AccountDelegations>;
+  getDocumentOwner(documentId: number): Promise<{ accountId: number | null; entityId: number | null } | undefined>;
   getDelegationsForEntity(entityId: number): Promise<DelegationWithDetails[]>;
   /** Accounts (not entities) that delegated to this account, with the level each granted. */
   getDelegatorsOf(delegateAccountId: number): Promise<{ accountId: number; level: DelegationLevel }[]>;
@@ -371,7 +388,7 @@ async function attachRoles(accountList: Account[]): Promise<AccountWithRoles[]> 
 }
 
 function isProfileComplete(account: Record<string, unknown>): boolean {
-  const requiredFields = ["firstName", "lastName", "email", "streetAddress1", "country", "city", "stateProvince", "zipPostalCode"];
+  const requiredFields = ["firstName", "lastName", "streetAddress1", "country", "city", "stateProvince", "zipPostalCode"];
   return requiredFields.every(f => {
     const val = account[f];
     return val !== null && val !== undefined && val !== "";
@@ -391,7 +408,7 @@ async function setRoles(accountId: number, roleNames: string[]): Promise<void> {
   }
 }
 
-async function getAccountSummary(accountId: number): Promise<{ id: number; email: string; firstName: string; lastName: string } | null> {
+async function getAccountSummary(accountId: number): Promise<{ id: number; email: string | null; firstName: string; lastName: string } | null> {
   const [acct] = await db.select().from(accounts).where(eq(accounts.id, accountId));
   if (!acct) return null;
   return { id: acct.id, email: acct.email, firstName: acct.firstName, lastName: acct.lastName };
@@ -446,18 +463,26 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createAccount(data: InsertAccount): Promise<AccountWithRoles> {
-    const { password, roles: roleNames, ...rest } = data;
+    const { password, roles: roleNames, managerAccountIds, ...rest } = data;
     const bcrypt = await import("bcrypt");
     // No password → hash a random secret nobody knows, so the account cannot
     // log in until the user sets a password via a setup/reset token.
     const passwordHash = await bcrypt.hash(password ?? crypto.randomBytes(32).toString("hex"), 10);
 
     const profileComplete = isProfileComplete(rest);
-    const [account] = await db.insert(accounts).values({
-      ...rest,
-      passwordHash,
-      profileComplete,
-    }).returning();
+    const account = await db.transaction(async tx => {
+      const [row] = await tx.insert(accounts).values({
+        ...rest,
+        email: rest.email ?? null,
+        passwordHash,
+        profileComplete,
+      }).returning();
+      if (managerAccountIds?.length) {
+        await tx.insert(delegations).values(managerAccountIds.map(delegateAccountId => (
+          { principalAccountId: row.id, delegateAccountId, level: "manager" })));
+      }
+      return row;
+    });
 
     if (roleNames && roleNames.length > 0) {
       await setRoles(account.id, roleNames);
@@ -670,7 +695,41 @@ export class DatabaseStorage implements IStorage {
     return { ...updated, account: acct! };
   }
 
-  async updateMemberFees(organizationId: number, accountId: number, fees: { managementFeePercent?: string | null; successFeePercent?: string | null }): Promise<MemberWithAccount | undefined> {
+  async getEntityMembers(organizationId: number): Promise<EntityMemberWithEntity[]> {
+    const rows = await db.select({ member: organizationEntityMembers, entity: { id: entities.id, name: entities.name, entityType: entities.entityType } })
+      .from(organizationEntityMembers)
+      .innerJoin(entities, eq(entities.id, organizationEntityMembers.entityId))
+      .where(eq(organizationEntityMembers.organizationId, organizationId));
+    return rows.map(r => ({ ...r.member, entity: r.entity }));
+  }
+
+  async getEntityMember(organizationId: number, entityId: number): Promise<OrganizationEntityMember | undefined> {
+    const [member] = await db.select().from(organizationEntityMembers).where(and(
+      eq(organizationEntityMembers.organizationId, organizationId),
+      eq(organizationEntityMembers.entityId, entityId),
+    ));
+    return member;
+  }
+
+  async saveEntityMember(organizationId: number, entityId: number, terms: EntityMemberTerms): Promise<EntityMemberWithEntity> {
+    const fields = Object.fromEntries(Object.entries(terms).filter(([, v]) => v !== undefined));
+    const insert = db.insert(organizationEntityMembers).values({ organizationId, entityId, ...fields });
+    const [member] = await (Object.keys(fields).length > 0
+      ? insert.onConflictDoUpdate({ target: [organizationEntityMembers.organizationId, organizationEntityMembers.entityId], set: fields })
+      : insert.onConflictDoNothing()).returning();
+    const row = member ?? (await this.getEntityMember(organizationId, entityId))!;
+    return { ...row, entity: (await getEntitySummary(entityId))! };
+  }
+
+  async removeEntityMember(organizationId: number, entityId: number): Promise<boolean> {
+    const result = await db.delete(organizationEntityMembers).where(and(
+      eq(organizationEntityMembers.organizationId, organizationId),
+      eq(organizationEntityMembers.entityId, entityId),
+    )).returning();
+    return result.length > 0;
+  }
+
+  async updateMemberFees(organizationId: number, accountId: number, fees: MemberTerms): Promise<MemberWithAccount | undefined> {
     const fields = Object.fromEntries(Object.entries(fees).filter(([, v]) => v !== undefined));
     if (Object.keys(fields).length > 0) {
       await db.update(organizationMembers).set(fields)
@@ -1248,7 +1307,8 @@ export class DatabaseStorage implements IStorage {
       }
     }
     const owners = await db.select().from(entityOwners).where(eq(entityOwners.entityId, entity.id));
-    return { ...entity, managers: managersWithAccounts, ownerCount: owners.length };
+    const signatory = entity.signatoryAccountId ? await getAccountSummary(entity.signatoryAccountId) : null;
+    return { ...entity, managers: managersWithAccounts, ownerCount: owners.length, signatory };
   }
 
   async getAllEntities(search?: string): Promise<EntityWithDetails[]> {
@@ -1320,12 +1380,22 @@ export class DatabaseStorage implements IStorage {
     return result;
   }
 
-  async addEntityOwner(entityId: number, ownerType: string, ownerAccountId: number | null, ownerEntityId: number | null, ownershipPercent: string): Promise<EntityOwnerWithDetails> {
+  async linkEntityOwnerToAccount(ownerId: number, accountId: number): Promise<EntityOwnerWithDetails | undefined> {
+    const [owner] = await db.update(entityOwners)
+      .set({ ownerType: "account", ownerAccountId: accountId, ownerName: null })
+      .where(and(eq(entityOwners.id, ownerId), eq(entityOwners.ownerType, "person")))
+      .returning();
+    if (!owner) return undefined;
+    return { ...owner, ownerAccount: await getAccountSummary(accountId), ownerEntity: null };
+  }
+
+  async addEntityOwner(entityId: number, ownerType: string, ownerAccountId: number | null, ownerEntityId: number | null, ownershipPercent: string, ownerName: string | null = null): Promise<EntityOwnerWithDetails> {
     const [owner] = await db.insert(entityOwners).values({
       entityId,
       ownerType,
       ownerAccountId,
       ownerEntityId,
+      ownerName,
       ownershipPercent,
     }).returning();
     let ownerAccount = null;
@@ -1519,6 +1589,12 @@ export class DatabaseStorage implements IStorage {
     const rows = await db.select().from(delegations)
       .where(eq(delegations.principalEntityId, entityId)).orderBy(delegations.id);
     return this.enrichDelegations(rows);
+  }
+
+  async getDocumentOwner(documentId: number): Promise<{ accountId: number | null; entityId: number | null } | undefined> {
+    const [doc] = await db.select({ accountId: documents.accountId, entityId: documents.entityId })
+      .from(documents).where(eq(documents.id, documentId));
+    return doc;
   }
 
   async getDelegationsForAccount(accountId: number): Promise<AccountDelegations> {

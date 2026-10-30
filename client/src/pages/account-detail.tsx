@@ -37,6 +37,7 @@ import { CountrySelect } from "@/components/country-select";
 import { AccountIntroductions } from "@/components/account-introductions";
 import { AccountDelegations } from "@/components/account-delegations";
 import { AccountRelationships } from "@/components/account-relationships";
+import { BanksTab, CredentialsTab } from "@/components/profile-tabs";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ArrowLeft, Pencil, Save, X, Loader2, Mail, KeyRound, Trash2, Eye, Briefcase } from "lucide-react";
 import { useState, useEffect } from "react";
@@ -75,6 +76,8 @@ export default function AccountDetail() {
     { value: "overview", label: t("accountDetail.overview") },
     // A delegate viewing someone else's account has no business with its login.
     ...(isAdmin || isOwnAccount ? [{ value: "login", label: t("accountDetail.login") }] : []),
+    { value: "credentials", label: t("profile.credentials") },
+    { value: "banks", label: t("profile.banks") },
     ...(isAdmin ? [
       { value: "connections", label: t("introductions.tab") },
       { value: "permissions", label: t("accountDetail.permissions") },
@@ -278,7 +281,11 @@ export default function AccountDetail() {
           <h1 className="text-2xl font-semibold" data-testid="text-account-name">
             {[account.firstName, account.middleName, account.lastName].filter(Boolean).join(" ")}
           </h1>
-          <p className="text-muted-foreground" data-testid="text-account-email">{account.email}</p>
+          <p className="text-muted-foreground" data-testid="text-account-email">
+            {account.email ?? t("profile.managedBy", {
+              names: (account.managedBy ?? []).map(m => `${m.firstName} ${m.lastName}`).join(", "),
+            })}
+          </p>
           <div className="flex gap-2 mt-1 flex-wrap">
             {account.roles.map((role) => (
               <Badge
@@ -328,7 +335,7 @@ export default function AccountDetail() {
                   <AlertDialogDescription>
                     <Trans
                       i18nKey="accounts.deleteConfirm"
-                      values={{ name: `${account.firstName} ${account.lastName}`, email: account.email }}
+                      values={{ name: `${account.firstName} ${account.lastName}`, email: account.email ?? t("profile.managedAccount") }}
                       components={[<strong key="0" />]}
                     />
                   </AlertDialogDescription>
@@ -464,7 +471,7 @@ export default function AccountDetail() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="email">{t("common.email")} *</Label>
+                  <Label htmlFor="email">{t("common.email")}{account.email ? " *" : ""}</Label>
                   <Input
                     id="email"
                     type="email"
@@ -701,6 +708,10 @@ export default function AccountDetail() {
                   />
                 )}
               </div>
+              {!account.email && (
+                <p className="text-sm text-muted-foreground" data-testid="text-managed-no-login">{t("profile.managedNoLogin")}</p>
+              )}
+              {account.email && <>
               <div className="space-y-2">
                 <Label>{t("auth.emailAddress")}</Label>
                 <Input value={account.email} disabled data-testid="input-login-email" />
@@ -769,7 +780,7 @@ export default function AccountDetail() {
                       </p>
                       <Button
                         variant="outline"
-                        onClick={() => account && sendResetMutation.mutate(account.email)}
+                        onClick={() => account.email && sendResetMutation.mutate(account.email)}
                         disabled={sendResetMutation.isPending}
                         data-testid="button-send-reset-email"
                       >
@@ -861,6 +872,7 @@ export default function AccountDetail() {
                   </div>
                 )}
               </div>
+              </>}
               <div className="space-y-2">
                 <Label>{t("accountDetail.accountCreated")}</Label>
                 <Input
@@ -875,6 +887,14 @@ export default function AccountDetail() {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="credentials" className="mt-6">
+          <CredentialsTab kind="account" profile={account} isAdmin={isAdmin} />
+        </TabsContent>
+
+        <TabsContent value="banks" className="mt-6">
+          <BanksTab kind="account" profile={account} canEdit={account.access !== "observer"} isAdmin={isAdmin} />
         </TabsContent>
 
         <TabsContent value="permissions" className="mt-6">

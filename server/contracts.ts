@@ -138,13 +138,15 @@ export function buildPromoterContractDraft(
   incentives: PromoterIncentive[],
   ourSigner: string,
   ready: boolean,
+  // Where the promoter's copy goes: their email, or their manager's when they're a managed account.
+  signerEmail: string,
 ): ContractDraft {
   // Full legal name, middle name included.
   const name = [account.firstName, account.middleName, account.lastName].map(p => p?.trim()).filter(Boolean).join(" ");
   const invite = INVITES[account.language === "es" || account.language === "fr" ? account.language : "en"];
   const join = (parts: (string | null | undefined)[]) => parts.map(p => p?.trim()).filter(Boolean).join(", ");
   // The template's two signature slots: the promoter, then our Managing Partner.
-  const signers = account.email.toLowerCase() === ourSigner.toLowerCase() ? [account.email] : [account.email, ourSigner];
+  const signers = signerEmail.toLowerCase() === ourSigner.toLowerCase() ? [signerEmail] : [signerEmail, ourSigner];
   return {
     ready,
     title: `Promoter Agreement for ${name}`,
@@ -155,7 +157,7 @@ export function buildPromoterContractDraft(
       "Address Street": join([account.streetAddress1, account.streetAddress2]),
       "Address State": join([account.city, account.stateProvince, account.zipPostalCode]),
       "Address Country": account.country ?? "",
-      "Email": account.email,
+      "Email": signerEmail,
       "Detail of Fees": formatFeeDetail(incentives),
     },
     subject: invite.subject(name),

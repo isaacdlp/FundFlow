@@ -105,7 +105,7 @@ export default function CreateEntity() {
 
   const managerOptions: SearchPickerOption[] = (accountsList ?? [])
     .filter(a => !selectedManagers.includes(a.id))
-    .map(a => ({ value: String(a.id), label: `${a.firstName} ${a.lastName}`, detail: a.email }));
+    .map(a => ({ value: String(a.id), label: `${a.firstName} ${a.lastName}`, detail: a.email ?? undefined }));
 
   return (
     <div className="p-6 space-y-6 max-w-4xl">

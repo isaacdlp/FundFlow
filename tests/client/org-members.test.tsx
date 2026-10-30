@@ -18,7 +18,7 @@ const member = (accountId: number, firstName: string, email: string, managementF
 });
 
 function renderTab(members: MemberInfo[]) {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false, queryFn: async () => members } } });
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false, queryFn: async ({ queryKey }) => (queryKey[0] === "/api/organizations" && queryKey[2] === "members" ? members : []) } } });
   const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={qc}>{children}</QueryClientProvider>;
   return render(<MembersTab orgId="10" canEdit />, { wrapper });
 }
@@ -57,5 +57,14 @@ describe("Organization members", () => {
     renderTab(Array.from({ length: 60 }, (_, i) => member(i + 1, `M${String(i).padStart(2, "0")}`, `m${i}@x.com`, null, null)));
     await screen.findByTestId("member-approved-1");
     expect(rowIds()).toHaveLength(50);
+  });
+});
+
+describe("Organization members: mailing and join date", () => {
+  it("shows who is active, and an entity members section for organizers", async () => {
+    renderTab([{ ...member(1, "Carla", "c@example.com", null, null), active: false, memberSince: "2024-03-01" }]);
+    expect(await screen.findByTestId("text-member-active-1")).toHaveTextContent("organizationDetail.activeNo");
+    expect(screen.getByText("2024-03-01")).toBeInTheDocument();
+    expect(screen.getByTestId("section-entity-members")).toBeInTheDocument();
   });
 });

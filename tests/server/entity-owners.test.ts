@@ -98,6 +98,7 @@ describe("Entity owners", () => {
         2,
         null,
         "50",
+        null,
       );
     });
 

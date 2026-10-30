@@ -29,6 +29,8 @@ import { useSort } from "@/hooks/use-sort";
 import { SortableTableHead } from "@/components/sortable-table-head";
 import { usePagination } from "@/hooks/use-pagination";
 import { ListPagination } from "@/components/list-pagination";
+import { Checkbox } from "@/components/ui/checkbox";
+import { OrgEntityMembers } from "@/components/org-entity-members";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
@@ -43,9 +45,13 @@ function MemberFeesDialog({ orgId, member, onClose }: { orgId: string; member: M
   const { toast } = useToast();
   const [managementFee, setManagementFee] = useState("");
   const [successFee, setSuccessFee] = useState("");
+  const [active, setActive] = useState(true);
+  const [memberSince, setMemberSince] = useState("");
 
   useEffect(() => {
     if (member) {
+      setActive(member.active ?? true);
+      setMemberSince(member.memberSince ?? "");
       setManagementFee(member.managementFeePercent === null ? "" : String(parseFloat(member.managementFeePercent)));
       setSuccessFee(member.successFeePercent === null ? "" : String(parseFloat(member.successFeePercent)));
     }
@@ -56,6 +62,8 @@ function MemberFeesDialog({ orgId, member, onClose }: { orgId: string; member: M
       await apiRequest("PATCH", `/api/organizations/${orgId}/members/${member!.accountId}`, {
         managementFeePercent: managementFee.trim() === "" ? null : managementFee.trim(),
         successFeePercent: successFee.trim() === "" ? null : successFee.trim(),
+        active,
+        memberSince: memberSince || null,
       });
     },
     onSuccess: () => {
@@ -75,6 +83,14 @@ function MemberFeesDialog({ orgId, member, onClose }: { orgId: string; member: M
           <DialogTitle>{t("organizationDetail.memberFeesTitle")}</DialogTitle>
           <DialogDescription>{member && memberName(member)}</DialogDescription>
         </DialogHeader>
+        <div className="flex items-center gap-2">
+          <Checkbox id="member-active" checked={active} onCheckedChange={v => setActive(v === true)} data-testid="checkbox-member-active" />
+          <Label htmlFor="member-active" className="font-normal">{t("organizationDetail.activeHint")}</Label>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="member-since">{t("organizationDetail.memberSince")}</Label>
+          <Input id="member-since" type="date" value={memberSince} onChange={e => setMemberSince(e.target.value)} data-testid="input-member-since" />
+        </div>
         <div className="grid grid-cols-2 gap-4">
           <div className="space-y-2">
             <Label htmlFor="member-management-fee">{t("organizationDetail.managementFeePercent")}</Label>
@@ -112,6 +128,8 @@ export function MembersTab({ orgId, canEdit }: { orgId: string; canEdit: boolean
   const approvedSort = useSort(approvedMembers, {
     name: memberName,
     email: m => m.account.email,
+    active: m => m.active,
+    memberSince: m => m.memberSince,
     managementFee: m => feeOf(m.managementFeePercent),
     successFee: m => feeOf(m.successFeePercent),
   });
@@ -220,6 +238,8 @@ export function MembersTab({ orgId, canEdit }: { orgId: string; canEdit: boolean
                   <TableRow>
                     <SortableTableHead control={approvedSort} column="name">{t("common.name")}</SortableTableHead>
                     <SortableTableHead control={approvedSort} column="email">{t("common.email")}</SortableTableHead>
+                    <SortableTableHead control={approvedSort} column="active">{t("organizationDetail.active")}</SortableTableHead>
+                    <SortableTableHead control={approvedSort} column="memberSince">{t("organizationDetail.memberSince")}</SortableTableHead>
                     <SortableTableHead control={approvedSort} column="managementFee" className="text-right">{t("organizationDetail.managementFee")}</SortableTableHead>
                     <SortableTableHead control={approvedSort} column="successFee" className="text-right">{t("organizationDetail.successFee")}</SortableTableHead>
                     {canEdit && <TableHead className="w-[100px]" />}
@@ -235,6 +255,8 @@ export function MembersTab({ orgId, canEdit }: { orgId: string; canEdit: boolean
                         </div>
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">{member.account.email}</TableCell>
+                      <TableCell className="text-sm" data-testid={`text-member-active-${member.accountId}`}>{member.active === false ? t("organizationDetail.activeNo") : t("organizationDetail.activeYes")}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{member.memberSince ?? "—"}</TableCell>
                       <TableCell className="text-right text-sm" data-testid={`text-member-management-fee-${member.accountId}`}>{formatFee(member.managementFeePercent)}</TableCell>
                       <TableCell className="text-right text-sm" data-testid={`text-member-success-fee-${member.accountId}`}>{formatFee(member.successFeePercent)}</TableCell>
                       {canEdit && (
@@ -266,6 +288,8 @@ export function MembersTab({ orgId, canEdit }: { orgId: string; canEdit: boolean
           )}
         </CardContent>
       </Card>
+
+      {canEdit && <OrgEntityMembers orgId={orgId} />}
 
       {rejected.length > 0 && (
         <Card>

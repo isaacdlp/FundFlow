@@ -26,10 +26,13 @@ export interface MemberInfo {
   /** Default terms (percent) for this member's investments in the organization; null = none. */
   managementFeePercent: string | null;
   successFeePercent: string | null;
+  /** Whether the organization mails this member; has no effect on login or access. */
+  active: boolean;
+  memberSince: string | null;
   createdAt: string;
   account: {
     id: number;
-    email: string;
+    email: string | null;
     firstName: string;
     lastName: string;
   };
@@ -118,8 +121,8 @@ export interface VehicleInfo {
   autoDeploy: boolean;
   createdAt: string;
   updatedAt: string;
-  manager?: { id: number; email: string; firstName: string; lastName: string } | null;
-  signatory?: { id: number; email: string; firstName: string; lastName: string } | null;
+  manager?: { id: number; email: string | null; firstName: string; lastName: string } | null;
+  signatory?: { id: number; email: string | null; firstName: string; lastName: string } | null;
   memberCount: number;
   /** Number of share classes (always ≥ 1; the UI only shows them when there are several). */
   classCount: number;
@@ -242,6 +245,18 @@ export interface ExchangeRatesInfo {
   updatedAt: string | null;
 }
 
+export interface EntityMemberInfo {
+  id: number;
+  organizationId: number;
+  entityId: number;
+  managementFeePercent: string | null;
+  successFeePercent: string | null;
+  active: boolean;
+  memberSince: string | null;
+  createdAt: string;
+  entity: { id: number; name: string; entityType: string };
+}
+
 export interface EntityInfo {
   id: number;
   name: string;
@@ -257,20 +272,49 @@ export interface EntityInfo {
   stateProvince: string | null;
   zipPostalCode: string | null;
   disbursementMethod: string | null;
+  taxCountry: string | null;
+  idExpiration: string | null;
+  accreditation: string | null;
+  qualification: string | null;
+  /** Admins only. */
+  kycUrl?: string | null;
+  /** Admins only. */
+  taxFormUrl?: string | null;
+  taxFormStatus: string | null;
+  taxFormDocumentId: number | null;
   bankName: string | null;
   bankAddress: string | null;
+  bankCountry: string | null;
+  bankCurrency: string | null;
   bankRoutingNumber: string | null;
   bankSwiftCode: string | null;
   bankAccountNumber: string | null;
   bankAccountName: string | null;
+  xeStatus: string | null;
   forFurtherCreditTo: string | null;
+  code: string | null;
+  mailingStreetAddress1: string | null;
+  mailingStreetAddress2: string | null;
+  mailingCountry: string | null;
+  mailingCity: string | null;
+  mailingStateProvince: string | null;
+  mailingZipPostalCode: string | null;
+  phone: string | null;
+  website: string | null;
+  jurisdiction: string | null;
+  taxType: string | null;
+  fatcaType: string | null;
+  signatoryAccountId: number | null;
+  signatoryTitle: string | null;
+  disregardedToEntityId: number | null;
   createdAt: string;
   updatedAt: string;
+  signatory?: { id: number; email: string | null; firstName: string; lastName: string } | null;
   /** Manager-level delegates. */
   managers: {
     id: number;
     accountId: number;
-    account: { id: number; email: string; firstName: string; lastName: string };
+    account: { id: number; email: string | null; firstName: string; lastName: string };
   }[];
   ownerCount: number;
   /** Only on GET /api/entities/:id — how the caller reaches this entity. */
@@ -283,16 +327,19 @@ export interface EntityOwnerInfo {
   ownerType: string;
   ownerAccountId: number | null;
   ownerEntityId: number | null;
+  /** Set when `ownerType` is "person": a minority owner known only by name. */
+  ownerName: string | null;
   ownershipPercent: string | null;
   createdAt: string;
-  ownerAccount?: { id: number; email: string; firstName: string; lastName: string } | null;
+  ownerAccount?: { id: number; email: string | null; firstName: string; lastName: string } | null;
   ownerEntity?: { id: number; name: string; entityType: string } | null;
 }
 
 export interface AccountWithRoles {
   id: number;
   code: string | null;
-  email: string;
+  /** Null = a managed account: no login, everything goes through its managers. */
+  email: string | null;
   firstName: string;
   middleName: string | null;
   lastName: string;
@@ -313,6 +360,29 @@ export interface AccountWithRoles {
   mailingStateProvince: string | null;
   mailingZipPostalCode: string | null;
   language: string;
+  taxCountry: string | null;
+  idExpiration: string | null;
+  accreditation: string | null;
+  qualification: string | null;
+  /** Admins only. */
+  kycUrl?: string | null;
+  /** Admins only. */
+  taxFormUrl?: string | null;
+  taxFormStatus: string | null;
+  taxFormDocumentId: number | null;
+  bankName: string | null;
+  bankAddress: string | null;
+  bankCountry: string | null;
+  bankCurrency: string | null;
+  bankRoutingNumber: string | null;
+  bankSwiftCode: string | null;
+  bankAccountNumber: string | null;
+  bankAccountName: string | null;
+  xeStatus: string | null;
+  /** Admins only. */
+  notes?: string | null;
+  /** Only on GET /api/accounts/:id of a managed account. */
+  managedBy?: { id: number; firstName: string; lastName: string }[];
   profileComplete: boolean | null;
   createdAt: string;
   updatedAt: string;
@@ -331,10 +401,10 @@ export interface IntroductionInfo {
   date: string | null;
   notes: string | null;
   createdAt: string;
-  introducer: { id: number; email: string; firstName: string; lastName: string } | null;
-  introducedAccount: { id: number; email: string; firstName: string; lastName: string } | null;
+  introducer: { id: number; email: string | null; firstName: string; lastName: string } | null;
+  introducedAccount: { id: number; email: string | null; firstName: string; lastName: string } | null;
   introducedEntity: { id: number; name: string; entityType: string } | null;
-  via: { id: number; email: string; firstName: string; lastName: string } | null;
+  via: { id: number; email: string | null; firstName: string; lastName: string } | null;
 }
 
 export interface AccountIntroductionsInfo {
@@ -359,9 +429,9 @@ export interface DelegationInfo {
   notes: string | null;
   createdAt: string;
   updatedAt: string;
-  principal: { id: number; email: string; firstName: string; lastName: string } | null;
+  principal: { id: number; email: string | null; firstName: string; lastName: string } | null;
   principalEntity: { id: number; name: string; entityType: string } | null;
-  delegate: { id: number; email: string; firstName: string; lastName: string } | null;
+  delegate: { id: number; email: string | null; firstName: string; lastName: string } | null;
 }
 
 export interface AccountDelegationsInfo {
@@ -378,8 +448,8 @@ export interface RelationshipInfo {
   toAccountId: number;
   description: string;
   createdAt: string;
-  fromAccount: { id: number; email: string; firstName: string; lastName: string } | null;
-  toAccount: { id: number; email: string; firstName: string; lastName: string } | null;
+  fromAccount: { id: number; email: string | null; firstName: string; lastName: string } | null;
+  toAccount: { id: number; email: string | null; firstName: string; lastName: string } | null;
 }
 
 export type IncentiveType = "management_fee" | "success_fee";
@@ -402,7 +472,7 @@ export interface PromoterInfo {
   notes: string | null;
   createdAt: string;
   updatedAt: string;
-  account: { id: number; email: string; firstName: string; lastName: string };
+  account: { id: number; email: string | null; firstName: string; lastName: string };
   incentives: PromoterIncentiveInfo[];
   /** Accounts and entities credited to this promoter, inherited entity credit included. */
   introductionCount: number;
